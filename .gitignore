@@ -1,0 +1,23 @@
+# tool venvs — recreated locally
+tools/simod-venv/
+tools/prosimos-venv/
+
+# experiment outputs
+runs/
+
+# python
+__pycache__/
+*.pyc
+*.pyo
+*.egg-info/
+.venv/
+venv/
+
+# editor / OS
+.vscode/
+.idea/
+.DS_Store
+Thumbs.db
+
+# Streamlit
+.streamlit/secrets.toml

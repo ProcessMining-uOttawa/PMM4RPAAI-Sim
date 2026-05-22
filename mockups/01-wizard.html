@@ -1,0 +1,74 @@
+<!doctype html>
+<html><head><meta charset="utf-8"><title>Mockup A — Wizard</title>
+<style>
+  body{font:14px/1.4 system-ui,sans-serif;margin:0;background:#f6f7f9;color:#1a1f2b}
+  header{background:#1f2a44;color:#fff;padding:14px 24px;display:flex;align-items:center;gap:16px}
+  header h1{font-size:16px;margin:0;font-weight:600}
+  .steps{display:flex;gap:0;background:#fff;border-bottom:1px solid #e3e6ec;padding:0 24px}
+  .step{padding:14px 18px;color:#7a8499;border-bottom:3px solid transparent;font-size:13px}
+  .step.done{color:#2a7a3a}
+  .step.active{color:#1f2a44;border-bottom-color:#3b6cf2;font-weight:600}
+  main{max-width:880px;margin:24px auto;background:#fff;border:1px solid #e3e6ec;border-radius:8px;padding:28px 32px}
+  h2{margin:0 0 4px;font-size:18px}
+  .sub{color:#6b7280;margin-bottom:20px;font-size:13px}
+  .field{margin:18px 0}
+  label{display:block;font-weight:600;margin-bottom:6px;font-size:13px}
+  select,input[type=number]{padding:8px 10px;border:1px solid #cdd3dd;border-radius:6px;font:inherit;min-width:280px}
+  .levels{display:grid;grid-template-columns:160px repeat(3,1fr);gap:8px;align-items:center;margin-top:8px}
+  .levels input{width:80px}
+  .levels .hdr{font-size:12px;color:#6b7280;font-weight:600;text-transform:uppercase;letter-spacing:.04em}
+  .preview{background:#0f172a;color:#cbd5e1;padding:14px 16px;border-radius:6px;font:12px ui-monospace,Consolas,monospace;white-space:pre-wrap;margin-top:18px}
+  .row{display:flex;justify-content:space-between;align-items:center;margin-top:28px;padding-top:18px;border-top:1px solid #eef0f4}
+  button{padding:9px 18px;border-radius:6px;border:1px solid #cdd3dd;background:#fff;cursor:pointer;font:inherit}
+  .primary{background:#3b6cf2;color:#fff;border-color:#3b6cf2;font-weight:600}
+  .hint{font-size:12px;color:#6b7280}
+  .pill{display:inline-block;background:#eef2ff;color:#3b6cf2;padding:2px 8px;border-radius:10px;font-size:11px;font-weight:600;margin-left:8px}
+</style></head><body>
+<header>
+  <h1>Automation What-If Simulator</h1>
+  <span class="hint" style="color:#9aa3b7">Local · v0.1</span>
+</header>
+<nav class="steps">
+  <div class="step done">1 · Upload log ✓</div>
+  <div class="step done">2 · Discover (Simod) ✓</div>
+  <div class="step active">3 · Pattern & parameters</div>
+  <div class="step">4 · Design</div>
+  <div class="step">5 · Run</div>
+  <div class="step">6 · Results</div>
+</nav>
+<main>
+  <h2>Configure substitution <span class="pill">Step 3 of 6</span></h2>
+  <div class="sub">Pick the activity to automate, the substitution pattern, and three levels per factor.</div>
+
+  <div class="field">
+    <label>Target activity</label>
+    <select><option>Validate claim</option><option>Approve loan</option><option>Send confirmation</option></select>
+  </div>
+  <div class="field">
+    <label>Substitution pattern</label>
+    <select><option>XOR split — automated vs non-automated</option><option disabled>Parallel hybrid (coming soon)</option></select>
+  </div>
+
+  <div class="field">
+    <label>Factor levels (Taguchi 3-level)</label>
+    <div class="levels">
+      <div></div><div class="hdr">Low</div><div class="hdr">Mid</div><div class="hdr">High</div>
+      <div>% automated</div><input value="25"><input value="50"><input value="75">
+      <div>Auto mean (s)</div><input value="10"><input value="30"><input value="60">
+      <div>Manual mean (s)</div><input value="120"><input value="300"><input value="600">
+    </div>
+  </div>
+
+  <div class="preview">3 factors × 3 levels  →  array: L9 (9 scenarios)
+Replications per scenario: 5  ·  Cases per replication: 500
+Total Prosimos runs: 45  ·  Est. time: ~6 min</div>
+
+  <div class="row">
+    <button>← Back</button>
+    <div>
+      <span class="hint">Scenarios will be generated on next step</span>
+      &nbsp;<button class="primary">Continue →</button>
+    </div>
+  </div>
+</main>
+</body></html>

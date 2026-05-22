@@ -1,0 +1,104 @@
+<!doctype html>
+<html><head><meta charset="utf-8"><title>Mockup B — Single-page dashboard</title>
+<style>
+  body{font:14px/1.4 system-ui,sans-serif;margin:0;background:#f6f7f9;color:#1a1f2b}
+  header{background:#0f172a;color:#fff;padding:12px 20px;display:flex;justify-content:space-between;align-items:center}
+  header h1{font-size:15px;margin:0;font-weight:600}
+  .badge{background:#22c55e;color:#062a13;font-size:11px;padding:3px 8px;border-radius:10px;font-weight:600}
+  .layout{display:grid;grid-template-columns:300px 1fr;gap:0;min-height:calc(100vh - 46px)}
+  aside{background:#fff;border-right:1px solid #e3e6ec;padding:18px 16px}
+  aside h3{font-size:11px;text-transform:uppercase;color:#6b7280;letter-spacing:.06em;margin:18px 0 8px}
+  aside h3:first-child{margin-top:0}
+  aside .item{font-size:13px;padding:6px 0;color:#1a1f2b;display:flex;justify-content:space-between}
+  aside .item .v{color:#6b7280}
+  main{padding:20px 24px;display:grid;grid-template-columns:1fr 1fr;gap:16px}
+  .card{background:#fff;border:1px solid #e3e6ec;border-radius:8px;padding:16px}
+  .card h2{margin:0 0 10px;font-size:14px;display:flex;justify-content:space-between;align-items:center}
+  .card h2 .tag{font-size:10px;font-weight:600;padding:2px 7px;border-radius:8px;background:#eef2ff;color:#3b6cf2}
+  .full{grid-column:1/-1}
+  .levels{display:grid;grid-template-columns:140px repeat(3,1fr);gap:6px;align-items:center;font-size:12px}
+  .levels input{width:100%;padding:5px 7px;border:1px solid #cdd3dd;border-radius:4px;font:inherit}
+  .hdr{color:#6b7280;font-size:10px;text-transform:uppercase;letter-spacing:.04em}
+  .barwrap{height:10px;background:#eef0f4;border-radius:5px;overflow:hidden;margin-top:6px}
+  .bar{height:100%;background:linear-gradient(90deg,#3b6cf2,#22c55e);width:60%}
+  table{width:100%;border-collapse:collapse;font-size:12px}
+  th,td{text-align:left;padding:6px 8px;border-bottom:1px solid #eef0f4}
+  th{color:#6b7280;font-weight:600;font-size:11px;text-transform:uppercase}
+  td.num{text-align:right;font-variant-numeric:tabular-nums}
+  .ok{color:#16a34a;font-weight:600}
+  .warn{color:#d97706;font-weight:600}
+  button{padding:8px 14px;border-radius:6px;border:1px solid #cdd3dd;background:#fff;cursor:pointer;font:inherit;font-size:12px}
+  .primary{background:#3b6cf2;color:#fff;border-color:#3b6cf2;font-weight:600}
+  select,input{font:inherit}
+</style></head><body>
+<header>
+  <h1>Automation What-If Simulator <span style="color:#94a3b8;font-weight:400">· loan_application.xes</span></h1>
+  <span class="badge">Simod ✓ discovered · 12 activities</span>
+</header>
+<div class="layout">
+  <aside>
+    <h3>Experiment</h3>
+    <div class="item"><span>Log</span><span class="v">loan_application.xes</span></div>
+    <div class="item"><span>Activities</span><span class="v">12</span></div>
+    <div class="item"><span>Cases in log</span><span class="v">1,043</span></div>
+
+    <h3>Selection</h3>
+    <div class="item"><span>Target</span><span class="v">Validate claim</span></div>
+    <div class="item"><span>Pattern</span><span class="v">XOR auto/manual</span></div>
+
+    <h3>Design</h3>
+    <div class="item"><span>Array</span><span class="v">L9</span></div>
+    <div class="item"><span>Scenarios</span><span class="v">9</span></div>
+    <div class="item"><span>Replications</span><span class="v">5</span></div>
+    <div class="item"><span>Cases / rep</span><span class="v">500</span></div>
+    <div class="item"><span>Total runs</span><span class="v">45</span></div>
+
+    <h3>Goals</h3>
+    <div class="item"><span>Cycle time ≤</span><span class="v">2 days</span></div>
+    <div class="item"><span>Cost ≤</span><span class="v">$40 / case</span></div>
+  </aside>
+
+  <main>
+    <div class="card">
+      <h2>1 · Activity & pattern <span class="tag">ready</span></h2>
+      <div style="display:flex;gap:8px;margin-bottom:8px">
+        <select style="flex:1;padding:6px"><option>Validate claim</option></select>
+        <select style="flex:1;padding:6px"><option>XOR auto/manual</option></select>
+      </div>
+      <div style="font-size:12px;color:#6b7280">Pattern declares 3 factors → see panel 2.</div>
+    </div>
+
+    <div class="card">
+      <h2>2 · Factor levels <span class="tag">L9</span></h2>
+      <div class="levels">
+        <div></div><div class="hdr">Low</div><div class="hdr">Mid</div><div class="hdr">High</div>
+        <div>% automated</div><input value="25"><input value="50"><input value="75">
+        <div>Auto mean (s)</div><input value="10"><input value="30"><input value="60">
+        <div>Manual mean (s)</div><input value="120"><input value="300"><input value="600">
+      </div>
+    </div>
+
+    <div class="card full">
+      <h2>3 · Execution <span class="tag">running 27 / 45</span></h2>
+      <div class="barwrap"><div class="bar"></div></div>
+      <div style="display:flex;justify-content:space-between;margin-top:8px;font-size:12px;color:#6b7280">
+        <span>27 of 45 Prosimos runs · ~2:18 remaining</span>
+        <span><button>Pause</button> <button class="primary">View live log</button></span>
+      </div>
+    </div>
+
+    <div class="card full">
+      <h2>4 · Ranked scenarios <span class="tag">partial</span></h2>
+      <table>
+        <tr><th>#</th><th>Scenario</th><th>%auto</th><th>Auto s</th><th>Manual s</th>
+            <th class="num">Cycle (h)</th><th class="num">Cost ($)</th><th>Goals</th></tr>
+        <tr><td>1</td><td>S07</td><td>75</td><td>10</td><td>120</td><td class="num">14.2</td><td class="num">22</td><td class="ok">✓ both</td></tr>
+        <tr><td>2</td><td>S04</td><td>50</td><td>10</td><td>120</td><td class="num">18.6</td><td class="num">28</td><td class="ok">✓ both</td></tr>
+        <tr><td>3</td><td>S08</td><td>75</td><td>30</td><td>300</td><td class="num">22.1</td><td class="num">31</td><td class="warn">⚠ cost</td></tr>
+        <tr><td>4</td><td>S05</td><td>50</td><td>30</td><td>300</td><td class="num">28.9</td><td class="num">38</td><td class="warn">⚠ cycle</td></tr>
+        <tr><td>5</td><td>S01</td><td>25</td><td>10</td><td>120</td><td class="num">31.4</td><td class="num">41</td><td class="warn">⚠ both</td></tr>
+      </table>
+    </div>
+  </main>
+</div>
+</body></html>

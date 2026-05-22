@@ -1,0 +1,11 @@
+streamlit>=1.36
+pm4py>=2.7
+lxml>=5.0
+pyDOE2>=1.3
+pandas>=2.2
+numpy>=1.26
+pydantic>=2.6
+plotly>=5.20
+# invoked as subprocesses from separate venvs:
+# simod (https://github.com/AutomatedProcessImprovement/Simod)
+# prosimos (https://github.com/AutomatedProcessImprovement/Prosimos)
