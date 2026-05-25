@@ -31,3 +31,16 @@ F_BOT_BRANCH_LABEL   = "bot"
 F_HUMAN_BRANCH_LABEL = "human"
 F_BOT_SUCCESS_LABEL  = "success"
 F_BOT_FAILURE_LABEL  = "failure"
+
+# ── Prosimos JSON schema: top-level section keys ──────────────────────────────
+KEY_RESOURCE_CALENDARS         = "resource_calendars"
+KEY_RESOURCE_PROFILES          = "resource_profiles"
+KEY_TASK_RESOURCE_DISTRIBUTION = "task_resource_distribution"
+KEY_GATEWAY_BRANCHING_PROBS    = "gateway_branching_probabilities"
+
+# ── XOR split automation: Taguchi parameter defaults ──────────────────────────
+DEFAULT_MANUAL_DURATION_S = 1800.0        # fallback when Simod mean is unavailable
+PCT_AUTO_LEVELS           = [25, 50, 75]  # XOR1 branch % to bot
+PCT_OK_LEVELS             = [80, 90, 95]  # XOR2 success %
+T_AUTO_FRACTIONS          = [0.05, 0.10, 0.20]  # bot duration as fraction of manual mean
+T_MANUAL_FACTORS          = [0.80, 1.00, 1.20]  # manual duration as factor of Simod mean

@@ -7,7 +7,7 @@ from dataclasses import dataclass
 from typing import Any
 from pathlib import Path
 
-from .parameters import Parameter
+from .parameters import Parameter, AutomationScenario
 from .constants import (
     BOT_PROFILE_ID, BOT_PROFILE_NAME,
     BOT_CALENDAR_ID, BOT_CALENDAR_NAME,
@@ -17,6 +17,10 @@ from .constants import (
     GW1_NAME, GW2_NAME, GW3_NAME, GW4_NAME,
     F_BOT_BRANCH_LABEL, F_HUMAN_BRANCH_LABEL,
     F_BOT_SUCCESS_LABEL, F_BOT_FAILURE_LABEL,
+    DEFAULT_MANUAL_DURATION_S,
+    PCT_AUTO_LEVELS, PCT_OK_LEVELS, T_AUTO_FRACTIONS, T_MANUAL_FACTORS,
+    KEY_RESOURCE_CALENDARS, KEY_RESOURCE_PROFILES,
+    KEY_TASK_RESOURCE_DISTRIBUTION, KEY_GATEWAY_BRANCHING_PROBS,
 )
 from .bpmn_edit import (
     find_process, find_task_in_process,
@@ -31,6 +35,7 @@ from .bpmn_edit import (
 class TransformIds:
     """All generated element IDs for one pattern application."""
     task_id:           str
+    task_name:         str   # display name of the original task
     bot_id:            str
     automation_gate:   str   # XOR split: bot vs human
     bot_result_gate:   str   # XOR split: bot success vs failure
@@ -44,10 +49,18 @@ class TransformIds:
     to_human:          str   # flow: fallback_merge → human task
     exit_flow:         str   # flow: final_join_gate → next element
 
+    @property
+    def bot_resource_id(self) -> str:
+        return f"{self.bot_id}_resource"
+
+    @property
+    def bot_resource_name(self) -> str:
+        return f"{self.task_name} bot"
+
 
 @dataclass
 class BpmnTransformResult:
-    """Returned by apply_bpmn(). Shared across all scenarios in one experiment."""
+    """Returned by prepare_experiment(). Shared across all scenarios in one experiment."""
     bpmn_path: Path
     base_json: dict   # template — deep-copied and extended per scenario
     ids: TransformIds
@@ -62,10 +75,21 @@ class Transformation(ABC):
                    current_duration_s: float | None = None) -> list[Parameter]:
         """Declare factors. `current_duration_s` (Simod mean) prepopulates levels."""
 
+    def prepare_experiment(self, bpmn_in: Path, json_in: Path, target_activity: str,
+                           out_dir: Path) -> BpmnTransformResult:
+        """Coordinate the two-step experiment setup. Called once per experiment."""
+        bpmn_out, ids = self.apply_pattern(bpmn_in, target_activity, out_dir)
+        base_json      = self.build_base_json(json_in, ids)
+        return BpmnTransformResult(bpmn_path=bpmn_out, base_json=base_json, ids=ids)
+
     @abstractmethod
-    def apply_bpmn(self, bpmn_in: Path, json_in: Path, target_activity: str,
-                   out_dir: Path) -> BpmnTransformResult:
-        """Structural transform: add pattern elements + rewire flows. Called once per experiment."""
+    def apply_pattern(self, bpmn_in: Path, target_activity: str,
+                      out_dir: Path) -> tuple[Path, TransformIds]:
+        """Add pattern elements to the BPMN and write to out_dir."""
+
+    @abstractmethod
+    def build_base_json(self, json_in: Path, ids: TransformIds) -> dict:
+        """Load the Prosimos JSON and inject pattern-specific base infrastructure."""
 
     @abstractmethod
     def apply_params(self, base_json: dict, ids: TransformIds,
@@ -76,10 +100,10 @@ class Transformation(ABC):
 
 # ── ID helper ─────────────────────────────────────────────────────────────────
 
-def _make_ids(task_id: str) -> TransformIds:
+def _make_ids(task_id: str, task_name: str) -> TransformIds:
     p = f"{task_id}_auto"
     return TransformIds(
-        task_id=task_id,              bot_id=f"{task_id}_bot",
+        task_id=task_id,              task_name=task_name,          bot_id=f"{task_id}_bot",
         automation_gate=f"{p}_gw1",  bot_result_gate=f"{p}_gw2",
         fallback_merge=f"{p}_gw3",   final_join_gate=f"{p}_gw4",
         automation_branch=f"{p}_bot_branch", manual_branch=f"{p}_human_branch",
@@ -87,6 +111,23 @@ def _make_ids(task_id: str) -> TransformIds:
         bot_failure=f"{p}_bot_failure",       to_human=f"{p}_to_human",
         exit_flow=f"{p}_exit",
     )
+
+
+# ── JSON mutation helpers ─────────────────────────────────────────────────────
+
+def _set_uniform(entry: dict, mean_s: float, jitter: float = 0.05) -> None:
+    lo = max(0.0, mean_s * (1 - jitter))
+    hi = mean_s * (1 + jitter)
+    for r in entry["resources"]:
+        r["distribution_name"]   = "uniform"
+        r["distribution_params"] = [{"value": lo}, {"value": hi}]
+
+
+def _set_resource_amount(data: dict, resource_id: str, amount: int) -> None:
+    for profile in data.get(KEY_RESOURCE_PROFILES, []):
+        for resource in profile.get("resource_list", []):
+            if resource.get("id") == resource_id:
+                resource["amount"] = amount
 
 
 # ============================================================================
@@ -98,53 +139,6 @@ def _make_ids(task_id: str) -> TransformIds:
 #                                                                                                                  └──to_human──► Task ──(out_flow)──► final_join_gate
 # ============================================================================
 
-@dataclass(frozen=True)
-class AutomationScenario:
-    """Human-readable inputs for one automation simulation run.
-
-    Primary fields are set directly. Complements are computed properties so
-    the caller never has to manage them explicitly.
-    """
-    automation_rate:       float  # [0, 1] fraction of cases routed to the bot
-    bot_failure_rate:      float  # [0, 1] fraction of bot attempts that fail
-    bot_execution_time:    float  # mean bot task duration (seconds)
-    manual_execution_time: float  # mean human task duration (seconds)
-    num_bots:              int    # bot resource pool size
-    num_manual_resources:  int    # human resource pool size
-
-    def __post_init__(self) -> None:
-        for name, val in (("automation_rate",  self.automation_rate),
-                          ("bot_failure_rate", self.bot_failure_rate)):
-            if not 0.0 <= val <= 1.0:
-                raise ValueError(f"{name} must be in [0, 1], got {val}")
-
-    @property
-    def manual_branch_rate(self) -> float:
-        return round(1.0 - self.automation_rate, 10)
-
-    @property
-    def bot_success_rate(self) -> float:
-        return round(1.0 - self.bot_failure_rate, 10)
-
-    @classmethod
-    def from_taguchi_values(cls, values: dict) -> "AutomationScenario":
-        """Bridge: construct from a Taguchi-generated values dict."""
-        def _v(suffix: str, default: float) -> float:
-            for k, v in values.items():
-                if k.endswith("." + suffix):
-                    return float(v)
-            return default
-
-        return cls(
-            automation_rate=_v("pct_auto", 50.0) / 100.0,
-            bot_failure_rate=1.0 - _v("pct_ok", 90.0) / 100.0,
-            bot_execution_time=_v("t_auto", 60.0),
-            manual_execution_time=_v("t_manual", 1800.0),
-            num_bots=1,
-            num_manual_resources=1,
-        )
-
-
 class XORSplitAutomation(Transformation):
     id = "xor_split_automation"
     label = "XOR split: automated / manual with OK-fallback"
@@ -152,26 +146,25 @@ class XORSplitAutomation(Transformation):
     # --- parameters ----------------------------------------------------------
     def parameters(self, target_activity: str,
                    current_duration_s: float | None = None) -> list[Parameter]:
-        t = float(current_duration_s) if current_duration_s else 1800.0
+        t = float(current_duration_s) if current_duration_s else DEFAULT_MANUAL_DURATION_S
         a = target_activity
         return [
             Parameter(f"{a}.pct_auto", f"{a}: % automated (Auto)",
-                      levels=[25, 50, 75], kind="percentage"),
+                      levels=list(PCT_AUTO_LEVELS), kind="percentage"),
             Parameter(f"{a}.pct_ok",   f"{a}: % auto-success (OK)",
-                      levels=[80, 90, 95], kind="percentage"),
+                      levels=list(PCT_OK_LEVELS), kind="percentage"),
             Parameter(f"{a}.t_auto",   f"{a}: Auto-Time mean (s)",
-                      levels=[round(t/20, 1), round(t/10, 1), round(t/5, 1)],
+                      levels=[round(t * f, 1) for f in T_AUTO_FRACTIONS],
                       kind="duration_s"),
             Parameter(f"{a}.t_manual", f"{a}: Non-auto-Time mean (s) [from Simod]",
-                      levels=[round(t*0.8, 1), round(t, 1), round(t*1.2, 1)],
+                      levels=[round(t * f, 1) for f in T_MANUAL_FACTORS],
                       kind="duration_s"),
         ]
 
-    # --- apply_bpmn ----------------------------------------------------------
-    def apply_bpmn(self, bpmn_in: Path, json_in: Path, target_activity: str,
-                   out_dir: Path) -> BpmnTransformResult:
-        """Add pattern elements to the BPMN and build the base JSON template.
-        Called once per experiment; result is shared across all scenarios."""
+    # --- apply_pattern -------------------------------------------------------
+    def apply_pattern(self, bpmn_in: Path, target_activity: str,
+                      out_dir: Path) -> tuple[Path, TransformIds]:
+        """Add the XOR bypass pattern to the BPMN and write to out_dir."""
         out_dir.mkdir(parents=True, exist_ok=True)
         bpmn_out = out_dir / "model.bpmn"
 
@@ -197,7 +190,7 @@ class XORSplitAutomation(Transformation):
                 "Pattern doesn't yet handle tasks fed by gateways directly."
             )
 
-        ids = _make_ids(T_id)
+        ids = _make_ids(T_id, T_name)
         in_flow_id       = incoming[0].get("id")
         out_flow_id      = outgoing[0].get("id")
         original_next_id = outgoing[0].get("targetRef")
@@ -223,21 +216,21 @@ class XORSplitAutomation(Transformation):
         add_flow_el(root, process, ids.exit_flow,         ids.final_join_gate, original_next_id)
 
         tree.write(str(bpmn_out), xml_declaration=True, encoding="utf-8")
+        return bpmn_out, ids
 
-        # Build base JSON: load original, add bot resource infra + task entry.
-        # Durations and gateway probs are scenario-specific — added in apply_params.
+    # --- build_base_json -----------------------------------------------------
+    def build_base_json(self, json_in: Path, ids: TransformIds) -> dict:
+        """Load the Prosimos JSON and inject bot resource infrastructure.
+        Durations and gateway probabilities are scenario-specific — added in apply_params."""
         data = json.loads(Path(json_in).read_text())
-        if not any(e.get("task_id") == T_id
-                   for e in data.get("task_resource_distribution", [])):
+        if not any(e.get("task_id") == ids.task_id
+                   for e in data.get(KEY_TASK_RESOURCE_DISTRIBUTION, [])):
             raise RuntimeError(
-                f"No task_resource_distribution entry for {T_id} in {json_in}"
+                f"No task_resource_distribution entry for {ids.task_id} in {json_in}"
             )
 
-        bot_resource_id   = f"{ids.bot_id}_resource"
-        bot_resource_name = f"{T_name} bot"
-
         # 1. Add 24/7 bot calendar if absent.
-        calendars = data.setdefault("resource_calendars", [])
+        calendars = data.setdefault(KEY_RESOURCE_CALENDARS, [])
         if not any(c.get("id") == BOT_CALENDAR_ID for c in calendars):
             calendars.append({
                 "id":   BOT_CALENDAR_ID,
@@ -249,15 +242,15 @@ class XORSplitAutomation(Transformation):
             })
 
         # 2. Add bot resource profile if absent; always append this task's resource.
-        profiles = data.setdefault("resource_profiles", [])
+        profiles = data.setdefault(KEY_RESOURCE_PROFILES, [])
         bot_profile = next((p for p in profiles if p.get("id") == BOT_PROFILE_ID), None)
         if bot_profile is None:
             bot_profile = {"id": BOT_PROFILE_ID, "name": BOT_PROFILE_NAME,
                            "resource_list": []}
             profiles.append(bot_profile)
         bot_profile.setdefault("resource_list", []).append({
-            "id":            bot_resource_id,
-            "name":          bot_resource_name,
+            "id":            ids.bot_resource_id,
+            "name":          ids.bot_resource_name,
             "cost_per_hour": BOT_COST_PER_HOUR,
             "amount":        BOT_AMOUNT,
             "calendar":      BOT_CALENDAR_ID,
@@ -265,16 +258,16 @@ class XORSplitAutomation(Transformation):
         })
 
         # 3. Add bot task distribution entry (duration set per-scenario in apply_params).
-        data["task_resource_distribution"].append({
+        data[KEY_TASK_RESOURCE_DISTRIBUTION].append({
             "task_id":   ids.bot_id,
             "resources": [{
-                "resource_id":         bot_resource_id,
+                "resource_id":         ids.bot_resource_id,
                 "distribution_name":   BOT_DISTRIBUTION_NAME,
                 "distribution_params": [{"value": BOT_DISTRIBUTION_VALUE}],
             }],
         })
 
-        return BpmnTransformResult(bpmn_path=bpmn_out, base_json=data, ids=ids)
+        return data
 
     # --- apply_params --------------------------------------------------------
     def apply_params(self, base_json: dict, ids: TransformIds,
@@ -283,25 +276,18 @@ class XORSplitAutomation(Transformation):
         Called once per scenario; never mutates base_json."""
         data = copy.deepcopy(base_json)
 
-        def _set_uniform(entry: dict, mean_s: float, jitter: float = 0.05) -> None:
-            lo = max(0.0, mean_s * (1 - jitter))
-            hi = mean_s * (1 + jitter)
-            for r in entry["resources"]:
-                r["distribution_name"]   = "uniform"
-                r["distribution_params"] = [{"value": lo}, {"value": hi}]
-
         manual_entry = next(
-            (e for e in data["task_resource_distribution"] if e["task_id"] == ids.task_id), None
+            (e for e in data[KEY_TASK_RESOURCE_DISTRIBUTION] if e["task_id"] == ids.task_id), None
         )
         bot_entry = next(
-            (e for e in data["task_resource_distribution"] if e["task_id"] == ids.bot_id), None
+            (e for e in data[KEY_TASK_RESOURCE_DISTRIBUTION] if e["task_id"] == ids.bot_id), None
         )
         if manual_entry:
             _set_uniform(manual_entry, scenario.manual_execution_time)
         if bot_entry:
             _set_uniform(bot_entry, scenario.bot_execution_time)
 
-        gbp = data.setdefault("gateway_branching_probabilities", [])
+        gbp = data.setdefault(KEY_GATEWAY_BRANCHING_PROBS, [])
         gbp.append({"gateway_id": ids.automation_gate, "probabilities": [
             {"path_id": ids.automation_branch, "value": round(scenario.automation_rate, 6)},
             {"path_id": ids.manual_branch,     "value": round(scenario.manual_branch_rate, 6)},
@@ -317,18 +303,10 @@ class XORSplitAutomation(Transformation):
             {"path_id": ids.exit_flow, "value": 1.0},
         ]})
 
-        bot_resource_id = f"{ids.bot_id}_resource"
-        for profile in data.get("resource_profiles", []):
-            for resource in profile.get("resource_list", []):
-                if resource.get("id") == bot_resource_id:
-                    resource["amount"] = scenario.num_bots
-
+        _set_resource_amount(data, ids.bot_resource_id, scenario.num_bots)
         if manual_entry and manual_entry.get("resources"):
             manual_resource_id = manual_entry["resources"][0].get("resource_id")
-            for profile in data.get("resource_profiles", []):
-                for resource in profile.get("resource_list", []):
-                    if resource.get("id") == manual_resource_id:
-                        resource["amount"] = scenario.num_manual_resources
+            _set_resource_amount(data, manual_resource_id, scenario.num_manual_resources)
 
         json_out.parent.mkdir(parents=True, exist_ok=True)
         json_out.write_text(json.dumps(data, indent=2))

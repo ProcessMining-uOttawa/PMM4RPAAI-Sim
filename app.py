@@ -5,7 +5,8 @@ import pandas as pd
 import streamlit as st
 
 from pathlib import Path
-from core.transformations import REGISTRY, AutomationScenario
+from core.transformations import REGISTRY
+from core.parameters import AutomationScenario
 from core.experiment import build_scenarios
 from core import analysis, demo, preflight, runner, store
 
@@ -223,7 +224,7 @@ with st.container(border=True):
                 st.error("No discovered model — upload a log first.")
                 st.stop()
             exp_dir = Path("runs/_active")
-            bpmn_tr = transformation.apply_bpmn(
+            bpmn_tr = transformation.prepare_experiment(
                 ss.bpmn_path, ss.json_path, target, exp_dir)
             ss.experiment_bpmn_path = bpmn_tr.bpmn_path
 

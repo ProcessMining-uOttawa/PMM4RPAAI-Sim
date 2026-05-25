@@ -3,6 +3,8 @@ from __future__ import annotations
 import uuid
 import xml.etree.ElementTree as ET
 
+from .constants import KEY_TASK_RESOURCE_DISTRIBUTION
+
 _BPMN = "http://www.omg.org/spec/BPMN/20100524/MODEL"
 
 _TASK_TAGS = ("task", "userTask", "serviceTask", "manualTask")
@@ -33,7 +35,7 @@ def find_flows(tree: ET.ElementTree, node_id: str) -> tuple[list, list]:
 
 def task_mean_duration_s(prosimos_json: dict, task_id: str) -> float | None:
     """Return the average mean duration (over resources) for a task, or None."""
-    for entry in prosimos_json.get("task_resource_distribution", []):
+    for entry in prosimos_json.get(KEY_TASK_RESOURCE_DISTRIBUTION, []):
         if entry.get("task_id") != task_id:
             continue
         means = []
