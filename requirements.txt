@@ -1,4 +1,5 @@
 streamlit>=1.36
+pytest>=8.0
 pm4py>=2.7
 pyDOE2>=1.3
 pandas>=2.2
