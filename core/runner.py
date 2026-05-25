@@ -85,12 +85,12 @@ def discover(log_path: Path, run_dir: Path,
 
 def list_activities(bpmn_path: Path) -> list[str]:
     """Pull task names out of a BPMN file without loading pm4py."""
-    from lxml import etree
-    ns = {"bpmn": "http://www.omg.org/spec/BPMN/20100524/MODEL"}
-    tree = etree.parse(str(bpmn_path))
+    import xml.etree.ElementTree as ET
+    _BPMN = "http://www.omg.org/spec/BPMN/20100524/MODEL"
+    tree = ET.parse(str(bpmn_path))
     names = []
     for tag in ("task", "userTask", "serviceTask", "manualTask"):
-        for el in tree.findall(f".//bpmn:{tag}", ns):
+        for el in tree.findall(f".//{{{_BPMN}}}{tag}"):
             n = el.get("name")
             if n:
                 names.append(n)

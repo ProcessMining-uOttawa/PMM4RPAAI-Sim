@@ -1,35 +1,29 @@
-"""Helpers for reading/editing BPMN files and Prosimos JSON."""
+"""Read-only helpers for BPMN files and Prosimos JSON."""
 from __future__ import annotations
-import json, uuid
-from pathlib import Path
-from lxml import etree
+import uuid
+import xml.etree.ElementTree as ET
 
-BPMN_NS = "http://www.omg.org/spec/BPMN/20100524/MODEL"
-NS = {"b": BPMN_NS}
+_BPMN = "http://www.omg.org/spec/BPMN/20100524/MODEL"
 
-
-def _tag(name: str) -> str:
-    return f"{{{BPMN_NS}}}{name}"
+_TASK_TAGS = ("task", "userTask", "serviceTask", "manualTask")
 
 
 def new_id(prefix: str = "node") -> str:
     return f"{prefix}_{uuid.uuid4()}"
 
 
-# ---------- read helpers -----------------------------------------------------
-
-def find_task_by_name(tree: etree._ElementTree, name: str) -> etree._Element | None:
-    for tag in ("task", "userTask", "serviceTask", "manualTask"):
-        for el in tree.findall(f".//b:{tag}", NS):
+def find_task_by_name(tree: ET.ElementTree, name: str) -> ET.Element | None:
+    for tag in _TASK_TAGS:
+        for el in tree.findall(f".//{{{_BPMN}}}{tag}"):
             if el.get("name") == name:
                 return el
     return None
 
 
-def find_flows(tree: etree._ElementTree, node_id: str) -> tuple[list, list]:
+def find_flows(tree: ET.ElementTree, node_id: str) -> tuple[list, list]:
     """Return (incoming_flows, outgoing_flows) sequenceFlow elements for node_id."""
     incoming, outgoing = [], []
-    for fl in tree.findall(".//b:sequenceFlow", NS):
+    for fl in tree.findall(f".//{{{_BPMN}}}sequenceFlow"):
         if fl.get("targetRef") == node_id:
             incoming.append(fl)
         if fl.get("sourceRef") == node_id:

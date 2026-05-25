@@ -5,7 +5,7 @@ import pandas as pd
 import streamlit as st
 
 from pathlib import Path
-from core.transformations import REGISTRY
+from core.transformations import REGISTRY, AutomationScenario
 from core.experiment import build_scenarios
 from core import analysis, demo, preflight, runner, store
 
@@ -164,9 +164,9 @@ with col2:
         current_dur = None
         if ss.bpmn_path and ss.json_path and not demo_mode:
             try:
-                from lxml import etree
+                import xml.etree.ElementTree as _ET
                 from core.bpmn_utils import find_task_by_name, task_mean_duration_s
-                _tree = etree.parse(str(ss.bpmn_path))
+                _tree = _ET.parse(str(ss.bpmn_path))
                 _t = find_task_by_name(_tree, target)
                 if _t is not None:
                     import json as _json
@@ -238,7 +238,8 @@ with st.container(border=True):
                     # Inject scenario-specific params into a fresh JSON copy (once per scenario).
                     if rep == 0:
                         s_json = transformation.apply_params(
-                            bpmn_tr.base_json, bpmn_tr.ids, s.values,
+                            bpmn_tr.base_json, bpmn_tr.ids,
+                            AutomationScenario.from_taguchi_values(s.values),
                             s_dir / "params.json")
                         ss.scenario_json_paths[s.id] = s_json
                     out_log  = s_dir / f"rep_{rep:03d}_log.csv"
