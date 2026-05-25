@@ -23,6 +23,12 @@ _BPMNDI = _NS["bpmndi"]
 _DC     = _NS["dc"]
 _DI     = _NS["di"]
 
+# ── Bot resource / calendar constants ────────────────────────────────────────
+_BOT_PROFILE_ID   = "BOT_PROFILE"
+_BOT_PROFILE_NAME = "Bot Resources"
+_BOT_CALENDAR_ID  = "BOT_CALENDAR"
+_BOT_CALENDAR_NAME = "Bot 24/7 Schedule"
+
 # ── Shape dimensions ──────────────────────────────────────────────────────────
 _TASK_W, _TASK_H = 100, 80
 _GW_W,   _GW_H   = 50,  50
@@ -340,20 +346,55 @@ class XORSplitAutomation(Transformation):
 
         tree.write(str(bpmn_out), xml_declaration=True, encoding="utf-8")
 
-        # Build base JSON: load original and add the bot task entry (structural).
+        # Build base JSON: load original, add bot resource infra + task entry.
         # Durations and gateway probs are scenario-specific — added in apply_params.
         data = json.loads(Path(json_in).read_text())
-        manual_entry = next(
-            (e for e in data.get("task_resource_distribution", [])
-             if e.get("task_id") == T_id), None
-        )
-        if manual_entry is None:
+        if not any(e.get("task_id") == T_id
+                   for e in data.get("task_resource_distribution", [])):
             raise RuntimeError(
                 f"No task_resource_distribution entry for {T_id} in {json_in}"
             )
-        bot_entry = copy.deepcopy(manual_entry)
-        bot_entry["task_id"] = ids.bot_id
-        data["task_resource_distribution"].append(bot_entry)
+
+        bot_resource_id   = f"{ids.bot_id}_resource"
+        bot_resource_name = f"{T_name} bot"
+
+        # 1. Add 24/7 bot calendar if absent.
+        calendars = data.setdefault("resource_calendars", [])
+        if not any(c.get("id") == _BOT_CALENDAR_ID for c in calendars):
+            calendars.append({
+                "id":   _BOT_CALENDAR_ID,
+                "name": _BOT_CALENDAR_NAME,
+                "time_periods": [{
+                    "from": "MONDAY",        "to": "SUNDAY",
+                    "beginTime": "00:00:00.000", "endTime": "23:59:59.999",
+                }],
+            })
+
+        # 2. Add bot resource profile if absent; always append this task's resource.
+        profiles = data.setdefault("resource_profiles", [])
+        bot_profile = next((p for p in profiles if p.get("id") == _BOT_PROFILE_ID), None)
+        if bot_profile is None:
+            bot_profile = {"id": _BOT_PROFILE_ID, "name": _BOT_PROFILE_NAME,
+                           "resource_list": []}
+            profiles.append(bot_profile)
+        bot_profile.setdefault("resource_list", []).append({
+            "id":            bot_resource_id,
+            "name":          bot_resource_name,
+            "cost_per_hour": "0",
+            "amount":        1,
+            "calendar":      _BOT_CALENDAR_ID,
+            "assignedTasks": [ids.bot_id],
+        })
+
+        # 3. Add bot task distribution entry (duration set per-scenario in apply_params).
+        data["task_resource_distribution"].append({
+            "task_id":   ids.bot_id,
+            "resources": [{
+                "resource_id":         bot_resource_id,
+                "distribution_name":   "fix",
+                "distribution_params": [{"value": 0.0}],
+            }],
+        })
 
         return BpmnTransformResult(bpmn_path=bpmn_out, base_json=data, ids=ids)
 
