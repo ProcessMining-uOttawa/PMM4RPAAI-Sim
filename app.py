@@ -1,6 +1,6 @@
 """Streamlit dashboard — Mockup B layout."""
 from __future__ import annotations
-import io, time, zipfile
+import time
 import pandas as pd
 import streamlit as st
 
@@ -20,7 +20,7 @@ ss.setdefault("activities", [])
 ss.setdefault("bpmn_path", None)
 ss.setdefault("json_path", None)
 ss.setdefault("results", None)        # tidy per-replication DataFrame
-ss.setdefault("scenario_bpmn_paths", {})  # sid -> Path, populated after each run
+ss.setdefault("experiment_bpmn_path", None)  # single transformed BPMN, shared across scenarios
 ss.setdefault("array_name", None)
 ss.setdefault("scenarios", [])
 
@@ -123,7 +123,7 @@ with st.sidebar:
             for k in ("log_name", "log_path", "activities", "bpmn_path",
                       "json_path", "log_fingerprint", "results"):
                 ss[k] = None if k != "activities" else []
-            ss.scenario_bpmn_paths = {}
+            ss.experiment_bpmn_path = None
             st.rerun()
 
     st.divider()
@@ -208,31 +208,38 @@ with st.container(border=True):
                                use_container_width=True)
 
     if run_clicked:
-        ss.scenario_bpmn_paths = {}
+        ss.experiment_bpmn_path = None
         progress = st.progress(0.0, text="Starting…")
         rows = []
         done = 0
+
+        # Apply structural BPMN transformation once — shared across all scenarios.
+        bpmn_tr = None
+        if not demo_mode:
+            if not ss.bpmn_path or not ss.json_path:
+                st.error("No discovered model — upload a log first.")
+                st.stop()
+            exp_dir = Path("runs/_active")
+            bpmn_tr = transformation.apply_bpmn(
+                ss.bpmn_path, ss.json_path, target, exp_dir)
+            ss.experiment_bpmn_path = bpmn_tr.bpmn_path
+
         for s in scenarios:
+            s_dir = Path(f"runs/_active/{s.id}")
+            s_json = None
             for rep in range(n_reps):
                 if demo_mode:
                     r = demo.fake_simulate(s, rep, n_cases)
                     cycle_h, cost = r.cycle_h, r.cost
                 else:
-                    if not ss.bpmn_path or not ss.json_path:
-                        st.error("No discovered model — upload a log first.")
-                        st.stop()
-                    rep_dir = Path(f"runs/_active/{s.id}")
-                    # Apply the substitution transformation per scenario (once
-                    # per scenario; reused across replications).
+                    # Inject scenario-specific params into a fresh JSON copy (once per scenario).
                     if rep == 0:
-                        tr = transformation.apply(
-                            ss.bpmn_path, ss.json_path, target,
-                            s.values, rep_dir)
-                        s_bpmn, s_json = tr.bpmn_path, tr.json_path
-                        ss.scenario_bpmn_paths[s.id] = tr.bpmn_path
-                    out_log  = rep_dir / f"rep_{rep:03d}_log.csv"
-                    out_stat = rep_dir / f"rep_{rep:03d}_stats.csv"
-                    runner.simulate(s_bpmn, s_json,
+                        s_json = transformation.apply_params(
+                            bpmn_tr.base_json, bpmn_tr.ids, s.values,
+                            s_dir / "params.json")
+                    out_log  = s_dir / f"rep_{rep:03d}_log.csv"
+                    out_stat = s_dir / f"rep_{rep:03d}_stats.csv"
+                    runner.simulate(bpmn_tr.bpmn_path, s_json,
                                     int(n_cases), out_log, stat_out=out_stat)
                     m = analysis.per_log_metrics(out_log, out_stat)
                     cycle_h, cost = m["cycle_h"], m["cost"]
@@ -272,18 +279,12 @@ if ss.results is not None:
             me = analysis.main_effects(ss.results, "cost")
             st.dataframe(me, use_container_width=True, hide_index=True)
 
-        bpmn_paths = {sid: Path(p) for sid, p in ss.scenario_bpmn_paths.items()
-                      if Path(p).exists()}
-        if bpmn_paths:
-            st.markdown("###### Download transformed BPMNs")
-            buf = io.BytesIO()
-            with zipfile.ZipFile(buf, "w", zipfile.ZIP_DEFLATED) as zf:
-                for sid, bpath in bpmn_paths.items():
-                    zf.write(bpath, arcname=f"scenario_{sid}.bpmn")
-            buf.seek(0)
+        bpmn_path = ss.get("experiment_bpmn_path")
+        if bpmn_path and Path(bpmn_path).exists():
+            st.markdown("###### Download transformed BPMN")
             st.download_button(
-                "⬇ Download all scenario BPMNs (.zip)",
-                buf.getvalue(),
-                file_name="scenario_bpmns.zip",
-                mime="application/zip",
+                "⬇ Download BPMN",
+                Path(bpmn_path).read_bytes(),
+                file_name="model.bpmn",
+                mime="application/xml",
             )
