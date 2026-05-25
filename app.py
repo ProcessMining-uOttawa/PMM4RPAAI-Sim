@@ -21,6 +21,7 @@ ss.setdefault("bpmn_path", None)
 ss.setdefault("json_path", None)
 ss.setdefault("results", None)        # tidy per-replication DataFrame
 ss.setdefault("experiment_bpmn_path", None)  # single transformed BPMN, shared across scenarios
+ss.setdefault("scenario_json_paths", {})     # sid -> Path, one params.json per scenario
 ss.setdefault("array_name", None)
 ss.setdefault("scenarios", [])
 
@@ -124,6 +125,7 @@ with st.sidebar:
                       "json_path", "log_fingerprint", "results"):
                 ss[k] = None if k != "activities" else []
             ss.experiment_bpmn_path = None
+            ss.scenario_json_paths = {}
             st.rerun()
 
     st.divider()
@@ -209,6 +211,7 @@ with st.container(border=True):
 
     if run_clicked:
         ss.experiment_bpmn_path = None
+        ss.scenario_json_paths = {}
         progress = st.progress(0.0, text="Starting…")
         rows = []
         done = 0
@@ -237,6 +240,7 @@ with st.container(border=True):
                         s_json = transformation.apply_params(
                             bpmn_tr.base_json, bpmn_tr.ids, s.values,
                             s_dir / "params.json")
+                        ss.scenario_json_paths[s.id] = s_json
                     out_log  = s_dir / f"rep_{rep:03d}_log.csv"
                     out_stat = s_dir / f"rep_{rep:03d}_stats.csv"
                     runner.simulate(bpmn_tr.bpmn_path, s_json,
@@ -288,3 +292,22 @@ if ss.results is not None:
                 file_name="model.bpmn",
                 mime="application/xml",
             )
+
+        json_paths = {sid: Path(p) for sid, p in ss.get("scenario_json_paths", {}).items()
+                      if Path(p).exists()}
+        if json_paths:
+            st.markdown("###### Scenario parameters (params.json)")
+            ordered = [sid for sid in ranked["scenario_id"] if sid in json_paths]
+            sel = st.selectbox("Scenario", ordered, key="params_sel",
+                               format_func=lambda s: f"Scenario {s}")
+            if sel:
+                content = json_paths[sel].read_text()
+                with st.expander("View params.json"):
+                    st.json(content)
+                st.download_button(
+                    "⬇ Download params.json",
+                    content,
+                    file_name=f"scenario_{sel}_params.json",
+                    mime="application/json",
+                    key="params_dl",
+                )
