@@ -1,6 +1,6 @@
 """Streamlit dashboard — Mockup B layout."""
 from __future__ import annotations
-import time
+import io, time, zipfile
 import pandas as pd
 import streamlit as st
 
@@ -20,6 +20,7 @@ ss.setdefault("activities", [])
 ss.setdefault("bpmn_path", None)
 ss.setdefault("json_path", None)
 ss.setdefault("results", None)        # tidy per-replication DataFrame
+ss.setdefault("scenario_bpmn_paths", {})  # sid -> Path, populated after each run
 ss.setdefault("array_name", None)
 ss.setdefault("scenarios", [])
 
@@ -122,6 +123,7 @@ with st.sidebar:
             for k in ("log_name", "log_path", "activities", "bpmn_path",
                       "json_path", "log_fingerprint", "results"):
                 ss[k] = None if k != "activities" else []
+            ss.scenario_bpmn_paths = {}
             st.rerun()
 
     st.divider()
@@ -206,6 +208,7 @@ with st.container(border=True):
                                use_container_width=True)
 
     if run_clicked:
+        ss.scenario_bpmn_paths = {}
         progress = st.progress(0.0, text="Starting…")
         rows = []
         done = 0
@@ -226,6 +229,7 @@ with st.container(border=True):
                             ss.bpmn_path, ss.json_path, target,
                             s.values, rep_dir)
                         s_bpmn, s_json = tr.bpmn_path, tr.json_path
+                        ss.scenario_bpmn_paths[s.id] = tr.bpmn_path
                     out_log  = rep_dir / f"rep_{rep:03d}_log.csv"
                     out_stat = rep_dir / f"rep_{rep:03d}_stats.csv"
                     runner.simulate(s_bpmn, s_json,
@@ -267,3 +271,19 @@ if ss.results is not None:
         with tab_cost:
             me = analysis.main_effects(ss.results, "cost")
             st.dataframe(me, use_container_width=True, hide_index=True)
+
+        bpmn_paths = {sid: Path(p) for sid, p in ss.scenario_bpmn_paths.items()
+                      if Path(p).exists()}
+        if bpmn_paths:
+            st.markdown("###### Download transformed BPMNs")
+            buf = io.BytesIO()
+            with zipfile.ZipFile(buf, "w", zipfile.ZIP_DEFLATED) as zf:
+                for sid, bpath in bpmn_paths.items():
+                    zf.write(bpath, arcname=f"scenario_{sid}.bpmn")
+            buf.seek(0)
+            st.download_button(
+                "⬇ Download all scenario BPMNs (.zip)",
+                buf.getvalue(),
+                file_name="scenario_bpmns.zip",
+                mime="application/zip",
+            )
