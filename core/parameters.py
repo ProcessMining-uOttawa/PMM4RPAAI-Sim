@@ -67,6 +67,6 @@ class AutomationScenario:
             bot_failure_rate=1.0 - _v("pct_ok", 90.0) / 100.0,
             bot_execution_time=_v("t_auto", 60.0),
             manual_execution_time=_v("t_manual", 1800.0),
-            num_bots=1,
-            num_manual_resources=1,
+            num_bots=int(_v("num_bots", 1.0)),
+            num_manual_resources=int(_v("num_manual_resources", 1.0)),
         )

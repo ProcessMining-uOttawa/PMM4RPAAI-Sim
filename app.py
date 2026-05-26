@@ -58,7 +58,7 @@ with st.sidebar:
         preflight_ok, java_home = True, None
 
     uploaded = st.file_uploader("Event log (XES or CSV)", type=["xes", "csv"])
-    use_sample = st.button("Use sample log", use_container_width=True)
+    use_sample = st.button("Use sample log", use_container_width=True, disabled=not demo_mode)
 
     # Fingerprint the upload so we only discover ONCE per unique file.
     # CRITICAL: Streamlit reruns the script top-to-bottom on every interaction,

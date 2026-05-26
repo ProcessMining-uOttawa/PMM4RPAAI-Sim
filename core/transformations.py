@@ -21,6 +21,7 @@ from .constants import (
     PCT_AUTO_LEVELS, PCT_OK_LEVELS, T_AUTO_FRACTIONS, T_MANUAL_FACTORS,
     KEY_RESOURCE_CALENDARS, KEY_RESOURCE_PROFILES,
     KEY_TASK_RESOURCE_DISTRIBUTION, KEY_GATEWAY_BRANCHING_PROBS,
+    NUM_BOTS_LEVELS, NUM_MANUAL_LEVELS,
 )
 from .bpmn_edit import (
     find_process, find_task_in_process,
@@ -199,6 +200,10 @@ class XORSplitAutomation(Transformation):
             Parameter(f"{a}.t_manual", f"{a}: Non-auto-Time mean (s) [from Simod]",
                       levels=[round(t * f, 1) for f in T_MANUAL_FACTORS],
                       kind="duration_s"),
+            Parameter(f"{a}.num_bots", "Bot pool size",
+                      levels=list(NUM_BOTS_LEVELS), kind="categorical"),
+            Parameter(f"{a}.num_manual_resources", "Human pool size",
+                      levels=list(NUM_MANUAL_LEVELS), kind="categorical"),
         ]
 
     # --- apply_pattern -------------------------------------------------------

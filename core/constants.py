@@ -47,3 +47,5 @@ PCT_AUTO_LEVELS           = [25, 50, 75]  # XOR1 branch % to bot
 PCT_OK_LEVELS             = [80, 90, 95]  # XOR2 success %
 T_AUTO_FRACTIONS          = [0.05, 0.10, 0.20]  # bot duration as fraction of manual mean
 T_MANUAL_FACTORS          = [0.80, 1.00, 1.20]  # manual duration as factor of Simod mean
+NUM_BOTS_LEVELS           = [1, 2, 3]     # bot resource pool size
+NUM_MANUAL_LEVELS         = [1, 2, 3]     # human resource pool size

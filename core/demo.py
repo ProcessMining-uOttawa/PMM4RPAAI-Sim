@@ -31,12 +31,18 @@ def fake_discovery():
 
 def fake_simulate(scenario: Scenario, replication: int, n_cases: int) -> DemoResult:
     """Synthetic but monotonic: more automation → faster, cheaper, with noise."""
-    rng = random.Random(hash((scenario.id, replication)) & 0xffffffff)
-    pct    = next((v for k, v in scenario.values.items() if k.endswith(".pct_auto")),  50)
-    t_auto = next((v for k, v in scenario.values.items() if k.endswith(".t_auto")),    30)
-    t_man  = next((v for k, v in scenario.values.items() if k.endswith(".t_manual")), 300)
-    # crude model: weighted task time drives cycle; automation cuts cost
+    rng      = random.Random(hash((scenario.id, replication)) & 0xffffffff)
+    pct      = next((v for k, v in scenario.values.items() if k.endswith(".pct_auto")),  50)
+    t_auto   = next((v for k, v in scenario.values.items() if k.endswith(".t_auto")),    30)
+    t_man    = next((v for k, v in scenario.values.items() if k.endswith(".t_manual")), 300)
+    num_bots = int(next((v for k, v in scenario.values.items() if k.endswith(".num_bots")), 1))
+    num_man  = int(next((v for k, v in scenario.values.items() if k.endswith(".num_manual_resources")), 1))
+    # weighted task time drives cycle; automation cuts cost
     mean_task_s = (pct/100)*t_auto + (1-pct/100)*t_man
-    cycle = BASELINE_CYCLE_H * (mean_task_s / 300) * rng.uniform(0.9, 1.1)
+    # sqrt scaling approximates diminishing queuing gains from larger resource pools;
+    # normalises to 1.0 when both pool sizes are 1
+    bot_share      = pct / 100
+    resource_scale = 1.0 / (bot_share * num_bots**0.5 + (1 - bot_share) * num_man**0.5)
+    cycle = BASELINE_CYCLE_H * (mean_task_s / 300) * resource_scale * rng.uniform(0.9, 1.1)
     cost  = BASELINE_COST * (1 - 0.6*pct/100) * rng.uniform(0.9, 1.1)
     return DemoResult(scenario.id, replication, round(cycle, 2), round(cost, 2))
