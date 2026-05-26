@@ -210,6 +210,13 @@ Known bugs / reliability gaps:
 - **Silent `cost = 0.0`** (`core/analysis.py`): when Prosimos stats are missing
   or unparseable, cost silently returns 0. Should surface a warning to the user.
   Deferred — needs more context from the PhD client on expected Prosimos output.
+- **Multi-resource tasks not handled** (`core/transformations.py:356`):
+  `apply_params()` reads only `resources[0]` when propagating `num_manual_resources`
+  to the resource pool. If the target activity has multiple resource types assigned
+  (e.g. both a human role and an existing bot), only the first is resized and the
+  rest are silently ignored. The right behaviour for this case is unresolved —
+  needs a decision on which resource(s) the `num_manual_resources` Taguchi factor
+  should control.
 
 Test gaps:
 
