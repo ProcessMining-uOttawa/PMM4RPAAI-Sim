@@ -181,6 +181,46 @@ class TestApplyParams:
         assert len(base_json[KEY_GATEWAY_BRANCHING_PROBS]) == 0
 
 
+# ── AutomationScenario validation ────────────────────────────────────────────
+
+class TestAutomationScenarioValidation:
+    _base = dict(
+        automation_rate=0.5, bot_failure_rate=0.1,
+        bot_execution_time=60.0, manual_execution_time=1800.0,
+        num_bots=1, num_manual_resources=1,
+    )
+
+    def _make(self, **overrides):
+        return AutomationScenario(**{**self._base, **overrides})
+
+    def test_valid_scenario_ok(self):
+        self._make()  # should not raise
+
+    def test_automation_rate_below_zero_raises(self):
+        with pytest.raises(ValueError, match="automation_rate"):
+            self._make(automation_rate=-0.1)
+
+    def test_automation_rate_above_one_raises(self):
+        with pytest.raises(ValueError, match="automation_rate"):
+            self._make(automation_rate=1.1)
+
+    def test_bot_failure_rate_out_of_range_raises(self):
+        with pytest.raises(ValueError, match="bot_failure_rate"):
+            self._make(bot_failure_rate=1.5)
+
+    def test_num_bots_zero_raises(self):
+        with pytest.raises(ValueError, match="num_bots"):
+            self._make(num_bots=0)
+
+    def test_num_bots_negative_raises(self):
+        with pytest.raises(ValueError, match="num_bots"):
+            self._make(num_bots=-1)
+
+    def test_num_manual_resources_zero_raises(self):
+        with pytest.raises(ValueError, match="num_manual_resources"):
+            self._make(num_manual_resources=0)
+
+
 # ── Helpers used by multiple test classes ─────────────────────────────────────
 
 def _gbp_probs(data: dict, gateway_id: str) -> dict:

@@ -207,15 +207,9 @@ Then in the browser: toggle **Demo mode** off, upload
 
 Known bugs / reliability gaps:
 
-- **No pool-size validation in `AutomationScenario`** (`core/parameters.py`):
-  the UI now prevents 0 via `min_value=1` on `"categorical"` inputs, but
-  `AutomationScenario.__post_init__` still doesn't validate `num_bots`/
-  `num_manual_resources` ≥ 1 — callers that bypass the UI (tests, scripts)
-  can still produce a division-by-zero in `demo.py`'s sqrt scaling.
 - **Silent `cost = 0.0`** (`core/analysis.py`): when Prosimos stats are missing
   or unparseable, cost silently returns 0. Should surface a warning to the user.
-- **BPMN selected by lexicographic sort** (`core/runner.py`): `discover()` picks
-  the last BPMN by `sorted(out_dir.rglob("*.bpmn"))`. Should use `max(..., key=lambda p: p.stat().st_mtime)`.
+  Deferred — needs more context from the PhD client on expected Prosimos output.
 
 Test gaps:
 

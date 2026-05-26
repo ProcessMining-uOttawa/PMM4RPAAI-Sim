@@ -41,6 +41,10 @@ class AutomationScenario:
                           ("bot_failure_rate", self.bot_failure_rate)):
             if not 0.0 <= val <= 1.0:
                 raise ValueError(f"{name} must be in [0, 1], got {val}")
+        for name, val in (("num_bots", self.num_bots),
+                          ("num_manual_resources", self.num_manual_resources)):
+            if val < 1:
+                raise ValueError(f"{name} must be ≥ 1, got {val}")
 
     @property
     def manual_branch_rate(self) -> float:
