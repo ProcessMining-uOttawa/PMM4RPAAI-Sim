@@ -91,10 +91,10 @@ def discover(log_path: Path, run_dir: Path,
         cwd=str(run_dir),
         env=_subproc_env(java_home),
     )
-    bpmns = sorted(out_dir.rglob("*.bpmn"))
-    if not bpmns:
-        raise RuntimeError(f"Simod produced no BPMN under {out_dir}")
-    bpmn = bpmns[-1]
+    bpmns = list(out_dir.rglob("*.bpmn"))
+    if len(bpmns) != 1:
+        raise RuntimeError(f"Expected exactly 1 BPMN from Simod, found {len(bpmns)}: {bpmns}")
+    bpmn = bpmns[0]
     # Prosimos simulation params JSON sits next to the BPMN with the same stem.
     params = bpmn.with_suffix(".json")
     if not params.exists():
