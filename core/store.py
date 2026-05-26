@@ -3,8 +3,7 @@ from __future__ import annotations
 import json, time, uuid
 from pathlib import Path
 
-ROOT   = Path("runs")
-ACTIVE = ROOT / "_active"   # scratch space overwritten on each run
+ROOT = Path("runs")
 
 
 def new_experiment(name: str) -> Path:
