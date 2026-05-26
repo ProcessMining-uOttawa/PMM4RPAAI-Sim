@@ -1,6 +1,5 @@
 """Read-only helpers for BPMN files and Prosimos JSON."""
 from __future__ import annotations
-import uuid
 import xml.etree.ElementTree as ET
 
 from .constants import BPMN_NS, KEY_TASK_RESOURCE_DISTRIBUTION
@@ -8,10 +7,6 @@ from .constants import BPMN_NS, KEY_TASK_RESOURCE_DISTRIBUTION
 _BPMN = BPMN_NS
 
 _TASK_TAGS = ("task", "userTask", "serviceTask", "manualTask")
-
-
-def new_id(prefix: str = "node") -> str:
-    return f"{prefix}_{uuid.uuid4()}"
 
 
 def find_task_by_name(tree: ET.ElementTree, name: str) -> ET.Element | None:

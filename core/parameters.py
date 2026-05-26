@@ -1,7 +1,7 @@
 """Parameter declarations and Scenario containers."""
 from __future__ import annotations
-from dataclasses import dataclass, field
-from typing import Any, Callable, Literal
+from dataclasses import dataclass
+from typing import Any, Literal
 
 
 @dataclass
@@ -11,9 +11,6 @@ class Parameter:
     label: str
     levels: list[Any]                          # exactly 3 values for L9/L18/L27
     kind: Literal["percentage", "duration_s", "cost", "categorical"] = "percentage"
-    # How the value is written into the Prosimos JSON.
-    # Either a JSONPath-like list of keys, or a callable (json, value) -> None.
-    inject: list[str] | Callable[[dict, Any], None] = field(default_factory=list)
 
 
 @dataclass

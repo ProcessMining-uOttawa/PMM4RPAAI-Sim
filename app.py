@@ -176,6 +176,8 @@ with col2:
             except Exception:
                 pass
         params = transformation.parameters(target, current_duration_s=current_dur)
+        if current_dur is not None:
+            st.caption(f"Non-Auto-Time pre-filled from Simod ({current_dur:.0f} s)")
         edited_levels: dict[str, list] = {}
         hdr = st.columns([3, 1, 1, 1])
         hdr[0].caption("Factor")
@@ -220,6 +222,8 @@ with st.container(border=True):
             progress.progress(done / total,
                               text=f"Scenario {sid} · rep {rep + 1}/{n_reps}")
 
+        exp_dir = (store.new_experiment("demo") if demo_mode
+                   else store.new_experiment(ss.log_name or "run"))
         result = orchestrator.run_experiment(
             transformation=transformation,
             bpmn_path=ss.bpmn_path,
@@ -228,7 +232,7 @@ with st.container(border=True):
             scenarios=scenarios,
             n_reps=n_reps,
             n_cases=n_cases,
-            exp_dir=store.ACTIVE,
+            exp_dir=exp_dir,
             demo_mode=demo_mode,
             on_progress=_on_progress,
         )
