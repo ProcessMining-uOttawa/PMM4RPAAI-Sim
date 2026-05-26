@@ -103,7 +103,8 @@ with st.sidebar:
             with st.status("Running Simod discovery (~2 min for 100k events)…",
                            expanded=True) as s:
                 try:
-                    bpmn, params = runner.discover(log_path, run_dir, java_home=java_home)
+                    bpmn, params = runner.discover(log_path, run_dir, java_home=java_home,
+                                                   proc_log=store.discovery_log(run_dir))
                     ss.bpmn_path, ss.json_path = bpmn, params
                     ss.activities = runner.list_activities(bpmn)
                     ss.log_name, ss.log_path = uploaded.name, log_path

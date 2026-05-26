@@ -27,3 +27,11 @@ def replication_log(exp: Path, scenario_id: str, replication: int) -> Path:
 
 def replication_stats(exp: Path, scenario_id: str, replication: int) -> Path:
     return scenario_dir(exp, scenario_id) / f"rep_{replication:03d}_stats.csv"
+
+
+def replication_subprocess_log(exp: Path, scenario_id: str, replication: int) -> Path:
+    return scenario_dir(exp, scenario_id) / f"rep_{replication:03d}_prosimos.log"
+
+
+def discovery_log(exp: Path) -> Path:
+    return exp / "simod.log"

@@ -63,8 +63,10 @@ def run_experiment(
                     scenario_json_paths[s.id] = s_json
                 out_log  = store.replication_log(exp_dir, s.id, rep)
                 out_stat = store.replication_stats(exp_dir, s.id, rep)
+                proc_log = store.replication_subprocess_log(exp_dir, s.id, rep)
                 runner.simulate(bpmn_tr.bpmn_path, s_json,
-                                int(n_cases), out_log, stat_out=out_stat)
+                                int(n_cases), out_log, stat_out=out_stat,
+                                proc_log=proc_log)
                 m = analysis.per_log_metrics(out_log, out_stat)
                 cycle_h, cost = m["cycle_h"], m["cost"]
 

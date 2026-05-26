@@ -3,6 +3,27 @@ from __future__ import annotations
 import os, subprocess
 from pathlib import Path
 
+
+def _tail_lines(path: Path, n: int) -> str:
+    try:
+        lines = path.read_text(encoding="utf-8", errors="replace").splitlines()
+        return "\n".join(lines[-n:])
+    except Exception:
+        return "(log unreadable)"
+
+
+def _run_logged(cmd: list, proc_log: Path | None, **kwargs) -> None:
+    """Run a subprocess, optionally capturing stdout+stderr to proc_log.
+    Raises CalledProcessError with the last 20 log lines on failure."""
+    if proc_log is None:
+        subprocess.run(cmd, check=True, **kwargs)
+        return
+    with open(proc_log, "w", encoding="utf-8", errors="replace") as lf:
+        result = subprocess.run(cmd, check=False, stdout=lf, stderr=lf, **kwargs)
+    if result.returncode != 0:
+        raise subprocess.CalledProcessError(
+            result.returncode, cmd, output=_tail_lines(proc_log, 20))
+
 from .constants import BPMN_NS
 
 SIMOD_EXE    = Path("tools/simod-venv/Scripts/simod.exe")
@@ -45,7 +66,8 @@ def _subproc_env(java_home_override: str | None) -> dict:
 
 
 def discover(log_path: Path, run_dir: Path,
-             java_home: str | None = None) -> tuple[Path, Path]:
+             java_home: str | None = None,
+             proc_log: Path | None = None) -> tuple[Path, Path]:
     """Run Simod one-shot on `log_path`; return (bpmn, prosimos_json).
 
     `--one-shot` skips Simod's hyperparameter optimization and runs a single
@@ -60,14 +82,14 @@ def discover(log_path: Path, run_dir: Path,
         log_for_simod = csv_path
     else:
         log_for_simod = log_path
-    subprocess.run(
+    _run_logged(
         [str(SIMOD_EXE.resolve()),
          "--one-shot",
          "--event-log", str(log_for_simod.resolve()),
          "--output", str(out_dir.resolve())],
+        proc_log,
         cwd=str(run_dir),
         env=_subproc_env(java_home),
-        check=True,
     )
     bpmns = sorted(out_dir.rglob("*.bpmn"))
     if not bpmns:
@@ -106,7 +128,8 @@ def list_activities(bpmn_path: Path) -> list[str]:
 
 def simulate(bpmn: Path, params_json: Path, n_cases: int,
              out_log: Path, stat_out: Path | None = None,
-             starting_at: str = "2025-01-01T00:00:00+00:00") -> Path:
+             starting_at: str = "2025-01-01T00:00:00+00:00",
+             proc_log: Path | None = None) -> Path:
     """Run one Prosimos replication; returns the event-log CSV path."""
     out_log.parent.mkdir(parents=True, exist_ok=True)
     cmd = [str(PROSIMOS_EXE.resolve()), "start-simulation",
@@ -117,5 +140,5 @@ def simulate(bpmn: Path, params_json: Path, n_cases: int,
            "--starting_at", starting_at]
     if stat_out is not None:
         cmd += ["--stat_out_path", str(stat_out.resolve())]
-    subprocess.run(cmd, check=True)
+    _run_logged(cmd, proc_log)
     return out_log
