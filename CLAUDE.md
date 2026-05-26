@@ -50,9 +50,7 @@ Taguchi designer**. Three contracts make that work:
     pattern in §4.
 
 - **`Parameter`** ([core/parameters.py](core/parameters.py)) — `{id, label,
-  levels:[3], kind, inject}`. `inject` is intentionally simple now (the
-  pattern's `apply()` reads `values` by id); leave room here for declarative
-  JSONPath injection if you ever decouple mutation from value-placement.
+  levels:[3], kind}`. The pattern's `apply()` reads `values` by id directly.
 
 - **Job-folder store** ([core/store.py](core/store.py)) — every experiment
   is a folder under `runs/<exp-id>/`. Replications land at
@@ -64,16 +62,19 @@ Taguchi designer**. Three contracts make that work:
 
 | File | Responsibility |
 |---|---|
-| [app.py](app.py) | Streamlit dashboard (Mockup B): sidebar = experiment state + run config; 4 panels = Activity & pattern · Factor levels · Execution · Ranked scenarios. Holds the run loop. |
+| [app.py](app.py) | Streamlit dashboard (Mockup B): sidebar = experiment state + run config; 4 panels = Activity & pattern · Factor levels · Execution · Ranked scenarios. |
+| [core/constants.py](core/constants.py) | Shared constants: XML namespaces, Prosimos JSON keys, and pattern defaults (Taguchi level lists). |
+| [core/orchestrator.py](core/orchestrator.py) | Run loop: iterates scenarios × replications, calls `runner.simulate`, collects results into a tidy DataFrame. |
 | [core/preflight.py](core/preflight.py) | Detects Python 3.9, Corretto 8 (auto-finds `C:\Program Files\Amazon Corretto\jdk1.8*`), and both venvs. Surfaces per-row fixes in the UI. |
-| [core/runner.py](core/runner.py) | Subprocess wrappers: `discover()` (Simod one-shot, XES auto-converted to CSV first), `simulate()` (Prosimos `start-simulation`), `list_activities()` (lxml read of BPMN task names). |
+| [core/runner.py](core/runner.py) | Subprocess wrappers: `discover()` (Simod one-shot, XES auto-converted to CSV first), `simulate()` (Prosimos `start-simulation`), `list_activities()` (ET read of BPMN task names). Stdout/stderr captured to log files via `_run_logged()`. |
 | [core/transformations.py](core/transformations.py) | `Transformation` ABC + `XORSplitAutomation` impl + `REGISTRY` of available patterns. |
-| [core/bpmn_utils.py](core/bpmn_utils.py) | Pure helpers: BPMN-by-name lookup, sequenceFlow neighbours, `task_mean_duration_s()` for prepopulating Non-Auto-Time. |
+| [core/bpmn_edit.py](core/bpmn_edit.py) | Low-level BPMN XML editing: DI shape/edge creation, process element insertion, sequence-flow rewiring. All `xml.etree.ElementTree` surgery lives here. |
+| [core/bpmn_utils.py](core/bpmn_utils.py) | Read-only BPMN helpers: task-by-name lookup, sequenceFlow neighbours, `task_mean_duration_s()` for prepopulating Non-Auto-Time. |
 | [core/experiment.py](core/experiment.py) | Hard-coded Taguchi L9 and L18 arrays + `pick_array(n_factors)`. L27 still TODO. |
-| [core/parameters.py](core/parameters.py) | `Parameter` and `Scenario` dataclasses. |
+| [core/parameters.py](core/parameters.py) | `Parameter`, `Scenario`, and `AutomationScenario` dataclasses. `AutomationScenario.from_taguchi_values()` bridges Taguchi output to simulation inputs. |
 | [core/analysis.py](core/analysis.py) | `per_log_metrics()` (cycle time from event log, cost from stats), `aggregate()`, `main_effects()` (Taguchi S/N), `rank()` (goals-met then weighted score). |
-| [core/store.py](core/store.py) | Experiment directory layout. |
-| [core/demo.py](core/demo.py) | Synthetic simulator behind the Demo-mode toggle — lets you click through the UI with no Simod/Prosimos installed. |
+| [core/store.py](core/store.py) | Experiment directory layout. Each run gets a timestamped folder under `runs/<exp-id>/`; subprocess logs co-located with CSV outputs. |
+| [core/demo.py](core/demo.py) | Synthetic simulator behind the Demo-mode toggle — lets you click through the UI with no Simod/Prosimos installed. Resource pool size affects cycle time via sqrt scaling. |
 | [samples/IssueTracker.xes](samples/IssueTracker.xes) | 100k-event synthetic log used for testing. Borrowed from the pm4py-ucm project. |
 | [mockups/](mockups/) | Three early HTML UI mockups (wizard / dashboard / tabbed). Kept as design history. |
 | [tools/simod-venv/](tools/simod-venv/) | (not committed) Python 3.9 venv with `simod` + `pip.ini` trusted-host workaround. |
@@ -94,7 +95,7 @@ For a target activity *Act*, the pattern produces this fragment:
                     [Act] (the original, non-automated path) ──►(XOR4)
 ```
 
-**Four factors** (`parameters()` declares them; UI auto-renders):
+**Six factors** (`parameters()` declares them; UI auto-renders). Six factors → L18 OA → 18 scenarios.
 
 | Factor | Default levels | Meaning |
 |---|---|---|
@@ -102,11 +103,13 @@ For a target activity *Act*, the pattern produces this fragment:
 | `pct_ok` (%) | 80 / 90 / 95 | XOR2 success probability (skip the fallback) |
 | `t_auto` (s) | 5%, 10%, 20% of Simod mean | Automated task mean duration |
 | `t_manual` (s) | 80%, 100%, 120% of Simod mean | Non-automated mean (**prepopulated from Simod**) |
+| `num_bots` | 1 / 2 / 3 | Bot resource pool size |
+| `num_manual_resources` | 1 / 2 / 3 | Human resource pool size |
 
 `apply()` does:
 - **BPMN**: rewires the target task's incoming → XOR1 and outgoing ← XOR4;
   adds 4 exclusive gateways, 1 task (`"Auto " + original name`), and 7 new
-  `<sequenceFlow>` elements. Uses lxml; preserves the default BPMN namespace.
+  `<sequenceFlow>` elements. Uses `xml.etree.ElementTree`; preserves the default BPMN namespace.
 - **JSON**: keeps the original task's `task_resource_distribution` entry but
   replaces its duration with a small-jitter uniform around `t_manual`. Clones
   the resources list into a second entry for the new `Auto` task with
@@ -199,7 +202,26 @@ Then in the browser: toggle **Demo mode** off, upload
 
 ## 8. What's worth doing next
 
-Not committed, but cheap wins for the next contributor:
+Known bugs / reliability gaps:
+
+- **Division-by-zero in demo** (`core/demo.py`): if a user edits `num_bots`
+  or `num_manual_resources` to 0, the sqrt scaling formula blows up. Add a
+  `max(1, ...)` guard or validate in `AutomationScenario.__post_init__`.
+- **No pool-size validation** (`core/parameters.py`): `AutomationScenario.__post_init__`
+  validates rates but not `num_bots`/`num_manual_resources` ≥ 1.
+- **Silent `cost = 0.0`** (`core/analysis.py`): when Prosimos stats are missing
+  or unparseable, cost silently returns 0. Should surface a warning to the user.
+- **BPMN selected by lexicographic sort** (`core/runner.py`): `discover()` picks
+  the last BPMN by `sorted(out_dir.rglob("*.bpmn"))`. Should use `max(..., key=lambda p: p.stat().st_mtime)`.
+
+Test gaps:
+
+- `AutomationScenario.from_taguchi_values()` has no test for the new
+  `num_bots` / `num_manual_resources` keys.
+- `core/analysis.py` has no test coverage at all.
+- Demo resource scaling has no monotonicity test (larger pool → shorter cycle).
+
+Feature work:
 
 - **Cost metric**: Prosimos's stats CSV doesn't always include
   `Average Cost`. Compute it ourselves: per-replication, sum
@@ -230,7 +252,8 @@ Not committed, but cheap wins for the next contributor:
 
 ---
 
-*Initial scaffold + four wiring sessions (Simod → Prosimos →
-XORSplitAutomation → bug-fixes) completed against the IssueTracker
-synthetic log. The tool produces real ranked scenarios on real Simod-
-discovered models.*
+*Initial scaffold + four wiring sessions (Simod → Prosimos → XORSplitAutomation
+→ bug-fixes) completed against the IssueTracker synthetic log. Subsequent
+sessions added `num_bots`/`num_manual_resources` as Taguchi factors (L18),
+subprocess log capture, XML namespace centralisation in `constants.py`, and
+dead-code removal (`new_id`, `Parameter.inject`, `store.ACTIVE` clobber).*
