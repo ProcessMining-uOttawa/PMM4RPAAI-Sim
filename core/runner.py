@@ -61,7 +61,7 @@ def _subproc_env(java_home_override: str | None) -> dict:
     env = os.environ.copy()
     if java_home_override:
         env["JAVA_HOME"] = java_home_override
-        env["PATH"] = (Path(java_home_override) / "bin").as_posix() + os.pathsep + env.get("PATH", "")
+        env["PATH"] = str(Path(java_home_override) / "bin") + os.pathsep + env.get("PATH", "")
     return env
 
 

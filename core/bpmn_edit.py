@@ -11,20 +11,12 @@ are passed explicitly to add_task_el and add_xor_el rather than computed here.
 from __future__ import annotations
 import xml.etree.ElementTree as ET
 
-# ── XML namespaces ─────────────────────────────────────────────────────────────
-_NS = {
-    "bpmn":   "http://www.omg.org/spec/BPMN/20100524/MODEL",
-    "bpmndi": "http://www.omg.org/spec/BPMN/20100524/DI",
-    "dc":     "http://www.omg.org/spec/DD/20100524/DC",
-    "di":     "http://www.omg.org/spec/DD/20100524/DI",
-}
-for _prefix, _uri in _NS.items():
-    ET.register_namespace(_prefix, _uri)
+from .constants import BPMN_NS as _BPMN, BPMNDI_NS as _BPMNDI, DC_NS as _DC, DI_NS as _DI
 
-_BPMN   = _NS["bpmn"]
-_BPMNDI = _NS["bpmndi"]
-_DC     = _NS["dc"]
-_DI     = _NS["di"]
+ET.register_namespace("bpmn",   _BPMN)
+ET.register_namespace("bpmndi", _BPMNDI)
+ET.register_namespace("dc",     _DC)
+ET.register_namespace("di",     _DI)
 
 # ── Shape dimensions (public — used by layout functions in sibling modules) ────
 TASK_W, TASK_H = 100, 80

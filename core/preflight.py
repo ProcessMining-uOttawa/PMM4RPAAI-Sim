@@ -4,10 +4,10 @@ import os, re, shutil, subprocess
 from dataclasses import dataclass
 from pathlib import Path
 
+from .runner import SIMOD_EXE, PROSIMOS_EXE
+
 
 SIMOD_VENV_PY = Path("tools/simod-venv/Scripts/python.exe")
-SIMOD_EXE     = Path("tools/simod-venv/Scripts/simod.exe")
-PROSIMOS_EXE  = Path("tools/prosimos-venv/Scripts/prosimos.exe")
 
 CORRETTO_ROOTS = [
     Path(r"C:\Program Files\Amazon Corretto"),
@@ -92,9 +92,10 @@ def run_checks() -> list[Check]:
             "Install Amazon Corretto 8 (winget install Amazon.Corretto.8.JDK).",
         ))
 
+    simod_ok = _venv_has_simod()
     out.append(Check(
-        "Simod venv", _venv_has_simod(),
-        f"simod.exe at {SIMOD_EXE}" if _venv_has_simod()
+        "Simod venv", simod_ok,
+        f"simod.exe at {SIMOD_EXE}" if simod_ok
         else f"missing {SIMOD_EXE}",
         f"Create it: `{py39 or 'py -3.9'} -m venv tools\\simod-venv && "
         f"tools\\simod-venv\\Scripts\\pip install simod`.",

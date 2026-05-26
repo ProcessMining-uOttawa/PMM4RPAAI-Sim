@@ -1,4 +1,4 @@
-"""Constants for the automation bypass pattern."""
+"""Shared constants: XML namespaces, Prosimos JSON keys, and pattern defaults."""
 
 # ── Bot resource profile ──────────────────────────────────────────────────────
 BOT_PROFILE_ID   = "BOT_PROFILE"
@@ -39,7 +39,10 @@ KEY_TASK_RESOURCE_DISTRIBUTION = "task_resource_distribution"
 KEY_GATEWAY_BRANCHING_PROBS    = "gateway_branching_probabilities"
 
 # ── BPMN XML namespaces ───────────────────────────────────────────────────────
-BPMN_NS = "http://www.omg.org/spec/BPMN/20100524/MODEL"
+BPMN_NS   = "http://www.omg.org/spec/BPMN/20100524/MODEL"
+BPMNDI_NS = "http://www.omg.org/spec/BPMN/20100524/DI"
+DC_NS     = "http://www.omg.org/spec/DD/20100524/DC"
+DI_NS     = "http://www.omg.org/spec/DD/20100524/DI"
 
 # ── XOR split automation: Taguchi parameter defaults ──────────────────────────
 DEFAULT_MANUAL_DURATION_S = 1800.0        # fallback when Simod mean is unavailable
