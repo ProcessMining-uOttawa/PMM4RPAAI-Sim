@@ -12,6 +12,20 @@ from core import analysis, demo, orchestrator, preflight, runner, store
 st.set_page_config(page_title="Automation What-If Simulator",
                    page_icon="⚙", layout="wide")
 
+
+def _level_input_kwargs(kind: str, value) -> dict:
+    """Map Parameter.kind to st.number_input constraints."""
+    if kind == "percentage":
+        return {"value": float(value), "min_value": 0.0, "max_value": 100.0,
+                "step": 1.0, "format": "%.0f"}
+    if kind == "duration_s":
+        return {"value": float(value), "min_value": 0.0, "step": 1.0, "format": "%.1f"}
+    if kind == "categorical":
+        return {"value": int(value), "min_value": 1, "step": 1}
+    if kind == "cost":
+        return {"value": float(value), "min_value": 0.0, "step": 0.01, "format": "%.2f"}
+    return {"value": float(value)}
+
 # --- session state defaults --------------------------------------------------
 ss = st.session_state
 ss.setdefault("log_name", None)
@@ -189,7 +203,8 @@ with col2:
             new = []
             for i in range(3):
                 new.append(row[i+1].number_input(
-                    f"{p.id}_{i}", value=float(p.levels[i]),
+                    f"{p.id}_{i}",
+                    **_level_input_kwargs(p.kind, p.levels[i]),
                     label_visibility="collapsed", key=f"{p.id}_{i}",
                 ))
             edited_levels[p.id] = new

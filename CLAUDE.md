@@ -50,7 +50,10 @@ Taguchi designer**. Three contracts make that work:
     pattern in §4.
 
 - **`Parameter`** ([core/parameters.py](core/parameters.py)) — `{id, label,
-  levels:[3], kind}`. The pattern's `apply()` reads `values` by id directly.
+  levels:[3], kind}`. `kind` (`"percentage"`, `"duration_s"`, `"categorical"`,
+  `"cost"`) drives `number_input` constraints in the UI via `_level_input_kwargs()`
+  in `app.py` (min/max/step/format). The pattern's `apply()` reads `values` by
+  id directly and does not use `kind`.
 
 - **Job-folder store** ([core/store.py](core/store.py)) — every experiment
   is a folder under `runs/<exp-id>/`. Replications land at
@@ -204,11 +207,11 @@ Then in the browser: toggle **Demo mode** off, upload
 
 Known bugs / reliability gaps:
 
-- **Division-by-zero in demo** (`core/demo.py`): if a user edits `num_bots`
-  or `num_manual_resources` to 0, the sqrt scaling formula blows up. Add a
-  `max(1, ...)` guard or validate in `AutomationScenario.__post_init__`.
-- **No pool-size validation** (`core/parameters.py`): `AutomationScenario.__post_init__`
-  validates rates but not `num_bots`/`num_manual_resources` ≥ 1.
+- **No pool-size validation in `AutomationScenario`** (`core/parameters.py`):
+  the UI now prevents 0 via `min_value=1` on `"categorical"` inputs, but
+  `AutomationScenario.__post_init__` still doesn't validate `num_bots`/
+  `num_manual_resources` ≥ 1 — callers that bypass the UI (tests, scripts)
+  can still produce a division-by-zero in `demo.py`'s sqrt scaling.
 - **Silent `cost = 0.0`** (`core/analysis.py`): when Prosimos stats are missing
   or unparseable, cost silently returns 0. Should surface a warning to the user.
 - **BPMN selected by lexicographic sort** (`core/runner.py`): `discover()` picks
