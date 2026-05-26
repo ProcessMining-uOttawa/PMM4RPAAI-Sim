@@ -1,10 +1,12 @@
-"""Low-level BPMN XML editing helpers (xml.etree.ElementTree).
+"""Low-level BPMN XML editing primitives (xml.etree.ElementTree).
 
 Covers two concerns:
-- DI (Diagram Interchange): reading/writing BPMNShape and BPMNEdge elements
-  so newly added process elements appear at sensible coordinates in viewers.
+- DI (Diagram Interchange): reading/writing BPMNShape and BPMNEdge elements.
 - Process operations: adding tasks, gateways, and sequence flows to the
   <bpmn:process> element, and rewiring existing flows.
+
+Callers are responsible for deciding where elements are placed; coordinates
+are passed explicitly to add_task_el and add_xor_el rather than computed here.
 """
 from __future__ import annotations
 import xml.etree.ElementTree as ET
@@ -24,10 +26,9 @@ _BPMNDI = _NS["bpmndi"]
 _DC     = _NS["dc"]
 _DI     = _NS["di"]
 
-# ── Shape dimensions ───────────────────────────────────────────────────────────
-_TASK_W, _TASK_H = 100, 80
-_GW_W,   _GW_H   = 50,  50
-_H_GAP           = 50
+# ── Shape dimensions (public — used by layout functions in sibling modules) ────
+TASK_W, TASK_H = 100, 80
+GW_W,   GW_H   = 50,  50
 
 # ── Task element tags ──────────────────────────────────────────────────────────
 _TASK_TAGS = frozenset({
@@ -56,28 +57,22 @@ def get_shape_bounds(root: ET.Element, element_id: str) -> dict | None:
     return None
 
 
-def auto_place_after(root: ET.Element, after_id: str, h: int) -> tuple[int, int]:
-    src = get_shape_bounds(root, after_id)
-    if src is None:
-        return 300, 200
-    return (int(src["x"] + src["width"] + _H_GAP),
-            int(src["y"] + (src["height"] - h) / 2))
-
-
-def auto_place_rightmost(root: ET.Element, h: int) -> tuple[int, int]:
+def diagram_extents(root: ET.Element) -> tuple[float, float, float, float]:
+    """Return (x_min, y_min, x_max, y_max) over all shapes in the BPMNPlane."""
     plane = get_plane(root)
-    if plane is None:
-        return 300, 200
-    rx, ry, found = 0.0, 0.0, False
-    for shape in plane.findall(f"{{{_BPMNDI}}}BPMNShape"):
-        b = shape.find(f"{{{_DC}}}Bounds")
-        if b is None:
-            continue
-        sx, sy = float(b.get("x", 0)), float(b.get("y", 0))
-        sw, sh = float(b.get("width", 0)), float(b.get("height", 0))
-        if not found or sx + sw > rx:
-            rx, ry, found = sx + sw, sy + (sh - h) / 2, True
-    return (int(rx + _H_GAP), int(ry)) if found else (300, 200)
+    xs, ys, xs2, ys2 = [], [], [], []
+    if plane is not None:
+        for shape in plane.findall(f"{{{_BPMNDI}}}BPMNShape"):
+            b = shape.find(f"{{{_DC}}}Bounds")
+            if b is None:
+                continue
+            x, y = float(b.get("x", 0)), float(b.get("y", 0))
+            w, h = float(b.get("width", 0)), float(b.get("height", 0))
+            xs.append(x); ys.append(y)
+            xs2.append(x + w); ys2.append(y + h)
+    if not xs:
+        return 0.0, 0.0, 400.0, 200.0
+    return min(xs), min(ys), max(xs2), max(ys2)
 
 
 def waypoints_between(root: ET.Element,
@@ -138,27 +133,23 @@ def flows_from(process: ET.Element, source_id: str) -> list[ET.Element]:
 
 
 def add_task_el(root: ET.Element, process: ET.Element,
-                task_id: str, name: str, after_id: str | None = None) -> None:
+                task_id: str, name: str, x: int, y: int) -> None:
     el = ET.SubElement(process, f"{{{_BPMN}}}task")
     el.set("id", task_id); el.set("name", name)
     plane = get_plane(root)
     if plane is not None:
-        x, y = (auto_place_after(root, after_id, _TASK_H)
-                if after_id else auto_place_rightmost(root, _TASK_H))
-        add_shape(plane, task_id, x, y, _TASK_W, _TASK_H)
+        add_shape(plane, task_id, x, y, TASK_W, TASK_H)
 
 
 def add_xor_el(root: ET.Element, process: ET.Element,
-               gw_id: str, name: str = "", after_id: str | None = None) -> None:
+               gw_id: str, name: str, x: int, y: int) -> None:
     el = ET.SubElement(process, f"{{{_BPMN}}}exclusiveGateway")
     el.set("id", gw_id)
     if name:
         el.set("name", name)
     plane = get_plane(root)
     if plane is not None:
-        x, y = (auto_place_after(root, after_id, _GW_H)
-                if after_id else auto_place_rightmost(root, _GW_H))
-        add_shape(plane, gw_id, x, y, _GW_W, _GW_H, marker=True)
+        add_shape(plane, gw_id, x, y, GW_W, GW_H, marker=True)
 
 
 def add_flow_el(root: ET.Element, process: ET.Element,

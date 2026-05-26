@@ -26,6 +26,7 @@ from .bpmn_edit import (
     find_process, find_task_in_process,
     flows_targeting, flows_from,
     add_task_el, add_xor_el, add_flow_el, update_flow_target,
+    diagram_extents, TASK_W, TASK_H, GW_W, GW_H,
 )
 
 
@@ -130,6 +131,45 @@ def _set_resource_amount(data: dict, resource_id: str, amount: int) -> None:
                 resource["amount"] = amount
 
 
+# ── Pattern layout ────────────────────────────────────────────────────────────
+
+def _xor_bypass_layout(root: ET.Element,
+                       ids: TransformIds) -> dict[str, tuple[int, int]]:
+    """Return {element_id: (x, y)} top-left corners for the XOR bypass subgraph.
+
+    Places the pattern block in free space below the existing diagram so it
+    never overlaps existing elements.  Layout:
+
+        col0          col1           col2              col3
+      [auto_gw] ─── [bot_task] ─── [bot_result_gw] ─── [final_join_gw]  ← top lane
+                                        │
+                                   [fallback_merge]                        ← bottom lane
+                                        │
+                                   (to_human → original task, above)
+    """
+    _COL_STEP  = 160   # horizontal distance between column centres
+    _V_GAP     = 150   # vertical distance between lane centres
+    _Y_MARGIN  = 80    # clear space below existing diagram
+
+    _, _, _, y_max = diagram_extents(root)
+    x_min, _, _, _ = diagram_extents(root)
+
+    cy_top = int(y_max) + _Y_MARGIN + GW_H // 2
+    cy_bot = cy_top + _V_GAP
+    cols   = [int(x_min) + GW_W // 2 + i * _COL_STEP for i in range(4)]
+
+    def gw_tl(cx: int, cy: int)   -> tuple[int, int]: return (cx - GW_W   // 2, cy - GW_H   // 2)
+    def task_tl(cx: int, cy: int) -> tuple[int, int]: return (cx - TASK_W // 2, cy - TASK_H // 2)
+
+    return {
+        ids.automation_gate: gw_tl(  cols[0], cy_top),
+        ids.bot_id:          task_tl(cols[1], cy_top),
+        ids.bot_result_gate: gw_tl(  cols[2], cy_top),
+        ids.fallback_merge:  gw_tl(  cols[2], cy_bot),
+        ids.final_join_gate: gw_tl(  cols[3], cy_top),
+    }
+
+
 # ============================================================================
 # XOR substitution: 4 gateways + 1 bot task (mirrors automation-bypass pattern)
 #
@@ -195,14 +235,17 @@ class XORSplitAutomation(Transformation):
         out_flow_id      = outgoing[0].get("id")
         original_next_id = outgoing[0].get("targetRef")
 
-        # 1. Add all new elements so DI bounds exist before wiring
-        add_task_el(root, process, ids.bot_id,          f"Auto {T_name}",       after_id=T_id)
-        add_xor_el (root, process, ids.automation_gate, GW1_NAME,               after_id=T_id)
-        add_xor_el (root, process, ids.bot_result_gate, GW2_NAME,               after_id=ids.bot_id)
-        add_xor_el (root, process, ids.fallback_merge,  GW3_NAME,               after_id=ids.bot_result_gate)
-        add_xor_el (root, process, ids.final_join_gate, GW4_NAME,               after_id=ids.fallback_merge)
+        # 1. Add all new elements in free space below the existing diagram.
+        lo = _xor_bypass_layout(root, ids)
+        add_task_el(root, process, ids.bot_id,          f"Auto {T_name}", *lo[ids.bot_id])
+        add_xor_el (root, process, ids.automation_gate, GW1_NAME,         *lo[ids.automation_gate])
+        add_xor_el (root, process, ids.bot_result_gate, GW2_NAME,         *lo[ids.bot_result_gate])
+        add_xor_el (root, process, ids.fallback_merge,  GW3_NAME,         *lo[ids.fallback_merge])
+        add_xor_el (root, process, ids.final_join_gate, GW4_NAME,         *lo[ids.final_join_gate])
 
-        # 2. Redirect boundary flows
+        # 2. Redirect boundary flows.
+        # out_flow already originates from the original task, so we reuse it as
+        # the human-exit arc (task → final_join_gate) rather than adding a new flow.
         update_flow_target(root, process, in_flow_id,  ids.automation_gate)
         update_flow_target(root, process, out_flow_id, ids.final_join_gate)
 
