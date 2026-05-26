@@ -32,9 +32,9 @@ def fake_discovery():
 def fake_simulate(scenario: Scenario, replication: int, n_cases: int) -> DemoResult:
     """Synthetic but monotonic: more automation → faster, cheaper, with noise."""
     rng = random.Random(hash((scenario.id, replication)) & 0xffffffff)
-    pct = next((v for k, v in scenario.values.items() if "pct_automation" in k), 50)
-    t_auto = next((v for k, v in scenario.values.items() if "t_auto" in k), 30)
-    t_man  = next((v for k, v in scenario.values.items() if "t_manual" in k), 300)
+    pct    = next((v for k, v in scenario.values.items() if k.endswith(".pct_auto")),  50)
+    t_auto = next((v for k, v in scenario.values.items() if k.endswith(".t_auto")),    30)
+    t_man  = next((v for k, v in scenario.values.items() if k.endswith(".t_manual")), 300)
     # crude model: weighted task time drives cycle; automation cuts cost
     mean_task_s = (pct/100)*t_auto + (1-pct/100)*t_man
     cycle = BASELINE_CYCLE_H * (mean_task_s / 300) * rng.uniform(0.9, 1.1)

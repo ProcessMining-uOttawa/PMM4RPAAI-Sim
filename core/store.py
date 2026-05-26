@@ -3,7 +3,8 @@ from __future__ import annotations
 import json, time, uuid
 from pathlib import Path
 
-ROOT = Path("runs")
+ROOT   = Path("runs")
+ACTIVE = ROOT / "_active"   # scratch space overwritten on each run
 
 
 def new_experiment(name: str) -> Path:
@@ -21,4 +22,8 @@ def scenario_dir(exp: Path, scenario_id: str) -> Path:
 
 
 def replication_log(exp: Path, scenario_id: str, replication: int) -> Path:
-    return scenario_dir(exp, scenario_id) / f"rep_{replication:03d}.csv"
+    return scenario_dir(exp, scenario_id) / f"rep_{replication:03d}_log.csv"
+
+
+def replication_stats(exp: Path, scenario_id: str, replication: int) -> Path:
+    return scenario_dir(exp, scenario_id) / f"rep_{replication:03d}_stats.csv"

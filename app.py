@@ -6,9 +6,8 @@ import streamlit as st
 
 from pathlib import Path
 from core.transformations import REGISTRY
-from core.parameters import AutomationScenario
 from core.experiment import build_scenarios
-from core import analysis, demo, preflight, runner, store
+from core import analysis, demo, orchestrator, preflight, runner, store
 
 st.set_page_config(page_title="Automation What-If Simulator",
                    page_icon="⚙", layout="wide")
@@ -211,51 +210,30 @@ with st.container(border=True):
                                use_container_width=True)
 
     if run_clicked:
-        ss.experiment_bpmn_path = None
-        ss.scenario_json_paths = {}
+        if not demo_mode and (not ss.bpmn_path or not ss.json_path):
+            st.error("No discovered model — upload a log first.")
+            st.stop()
         progress = st.progress(0.0, text="Starting…")
-        rows = []
-        done = 0
 
-        # Apply structural BPMN transformation once — shared across all scenarios.
-        bpmn_tr = None
-        if not demo_mode:
-            if not ss.bpmn_path or not ss.json_path:
-                st.error("No discovered model — upload a log first.")
-                st.stop()
-            exp_dir = Path("runs/_active")
-            bpmn_tr = transformation.prepare_experiment(
-                ss.bpmn_path, ss.json_path, target, exp_dir)
-            ss.experiment_bpmn_path = bpmn_tr.bpmn_path
+        def _on_progress(done: int, total: int, sid: str, rep: int) -> None:
+            progress.progress(done / total,
+                              text=f"Scenario {sid} · rep {rep + 1}/{n_reps}")
 
-        for s in scenarios:
-            s_dir = Path(f"runs/_active/{s.id}")
-            s_json = None
-            for rep in range(n_reps):
-                if demo_mode:
-                    r = demo.fake_simulate(s, rep, n_cases)
-                    cycle_h, cost = r.cycle_h, r.cost
-                else:
-                    # Inject scenario-specific params into a fresh JSON copy (once per scenario).
-                    if rep == 0:
-                        s_json = transformation.apply_params(
-                            bpmn_tr.base_json, bpmn_tr.ids,
-                            AutomationScenario.from_taguchi_values(s.values),
-                            s_dir / "params.json")
-                        ss.scenario_json_paths[s.id] = s_json
-                    out_log  = s_dir / f"rep_{rep:03d}_log.csv"
-                    out_stat = s_dir / f"rep_{rep:03d}_stats.csv"
-                    runner.simulate(bpmn_tr.bpmn_path, s_json,
-                                    int(n_cases), out_log, stat_out=out_stat)
-                    m = analysis.per_log_metrics(out_log, out_stat)
-                    cycle_h, cost = m["cycle_h"], m["cost"]
-                rows.append({"scenario_id": s.id, "replication": rep,
-                             "cycle_h": cycle_h, "cost": cost,
-                             **{k: v for k, v in s.values.items()}})
-                done += 1
-                progress.progress(done/total_runs,
-                                  text=f"Scenario {s.id} · rep {rep+1}/{n_reps}")
-        ss.results = pd.DataFrame(rows)
+        result = orchestrator.run_experiment(
+            transformation=transformation,
+            bpmn_path=ss.bpmn_path,
+            json_path=ss.json_path,
+            target=target,
+            scenarios=scenarios,
+            n_reps=n_reps,
+            n_cases=n_cases,
+            exp_dir=store.ACTIVE,
+            demo_mode=demo_mode,
+            on_progress=_on_progress,
+        )
+        ss.results               = result.results
+        ss.experiment_bpmn_path  = result.experiment_bpmn_path
+        ss.scenario_json_paths   = result.scenario_json_paths
         progress.empty()
         st.success(f"Completed {total_runs} simulations.")
 
