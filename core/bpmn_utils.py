@@ -3,9 +3,9 @@ from __future__ import annotations
 import uuid
 import xml.etree.ElementTree as ET
 
-from .constants import KEY_TASK_RESOURCE_DISTRIBUTION
+from .constants import BPMN_NS, KEY_TASK_RESOURCE_DISTRIBUTION
 
-_BPMN = "http://www.omg.org/spec/BPMN/20100524/MODEL"
+_BPMN = BPMN_NS
 
 _TASK_TAGS = ("task", "userTask", "serviceTask", "manualTask")
 

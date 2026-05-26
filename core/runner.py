@@ -3,6 +3,8 @@ from __future__ import annotations
 import os, subprocess
 from pathlib import Path
 
+from .constants import BPMN_NS
+
 SIMOD_EXE    = Path("tools/simod-venv/Scripts/simod.exe")
 PROSIMOS_EXE = Path("tools/prosimos-venv/Scripts/prosimos.exe")
 
@@ -86,11 +88,10 @@ def discover(log_path: Path, run_dir: Path,
 def list_activities(bpmn_path: Path) -> list[str]:
     """Pull task names out of a BPMN file without loading pm4py."""
     import xml.etree.ElementTree as ET
-    _BPMN = "http://www.omg.org/spec/BPMN/20100524/MODEL"
     tree = ET.parse(str(bpmn_path))
     names = []
     for tag in ("task", "userTask", "serviceTask", "manualTask"):
-        for el in tree.findall(f".//{{{_BPMN}}}{tag}"):
+        for el in tree.findall(f".//{{{BPMN_NS}}}{tag}"):
             n = el.get("name")
             if n:
                 names.append(n)

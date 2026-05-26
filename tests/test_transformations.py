@@ -3,129 +3,15 @@ from __future__ import annotations
 import json
 import xml.etree.ElementTree as ET
 import pytest
-from pathlib import Path
 
-from core.transformations import XORSplitAutomation, _make_ids
+from core.transformations import _make_ids
 from core.parameters import AutomationScenario
 from core.constants import (
+    BPMN_NS,
     BOT_CALENDAR_ID, BOT_PROFILE_ID,
     KEY_RESOURCE_CALENDARS, KEY_RESOURCE_PROFILES,
     KEY_TASK_RESOURCE_DISTRIBUTION, KEY_GATEWAY_BRANCHING_PROBS,
 )
-
-_BPMN_NS = "http://www.omg.org/spec/BPMN/20100524/MODEL"
-
-# ── Fixtures: minimal synthetic BPMN + params ─────────────────────────────────
-#
-#  start_1 ──flow_in──► task_1 ("Test Task") ──flow_out──► end_1
-
-_MINIMAL_BPMN = """\
-<?xml version="1.0" encoding="utf-8"?>
-<bpmn:definitions
-    xmlns:bpmn="http://www.omg.org/spec/BPMN/20100524/MODEL"
-    xmlns:bpmndi="http://www.omg.org/spec/BPMN/20100524/DI"
-    xmlns:dc="http://www.omg.org/spec/DD/20100524/DC"
-    xmlns:di="http://www.omg.org/spec/DD/20100524/DI"
-    id="def_1">
-  <bpmn:process id="proc_1" isExecutable="true">
-    <bpmn:startEvent id="start_1"/>
-    <bpmn:task id="task_1" name="Test Task"/>
-    <bpmn:endEvent id="end_1"/>
-    <bpmn:sequenceFlow id="flow_in"  sourceRef="start_1" targetRef="task_1"/>
-    <bpmn:sequenceFlow id="flow_out" sourceRef="task_1"  targetRef="end_1"/>
-  </bpmn:process>
-  <bpmndi:BPMNDiagram id="diagram_1">
-    <bpmndi:BPMNPlane id="plane_1" bpmnElement="proc_1">
-      <bpmndi:BPMNShape id="start_1_di" bpmnElement="start_1">
-        <dc:Bounds x="100" y="200" width="36" height="36"/>
-        <bpmndi:BPMNLabel/>
-      </bpmndi:BPMNShape>
-      <bpmndi:BPMNShape id="task_1_di" bpmnElement="task_1">
-        <dc:Bounds x="200" y="180" width="100" height="80"/>
-        <bpmndi:BPMNLabel/>
-      </bpmndi:BPMNShape>
-      <bpmndi:BPMNShape id="end_1_di" bpmnElement="end_1">
-        <dc:Bounds x="400" y="200" width="36" height="36"/>
-        <bpmndi:BPMNLabel/>
-      </bpmndi:BPMNShape>
-      <bpmndi:BPMNEdge id="flow_in_di" bpmnElement="flow_in">
-        <di:waypoint x="136" y="218"/>
-        <di:waypoint x="200" y="220"/>
-      </bpmndi:BPMNEdge>
-      <bpmndi:BPMNEdge id="flow_out_di" bpmnElement="flow_out">
-        <di:waypoint x="300" y="220"/>
-        <di:waypoint x="400" y="218"/>
-      </bpmndi:BPMNEdge>
-    </bpmndi:BPMNPlane>
-  </bpmndi:BPMNDiagram>
-</bpmn:definitions>
-"""
-
-_MINIMAL_PARAMS = {
-    KEY_RESOURCE_CALENDARS: [
-        {
-            "id": "cal_human",
-            "name": "9-5 Weekdays",
-            "time_periods": [{
-                "from": "MONDAY", "to": "FRIDAY",
-                "beginTime": "09:00:00.000", "endTime": "17:00:00.000",
-            }],
-        }
-    ],
-    KEY_RESOURCE_PROFILES: [
-        {
-            "id": "profile_human",
-            "name": "Human Workers",
-            "resource_list": [{
-                "id": "res_human_1",
-                "name": "Worker",
-                "cost_per_hour": "10",
-                "amount": 1,
-                "calendar": "cal_human",
-                "assignedTasks": ["task_1"],
-            }],
-        }
-    ],
-    KEY_TASK_RESOURCE_DISTRIBUTION: [
-        {
-            "task_id": "task_1",
-            "resources": [{
-                "resource_id": "res_human_1",
-                "distribution_name": "fix",
-                "distribution_params": [{"value": 3600.0}],
-            }],
-        }
-    ],
-    KEY_GATEWAY_BRANCHING_PROBS: [],
-}
-
-
-# ── Module-level fixtures ─────────────────────────────────────────────────────
-
-@pytest.fixture
-def pattern():
-    return XORSplitAutomation()
-
-
-@pytest.fixture
-def bpmn_file(tmp_path):
-    p = tmp_path / "test.bpmn"
-    p.write_text(_MINIMAL_BPMN, encoding="utf-8")
-    return p
-
-
-@pytest.fixture
-def params_file(tmp_path):
-    p = tmp_path / "params.json"
-    p.write_text(json.dumps(_MINIMAL_PARAMS), encoding="utf-8")
-    return p
-
-
-@pytest.fixture
-def applied(pattern, bpmn_file, tmp_path):
-    """Runs apply_pattern and returns (bpmn_out_path, ids)."""
-    bpmn_out, ids = pattern.apply_pattern(bpmn_file, "Test Task", tmp_path / "out")
-    return bpmn_out, ids
 
 
 # ── TestApplyPattern ──────────────────────────────────────────────────────────
@@ -146,20 +32,20 @@ class TestApplyPattern:
     def test_bot_task_added(self, applied):
         bpmn_out, ids = applied
         tree = ET.parse(str(bpmn_out))
-        task_ids = {t.get("id") for t in tree.findall(f".//{{{_BPMN_NS}}}task")}
+        task_ids = {t.get("id") for t in tree.findall(f".//{{{BPMN_NS}}}task")}
         assert ids.bot_id in task_ids
 
     def test_four_gateways_added(self, applied):
         bpmn_out, ids = applied
         tree = ET.parse(str(bpmn_out))
-        gw_ids = {gw.get("id") for gw in tree.findall(f".//{{{_BPMN_NS}}}exclusiveGateway")}
+        gw_ids = {gw.get("id") for gw in tree.findall(f".//{{{BPMN_NS}}}exclusiveGateway")}
         assert {ids.automation_gate, ids.bot_result_gate,
                 ids.fallback_merge, ids.final_join_gate} <= gw_ids
 
     def test_seven_internal_flows_added(self, applied):
         bpmn_out, ids = applied
         tree = ET.parse(str(bpmn_out))
-        flow_ids = {f.get("id") for f in tree.findall(f".//{{{_BPMN_NS}}}sequenceFlow")}
+        flow_ids = {f.get("id") for f in tree.findall(f".//{{{BPMN_NS}}}sequenceFlow")}
         internal = {ids.automation_branch, ids.manual_branch, ids.bot_output,
                     ids.bot_success, ids.bot_failure, ids.to_human, ids.exit_flow}
         assert internal <= flow_ids
@@ -167,14 +53,14 @@ class TestApplyPattern:
     def test_incoming_flow_redirected_to_automation_gate(self, applied):
         bpmn_out, ids = applied
         tree = ET.parse(str(bpmn_out))
-        flow = next(f for f in tree.findall(f".//{{{_BPMN_NS}}}sequenceFlow")
+        flow = next(f for f in tree.findall(f".//{{{BPMN_NS}}}sequenceFlow")
                     if f.get("id") == "flow_in")
         assert flow.get("targetRef") == ids.automation_gate
 
     def test_outgoing_flow_redirected_to_final_join(self, applied):
         bpmn_out, ids = applied
         tree = ET.parse(str(bpmn_out))
-        flow = next(f for f in tree.findall(f".//{{{_BPMN_NS}}}sequenceFlow")
+        flow = next(f for f in tree.findall(f".//{{{BPMN_NS}}}sequenceFlow")
                     if f.get("id") == "flow_out")
         assert flow.get("targetRef") == ids.final_join_gate
 

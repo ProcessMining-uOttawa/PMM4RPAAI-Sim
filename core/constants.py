@@ -38,6 +38,9 @@ KEY_RESOURCE_PROFILES          = "resource_profiles"
 KEY_TASK_RESOURCE_DISTRIBUTION = "task_resource_distribution"
 KEY_GATEWAY_BRANCHING_PROBS    = "gateway_branching_probabilities"
 
+# ── BPMN XML namespaces ───────────────────────────────────────────────────────
+BPMN_NS = "http://www.omg.org/spec/BPMN/20100524/MODEL"
+
 # ── XOR split automation: Taguchi parameter defaults ──────────────────────────
 DEFAULT_MANUAL_DURATION_S = 1800.0        # fallback when Simod mean is unavailable
 PCT_AUTO_LEVELS           = [25, 50, 75]  # XOR1 branch % to bot
