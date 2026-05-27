@@ -3,6 +3,8 @@ from __future__ import annotations
 import os, subprocess
 from pathlib import Path
 
+from .constants import BPMN_NS
+
 
 def _tail_lines(path: Path, n: int) -> str:
     try:
@@ -23,8 +25,6 @@ def _run_logged(cmd: list, proc_log: Path | None, **kwargs) -> None:
     if result.returncode != 0:
         raise subprocess.CalledProcessError(
             result.returncode, cmd, output=_tail_lines(proc_log, 20))
-
-from .constants import BPMN_NS
 
 SIMOD_EXE    = Path("tools/simod-venv/Scripts/simod.exe")
 PROSIMOS_EXE = Path("tools/prosimos-venv/Scripts/prosimos.exe")

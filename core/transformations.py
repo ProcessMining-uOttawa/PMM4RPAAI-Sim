@@ -156,8 +156,7 @@ def _xor_bypass_layout(root: ET.Element,
     _V_GAP     = 150   # vertical distance between lane centres
     _Y_MARGIN  = 80    # clear space below existing diagram
 
-    _, _, _, y_max = diagram_extents(root)
-    x_min, _, _, _ = diagram_extents(root)
+    x_min, _, _, y_max = diagram_extents(root)
 
     cy_top = int(y_max) + _Y_MARGIN + GW_H // 2
     cy_bot = cy_top + _V_GAP

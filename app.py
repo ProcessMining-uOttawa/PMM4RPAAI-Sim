@@ -168,8 +168,8 @@ if not ss.activities:
 col1, col2 = st.columns(2)
 
 # Load Prosimos JSON once; shared between col1 (resource detection) and col2 (duration prepopulation).
-_prosimos_data: dict | None = None
-_target_el: ET.Element | None = None
+prosimos_data: dict | None = None
+target_el: ET.Element | None = None
 
 with col1:
     with st.container(border=True):
@@ -183,15 +183,15 @@ with col1:
         if ss.bpmn_path and ss.json_path and not demo_mode:
             try:
                 _tree = ET.parse(str(ss.bpmn_path))
-                _target_el = find_task_by_name(_tree, target)
-                if _target_el is not None:
-                    _prosimos_data = json.loads(Path(ss.json_path).read_text())
-                    _task_id = _target_el.get("id")
-                    _resources = task_resources(_prosimos_data, _task_id)
+                target_el = find_task_by_name(_tree, target)
+                if target_el is not None:
+                    prosimos_data = json.loads(Path(ss.json_path).read_text())
+                    _task_id = target_el.get("id")
+                    _resources = task_resources(prosimos_data, _task_id)
                     if len(_resources) == 1:
                         selected_resource_id = _resources[0]["id"]
                     elif len(_resources) > 1:
-                        _shared = shared_resource_ids(_prosimos_data)
+                        _shared = shared_resource_ids(prosimos_data)
                         _selectable = [r for r in _resources if r["id"] not in _shared]
                         _frozen    = [r for r in _resources if r["id"] in _shared]
                         if _selectable:
@@ -216,7 +216,7 @@ with col1:
                                 "All resources are shared across tasks — "
                                 "Human pool size is frozen at its current value."
                             )
-                            frozen_pool_size = resource_pool_size(_prosimos_data, _resources[0]["id"])
+                            frozen_pool_size = resource_pool_size(prosimos_data, _resources[0]["id"])
             except Exception:
                 pass
 
@@ -232,9 +232,9 @@ with col2:
         transformation = REGISTRY[pattern_id]
         # Prepopulate Non-Auto-Time from Simod's discovered duration when available.
         current_dur = None
-        if _target_el is not None and _prosimos_data is not None:
+        if target_el is not None and prosimos_data is not None:
             try:
-                current_dur = task_mean_duration_s(_prosimos_data, _target_el.get("id"))
+                current_dur = task_mean_duration_s(prosimos_data, target_el.get("id"))
             except Exception:
                 pass
         params = transformation.parameters(
@@ -245,7 +245,6 @@ with col2:
         )
         if current_dur is not None:
             st.caption(f"Non-Auto-Time pre-filled from Simod ({current_dur:.0f} s)")
-        edited_levels: dict[str, list] = {}
         hdr = st.columns([3, 1, 1, 1])
         hdr[0].caption("Factor")
         for i, lbl in enumerate(("Low", "Mid", "High")):
@@ -262,7 +261,6 @@ with col2:
                     disabled=True,
                 )
                 row[2].caption("frozen")
-                edited_levels[p.id] = p.levels
             else:
                 new = []
                 for i in range(3):
@@ -271,7 +269,6 @@ with col2:
                         **_level_input_kwargs(p.kind, p.levels[i]),
                         label_visibility="collapsed", key=f"{p.id}_{i}",
                     ))
-                edited_levels[p.id] = new
                 p.levels = new
 
 # --- Design + execution panel ------------------------------------------------

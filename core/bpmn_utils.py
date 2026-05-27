@@ -18,17 +18,6 @@ def find_task_by_name(tree: ET.ElementTree, name: str) -> ET.Element | None:
     return None
 
 
-def find_flows(tree: ET.ElementTree, node_id: str) -> tuple[list, list]:
-    """Return (incoming_flows, outgoing_flows) sequenceFlow elements for node_id."""
-    incoming, outgoing = [], []
-    for fl in tree.findall(f".//{{{_BPMN}}}sequenceFlow"):
-        if fl.get("targetRef") == node_id:
-            incoming.append(fl)
-        if fl.get("sourceRef") == node_id:
-            outgoing.append(fl)
-    return incoming, outgoing
-
-
 def task_resources(prosimos_json: dict, task_id: str) -> list[dict]:
     """Return [{id, name}] for resources assigned to task_id, in assignment order."""
     name_by_id = {

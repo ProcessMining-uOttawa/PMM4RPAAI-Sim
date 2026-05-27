@@ -31,12 +31,16 @@ def fake_discovery():
 
 def fake_simulate(scenario: Scenario, replication: int, n_cases: int) -> DemoResult:
     """Synthetic but monotonic: more automation → faster, cheaper, with noise."""
-    rng      = random.Random(hash((scenario.id, replication)) & 0xffffffff)
-    pct      = next((v for k, v in scenario.values.items() if k.endswith(".pct_auto")),  50)
-    t_auto   = next((v for k, v in scenario.values.items() if k.endswith(".t_auto")),    30)
-    t_man    = next((v for k, v in scenario.values.items() if k.endswith(".t_manual")), 300)
-    num_bots = int(next((v for k, v in scenario.values.items() if k.endswith(".num_bots")), 1))
-    num_man  = int(next((v for k, v in scenario.values.items() if k.endswith(".num_manual_resources")), 1))
+    rng = random.Random(hash((scenario.id, replication)) & 0xffffffff)
+
+    def _v(suffix, default):
+        return next((v for k, v in scenario.values.items() if k.endswith("." + suffix)), default)
+
+    pct      = _v("pct_auto", 50)
+    t_auto   = _v("t_auto",   30)
+    t_man    = _v("t_manual", 300)
+    num_bots = int(_v("num_bots", 1))
+    num_man  = int(_v("num_manual_resources", 1))
     # weighted task time drives cycle; automation cuts cost
     mean_task_s = (pct/100)*t_auto + (1-pct/100)*t_man
     # sqrt scaling approximates diminishing queuing gains from larger resource pools;
