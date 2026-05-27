@@ -33,12 +33,8 @@ F_BOT_SUCCESS_LABEL  = "success"
 F_BOT_FAILURE_LABEL  = "failure"
 
 # ── Prosimos stats CSV sections and columns ───────────────────────────────────
-PROSIMOS_SECTION_TASK_STATS     = "Individual Task Statistics"
-PROSIMOS_SECTION_SCENARIO_STATS = "Overall Scenario Statistics"
-PROSIMOS_COL_TOTAL_COST         = "Total Cost"
-PROSIMOS_COL_KPI                = "KPI"
-PROSIMOS_COL_TRACE_OCCURRENCES  = "Trace Ocurrences"  # Prosimos typo — one 'c'
-PROSIMOS_KPI_CYCLE_TIME         = "cycle_time"
+PROSIMOS_SECTION_TASK_STATS = "Individual Task Statistics"
+PROSIMOS_COL_TOTAL_COST     = "Total Cost"
 
 # ── Prosimos JSON schema: top-level section keys ──────────────────────────────
 KEY_RESOURCE_CALENDARS         = "resource_calendars"

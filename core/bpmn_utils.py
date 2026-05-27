@@ -7,7 +7,10 @@ from .constants import BPMN_NS, KEY_TASK_RESOURCE_DISTRIBUTION, KEY_RESOURCE_PRO
 
 _BPMN = BPMN_NS
 
-_TASK_TAGS = ("task", "userTask", "serviceTask", "manualTask")
+_TASK_TAGS = (
+    "task", "userTask", "serviceTask", "manualTask",
+    "businessRuleTask", "scriptTask", "sendTask", "receiveTask",
+)
 
 
 def find_task_by_name(tree: ET.ElementTree, name: str) -> ET.Element | None:

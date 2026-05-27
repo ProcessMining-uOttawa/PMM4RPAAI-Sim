@@ -112,7 +112,8 @@ def list_activities(bpmn_path: Path) -> list[str]:
     import xml.etree.ElementTree as ET
     tree = ET.parse(str(bpmn_path))
     names = []
-    for tag in ("task", "userTask", "serviceTask", "manualTask"):
+    for tag in ("task", "userTask", "serviceTask", "manualTask",
+                "businessRuleTask", "scriptTask", "sendTask", "receiveTask"):
         for el in tree.findall(f".//{{{BPMN_NS}}}{tag}"):
             n = el.get("name")
             if n:

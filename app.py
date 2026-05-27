@@ -326,8 +326,8 @@ if ss.results is not None:
         if ss.results["cost"].isna().any():
             st.warning(
                 "Cost data is unavailable for one or more runs — Prosimos did not "
-                "produce a stats CSV with an 'Average Cost' column. "
-                "Cost goals are marked unmet and cost is excluded from scenario scores.",
+                "produce a stats CSV with a parseable 'Individual Task Statistics' section. "
+                "Cost goals are marked unmet.",
                 icon="⚠️",
             )
         agg = analysis.aggregate(ss.results)

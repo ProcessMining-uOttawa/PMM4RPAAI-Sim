@@ -50,11 +50,11 @@ class AutomationScenario:
 
     @property
     def manual_branch_rate(self) -> float:
-        return round(1.0 - self.automation_rate, 10)
+        return 1.0 - self.automation_rate
 
     @property
     def bot_success_rate(self) -> float:
-        return round(1.0 - self.bot_failure_rate, 10)
+        return 1.0 - self.bot_failure_rate
 
     @classmethod
     def from_taguchi_values(cls, values: dict,

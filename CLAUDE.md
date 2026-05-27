@@ -116,8 +116,12 @@ For a target activity *Act*, the pattern produces this fragment:
 - **JSON**: keeps the original task's `task_resource_distribution` entry but
   replaces its duration with a small-jitter uniform around `t_manual`. Clones
   the resources list into a second entry for the new `Auto` task with
-  uniform around `t_auto`. Appends two entries to
-  `gateway_branching_probabilities` for XOR1 and XOR2.
+  uniform around `t_auto`. Appends **four** entries to
+  `gateway_branching_probabilities`: XOR1 (split) and XOR2 (split) carry
+  scenario-specific probabilities; XOR3 and XOR4 (merges) always carry
+  `value: 1.0`. **All four are required** — Prosimos validates that every
+  gateway has an explicit probability entry and will reject the params JSON
+  if any are missing, even for single-path merges.
 
 **Known limitation:** only tasks with exactly one incoming + one outgoing
 sequenceFlow are supported. Tasks fed directly by gateways need a more
@@ -239,6 +243,13 @@ Known bugs / reliability gaps:
   **complete**, so the output log should never contain truncated cases. If that
   assumption ever breaks, incomplete cases would have artificially short cycle times
   and pull the median down silently.
+- **`signal_to_noise` drops zero costs** (`core/analysis.py`): the filter `v > 0`
+  in `signal_to_noise` excludes zero-cost values. For fully-automated scenarios
+  where `BOT_COST_PER_HOUR = "0"`, every replication has `cost = 0.0`, so `vals`
+  is empty and the function returns `NaN` — silently voiding S/N analysis for the
+  most-automated scenarios. The log formula requires positive inputs, so a floor
+  (e.g. `max(v, 1e-9)`) or a special-case for zero is needed. Deferred pending
+  decision on bot cost model (see "Bot cost hardcoded to zero" below).
 - **Bot task uses uniform distribution instead of fix** (`core/transformations.py`):
   `apply_params()` calls `_set_uniform()` for both the manual and bot task entries,
   giving the bot a ±5% jitter around `t_auto`. A bot (deterministic automation script)

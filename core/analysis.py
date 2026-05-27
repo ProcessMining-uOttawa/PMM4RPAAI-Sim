@@ -4,11 +4,10 @@ import csv, math
 from pathlib import Path
 import pandas as pd
 
-from .constants import (
-    PROSIMOS_SECTION_TASK_STATS, PROSIMOS_SECTION_SCENARIO_STATS,
-    PROSIMOS_COL_TOTAL_COST, PROSIMOS_COL_KPI,
-    PROSIMOS_COL_TRACE_OCCURRENCES, PROSIMOS_KPI_CYCLE_TIME,
-)
+from .constants import PROSIMOS_SECTION_TASK_STATS, PROSIMOS_COL_TOTAL_COST
+
+
+_NON_FACTOR_COLS = frozenset({"scenario_id", "replication", "cycle_h", "cost"})
 
 
 def _parse_section(rows: list, header: str) -> tuple[list[str], list[list[str]]]:
@@ -32,8 +31,9 @@ def per_log_metrics(log_csv: Path, stats_csv: Path | None = None) -> dict:
     """Summary metrics for one Prosimos replication.
 
     cycle_h: median per-case cycle time in hours (last end − first start).
-    cost: average cost per case — sum of Total Cost across all tasks divided by
-          case count from Overall Scenario Statistics. None if stats unavailable.
+    cost: average cost per case — sum of Total Cost across all tasks from
+          Individual Task Statistics, divided by case count from the event log.
+          None if stats unavailable or unparseable.
     """
     df = pd.read_csv(log_csv, parse_dates=["start_time", "end_time"])
     per_case = df.groupby("case_id").agg(
@@ -46,19 +46,12 @@ def per_log_metrics(log_csv: Path, stats_csv: Path | None = None) -> dict:
             rows = list(csv.reader(f))
         try:
             task_hdr, task_data = _parse_section(rows, PROSIMOS_SECTION_TASK_STATS)
-            scen_hdr, scen_data = _parse_section(rows, PROSIMOS_SECTION_SCENARIO_STATS)
-            if task_hdr and task_data and scen_hdr and scen_data:
+            if task_hdr and task_data:
                 total_cost = sum(
                     float(r[task_hdr.index(PROSIMOS_COL_TOTAL_COST)]) for r in task_data
                 )
-                kpi_col = scen_hdr.index(PROSIMOS_COL_KPI)
-                occ_col = scen_hdr.index(PROSIMOS_COL_TRACE_OCCURRENCES)
-                case_count = next(
-                    int(float(r[occ_col])) for r in scen_data
-                    if r[kpi_col].strip() == PROSIMOS_KPI_CYCLE_TIME
-                )
-                cost = total_cost / case_count
-        except (ValueError, IndexError, StopIteration):
+                cost = total_cost / len(per_case)
+        except (ValueError, IndexError):
             pass
     return {"cycle_h": float(cycle_h.median()), "cost": cost}
 
@@ -66,7 +59,7 @@ def per_log_metrics(log_csv: Path, stats_csv: Path | None = None) -> dict:
 def aggregate(results: pd.DataFrame) -> pd.DataFrame:
     """results: scenario_id, replication, cycle_h, cost (+ factor cols)."""
     factor_cols = [c for c in results.columns
-                   if c not in {"scenario_id", "replication", "cycle_h", "cost"}]
+                   if c not in _NON_FACTOR_COLS]
     agg = (results.groupby(["scenario_id", *factor_cols], as_index=False)
                   .agg(cycle_h_mean=("cycle_h", "mean"),
                        cycle_h_std=("cycle_h", "std"),
@@ -90,7 +83,7 @@ def main_effects(results: pd.DataFrame, metric: str,
                  kind: str = "smaller_is_better") -> pd.DataFrame:
     """For each factor × level: mean metric and S/N ratio."""
     factor_cols = [c for c in results.columns
-                   if c not in {"scenario_id", "replication", "cycle_h", "cost"}]
+                   if c not in _NON_FACTOR_COLS]
     rows = []
     for f in factor_cols:
         for level, sub in results.groupby(f):

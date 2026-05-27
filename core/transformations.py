@@ -134,6 +134,7 @@ def _set_resource_amount(data: dict, resource_id: str, amount: int) -> None:
         for resource in profile.get("resource_list", []):
             if resource.get("id") == resource_id:
                 resource["amount"] = amount
+                return
 
 
 # ── Pattern layout ────────────────────────────────────────────────────────────
@@ -359,7 +360,7 @@ class XORSplitAutomation(Transformation):
         ]})
 
         _set_resource_amount(data, ids.bot_resource_id, scenario.num_bots)
-        if manual_entry and manual_entry.get("resources"):
+        if manual_entry.get("resources"):
             if scenario.selected_resource_id is not None:
                 manual_resource_id = scenario.selected_resource_id
             else:
