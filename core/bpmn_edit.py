@@ -46,6 +46,7 @@ def get_shape_bounds(root: ET.Element, element_id: str) -> dict | None:
             b = shape.find(f"{{{_DC}}}Bounds")
             if b is not None:
                 return {k: float(b.get(k, 0)) for k in ("x", "y", "width", "height")}
+            return None
     return None
 
 
