@@ -45,7 +45,7 @@ def aggregate(results: pd.DataFrame) -> pd.DataFrame:
 
 
 def signal_to_noise(values, kind="smaller_is_better") -> float:
-    vals = [v for v in values if v > 0]
+    vals = [v for v in values if v is not None and v > 0]
     if not vals:
         return float("nan")
     if kind == "smaller_is_better":
