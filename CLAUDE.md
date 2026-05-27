@@ -218,9 +218,12 @@ Then in the browser: toggle **Demo mode** off, upload
 
 Known bugs / reliability gaps:
 
-- **Silent `cost = 0.0`** (`core/analysis.py`): when Prosimos stats are missing
-  or unparseable, cost silently returns 0. Should surface a warning to the user.
-  Deferred — needs more context from the PhD client on expected Prosimos output.
+- **~~Silent `cost = 0.0`~~** *(fixed)*: original code looked for section
+  `"scenario statistics"` and column `"Average Cost"` — both wrong for the actual
+  Prosimos output format (`"Overall Scenario Statistics"` / `"Individual Task
+  Statistics"` with `"Total Cost"`). Cost is now computed as sum of `Total Cost`
+  across all tasks divided by case count. `per_log_metrics()` returns `None` when
+  stats are unavailable; `rank()` handles NaN; UI shows a warning banner.
 - **Bot cost is hardcoded to zero** (`core/constants.py`): `BOT_COST_PER_HOUR = "0"`
   means the bot resource never contributes to the cost metric — only human labour
   does. In practice, automation has real costs (licensing, infrastructure, etc.).
@@ -230,6 +233,12 @@ Known bugs / reliability gaps:
   returns `[]` if the target task has no entry in `task_resource_distribution`.
   Technically impossible when using Simod-generated models, but not explicitly
   guarded — `apply_params()` silently skips the pool resize in that case.
+- **Incomplete cases in cycle time** (`core/analysis.py`): `per_log_metrics()` computes
+  cycle time as `max(end_time) − min(start_time)` over all cases with no filter for
+  completion. Currently safe because Prosimos runs until `--total_cases N` cases
+  **complete**, so the output log should never contain truncated cases. If that
+  assumption ever breaks, incomplete cases would have artificially short cycle times
+  and pull the median down silently.
 - **Bot task uses uniform distribution instead of fix** (`core/transformations.py`):
   `apply_params()` calls `_set_uniform()` for both the manual and bot task entries,
   giving the bot a ±5% jitter around `t_auto`. A bot (deterministic automation script)

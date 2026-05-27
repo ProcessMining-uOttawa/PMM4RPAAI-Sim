@@ -4,12 +4,36 @@ import csv, math
 from pathlib import Path
 import pandas as pd
 
+from .constants import (
+    PROSIMOS_SECTION_TASK_STATS, PROSIMOS_SECTION_SCENARIO_STATS,
+    PROSIMOS_COL_TOTAL_COST, PROSIMOS_COL_KPI,
+    PROSIMOS_COL_TRACE_OCCURRENCES, PROSIMOS_KPI_CYCLE_TIME,
+)
+
+
+def _parse_section(rows: list, header: str) -> tuple[list[str], list[list[str]]]:
+    """Return (col_headers, data_rows) for a named section, or ([], []) if not found.
+    Sections are terminated by a blank/empty row."""
+    for i, r in enumerate(rows):
+        if r and r[0].strip() == header:
+            if i + 1 >= len(rows):
+                return [], []
+            col_hdrs = [c.strip() for c in rows[i + 1]]
+            data = []
+            for row in rows[i + 2:]:
+                if not row or row == ['']:
+                    break
+                data.append(row)
+            return col_hdrs, data
+    return [], []
+
 
 def per_log_metrics(log_csv: Path, stats_csv: Path | None = None) -> dict:
     """Summary metrics for one Prosimos replication.
 
     cycle_h: median per-case cycle time in hours (last end − first start).
-    cost: from Scenario Statistics block of the stats CSV if present, else 0.
+    cost: average cost per case — sum of Total Cost across all tasks divided by
+          case count from Overall Scenario Statistics. None if stats unavailable.
     """
     df = pd.read_csv(log_csv, parse_dates=["start_time", "end_time"])
     per_case = df.groupby("case_id").agg(
@@ -20,15 +44,22 @@ def per_log_metrics(log_csv: Path, stats_csv: Path | None = None) -> dict:
     if stats_csv and Path(stats_csv).exists():
         with open(stats_csv) as f:
             rows = list(csv.reader(f))
-        for i, r in enumerate(rows):
-            if r and r[0].strip().lower() == "scenario statistics":
-                if i+2 < len(rows):
-                    hdr, data = rows[i+1], rows[i+2]
-                    try:
-                        cost = float(data[hdr.index("Average Cost")])
-                    except (ValueError, IndexError):
-                        pass
-                break
+        try:
+            task_hdr, task_data = _parse_section(rows, PROSIMOS_SECTION_TASK_STATS)
+            scen_hdr, scen_data = _parse_section(rows, PROSIMOS_SECTION_SCENARIO_STATS)
+            if task_hdr and task_data and scen_hdr and scen_data:
+                total_cost = sum(
+                    float(r[task_hdr.index(PROSIMOS_COL_TOTAL_COST)]) for r in task_data
+                )
+                kpi_col = scen_hdr.index(PROSIMOS_COL_KPI)
+                occ_col = scen_hdr.index(PROSIMOS_COL_TRACE_OCCURRENCES)
+                case_count = next(
+                    int(float(r[occ_col])) for r in scen_data
+                    if r[kpi_col].strip() == PROSIMOS_KPI_CYCLE_TIME
+                )
+                cost = total_cost / case_count
+        except (ValueError, IndexError, StopIteration):
+            pass
     return {"cycle_h": float(cycle_h.median()), "cost": cost}
 
 
