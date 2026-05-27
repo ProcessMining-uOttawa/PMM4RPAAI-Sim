@@ -16,7 +16,7 @@ def per_log_metrics(log_csv: Path, stats_csv: Path | None = None) -> dict:
         start=("start_time", "min"), end=("end_time", "max"))
     cycle_h = (per_case["end"] - per_case["start"]).dt.total_seconds().div(3600)
 
-    cost = 0.0
+    cost: float | None = None
     if stats_csv and Path(stats_csv).exists():
         with open(stats_csv) as f:
             rows = list(csv.reader(f))
@@ -25,8 +25,7 @@ def per_log_metrics(log_csv: Path, stats_csv: Path | None = None) -> dict:
                 if i+2 < len(rows):
                     hdr, data = rows[i+1], rows[i+2]
                     try:
-                        col = hdr.index("Average Cost")
-                        cost = float(data[col])
+                        cost = float(data[hdr.index("Average Cost")])
                     except (ValueError, IndexError):
                         pass
                 break
@@ -80,8 +79,8 @@ def rank(agg: pd.DataFrame, goals: dict) -> pd.DataFrame:
     score = pd.Series(0.0, index=out.index)
     for col, g in goals.items():
         if "max" in g:
-            met &= out[col] <= g["max"]
-            score += (out[col] / g["max"]).clip(lower=0)
+            met &= out[col].le(g["max"]).fillna(False)
+            score += (out[col] / g["max"]).clip(lower=0).fillna(0)
     out["goals_met"] = met
     out["score"] = score
     return out.sort_values(["goals_met", "score"], ascending=[False, True])

@@ -323,6 +323,13 @@ with st.container(border=True):
 if ss.results is not None:
     with st.container(border=True):
         st.markdown("##### 4 · Ranked scenarios")
+        if ss.results["cost"].isna().any():
+            st.warning(
+                "Cost data is unavailable for one or more runs — Prosimos did not "
+                "produce a stats CSV with an 'Average Cost' column. "
+                "Cost goals are marked unmet and cost is excluded from scenario scores.",
+                icon="⚠️",
+            )
         agg = analysis.aggregate(ss.results)
         ranked = analysis.rank(agg, goals={
             "cycle_h_mean": {"max": goal_cycle},

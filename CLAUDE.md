@@ -221,10 +221,22 @@ Known bugs / reliability gaps:
 - **Silent `cost = 0.0`** (`core/analysis.py`): when Prosimos stats are missing
   or unparseable, cost silently returns 0. Should surface a warning to the user.
   Deferred — needs more context from the PhD client on expected Prosimos output.
+- **Bot cost is hardcoded to zero** (`core/constants.py`): `BOT_COST_PER_HOUR = "0"`
+  means the bot resource never contributes to the cost metric — only human labour
+  does. In practice, automation has real costs (licensing, infrastructure, etc.).
+  Needs a concrete cost model from the PhD client before implementing; likely
+  surfaces as a new Taguchi factor or a fixed input in the UI.
 - **Tasks with no resources assigned** (`core/bpmn_utils.py`): `task_resources()`
   returns `[]` if the target task has no entry in `task_resource_distribution`.
   Technically impossible when using Simod-generated models, but not explicitly
   guarded — `apply_params()` silently skips the pool resize in that case.
+- **Bot task uses uniform distribution instead of fix** (`core/transformations.py`):
+  `apply_params()` calls `_set_uniform()` for both the manual and bot task entries,
+  giving the bot a ±5% jitter around `t_auto`. A bot (deterministic automation script)
+  should use `"fix"` with a single value. Note: `BOT_DISTRIBUTION_NAME = "fix"` in
+  `constants.py` was the original intent but is dead — `build_base_json` sets it as a
+  placeholder and `apply_params` immediately overwrites it. Fix: add a separate
+  `_set_fixed(entry, mean_s)` helper and use it for the bot entry in `apply_params()`.
 
 Test gaps:
 
