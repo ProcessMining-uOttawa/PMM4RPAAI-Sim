@@ -1,6 +1,8 @@
 """Streamlit dashboard — Mockup B layout."""
 from __future__ import annotations
+import json
 import time
+import xml.etree.ElementTree as ET
 import pandas as pd
 import streamlit as st
 
@@ -8,6 +10,10 @@ from pathlib import Path
 from core.transformations import REGISTRY
 from core.experiment import build_scenarios
 from core import analysis, demo, orchestrator, preflight, runner, store
+from core.bpmn_utils import (
+    find_task_by_name, task_mean_duration_s,
+    task_resources, shared_resource_ids, resource_pool_size,
+)
 
 st.set_page_config(page_title="Automation What-If Simulator",
                    page_icon="⚙", layout="wide")
@@ -161,10 +167,59 @@ if not ss.activities:
 # --- main: 2x2 dashboard -----------------------------------------------------
 col1, col2 = st.columns(2)
 
+# Load Prosimos JSON once; shared between col1 (resource detection) and col2 (duration prepopulation).
+_prosimos_data: dict | None = None
+_target_el: ET.Element | None = None
+
 with col1:
     with st.container(border=True):
         st.markdown("##### 1 · Activity & pattern")
         target = st.selectbox("Target activity", ss.activities, index=1)
+
+        # Resource selector — only shown in non-demo mode when task has multiple resources.
+        selected_resource_id: str | None = None
+        frozen_pool_size: int | None = None
+
+        if ss.bpmn_path and ss.json_path and not demo_mode:
+            try:
+                _tree = ET.parse(str(ss.bpmn_path))
+                _target_el = find_task_by_name(_tree, target)
+                if _target_el is not None:
+                    _prosimos_data = json.loads(Path(ss.json_path).read_text())
+                    _task_id = _target_el.get("id")
+                    _resources = task_resources(_prosimos_data, _task_id)
+                    if len(_resources) == 1:
+                        selected_resource_id = _resources[0]["id"]
+                    elif len(_resources) > 1:
+                        _shared = shared_resource_ids(_prosimos_data)
+                        _selectable = [r for r in _resources if r["id"] not in _shared]
+                        _frozen    = [r for r in _resources if r["id"] in _shared]
+                        if _selectable:
+                            if _frozen:
+                                st.caption(
+                                    f"Shared (frozen): {', '.join(r['name'] for r in _frozen)}"
+                                )
+                            _sel_name = st.selectbox(
+                                "Manual resource", [r["name"] for r in _selectable]
+                            )
+                            selected_resource_id = next(
+                                r["id"] for r in _selectable if r["name"] == _sel_name
+                            )
+                        else:
+                            # All resources are shared — freeze the pool factor.
+                            st.selectbox(
+                                "Manual resource",
+                                [r["name"] for r in _resources],
+                                disabled=True,
+                            )
+                            st.warning(
+                                "All resources are shared across tasks — "
+                                "Human pool size is frozen at its current value."
+                            )
+                            frozen_pool_size = resource_pool_size(_prosimos_data, _resources[0]["id"])
+            except Exception:
+                pass
+
         pattern_id = st.selectbox(
             "Substitution pattern",
             list(REGISTRY.keys()),
@@ -177,19 +232,17 @@ with col2:
         transformation = REGISTRY[pattern_id]
         # Prepopulate Non-Auto-Time from Simod's discovered duration when available.
         current_dur = None
-        if ss.bpmn_path and ss.json_path and not demo_mode:
+        if _target_el is not None and _prosimos_data is not None:
             try:
-                import xml.etree.ElementTree as _ET
-                from core.bpmn_utils import find_task_by_name, task_mean_duration_s
-                _tree = _ET.parse(str(ss.bpmn_path))
-                _t = find_task_by_name(_tree, target)
-                if _t is not None:
-                    import json as _json
-                    _data = _json.loads(Path(ss.json_path).read_text())
-                    current_dur = task_mean_duration_s(_data, _t.get("id"))
+                current_dur = task_mean_duration_s(_prosimos_data, _target_el.get("id"))
             except Exception:
                 pass
-        params = transformation.parameters(target, current_duration_s=current_dur)
+        params = transformation.parameters(
+            target,
+            current_duration_s=current_dur,
+            selected_resource_id=selected_resource_id,
+            frozen_pool_size=frozen_pool_size,
+        )
         if current_dur is not None:
             st.caption(f"Non-Auto-Time pre-filled from Simod ({current_dur:.0f} s)")
         edited_levels: dict[str, list] = {}
@@ -200,15 +253,26 @@ with col2:
         for p in params:
             row = st.columns([3, 1, 1, 1])
             row[0].markdown(f"**{p.label}**")
-            new = []
-            for i in range(3):
-                new.append(row[i+1].number_input(
-                    f"{p.id}_{i}",
-                    **_level_input_kwargs(p.kind, p.levels[i]),
-                    label_visibility="collapsed", key=f"{p.id}_{i}",
-                ))
-            edited_levels[p.id] = new
-            p.levels = new
+            if p.frozen:
+                row[1].number_input(
+                    f"{p.id}_frozen",
+                    **_level_input_kwargs(p.kind, p.levels[0]),
+                    label_visibility="collapsed",
+                    key=f"{p.id}_frozen",
+                    disabled=True,
+                )
+                row[2].caption("frozen")
+                edited_levels[p.id] = p.levels
+            else:
+                new = []
+                for i in range(3):
+                    new.append(row[i+1].number_input(
+                        f"{p.id}_{i}",
+                        **_level_input_kwargs(p.kind, p.levels[i]),
+                        label_visibility="collapsed", key=f"{p.id}_{i}",
+                    ))
+                edited_levels[p.id] = new
+                p.levels = new
 
 # --- Design + execution panel ------------------------------------------------
 array_name, scenarios = build_scenarios(params, transformation.id, target)
@@ -250,6 +314,7 @@ with st.container(border=True):
             exp_dir=exp_dir,
             demo_mode=demo_mode,
             on_progress=_on_progress,
+            selected_resource_id=selected_resource_id,
         )
         ss.results               = result.results
         ss.experiment_bpmn_path  = result.experiment_bpmn_path

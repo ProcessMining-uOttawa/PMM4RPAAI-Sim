@@ -35,10 +35,21 @@ def build_scenarios(
     transformation_id: str,
     target_activity: str,
 ) -> tuple[str, list[Scenario]]:
-    name, array, max_cols = pick_array(len(parameters))
+    active = [p for p in parameters if not p.frozen]
+    frozen = [p for p in parameters if p.frozen]
+
+    if not active:
+        vals = {p.id: p.levels[0] for p in frozen}
+        return "L1", [Scenario(id="S01", values=vals,
+                               transformation_id=transformation_id,
+                               target_activity=target_activity)]
+
+    name, array, _ = pick_array(len(active))
     scenarios = []
     for i, row in enumerate(array):
-        vals = {p.id: p.levels[row[j]] for j, p in enumerate(parameters)}
+        vals = {p.id: p.levels[row[j]] for j, p in enumerate(active)}
+        for p in frozen:
+            vals[p.id] = p.levels[0]
         scenarios.append(Scenario(
             id=f"S{i+1:02d}",
             values=vals,

@@ -29,6 +29,7 @@ def run_experiment(
     exp_dir: Path,
     demo_mode: bool,
     on_progress: Callable[[int, int, str, int], None] | None = None,
+    selected_resource_id: str | None = None,
 ) -> ExperimentResult:
     """Run all scenario replications and return aggregated results.
 
@@ -57,7 +58,8 @@ def run_experiment(
                 if rep == 0:
                     s_json = transformation.apply_params(
                         bpmn_tr.base_json, bpmn_tr.ids,
-                        AutomationScenario.from_taguchi_values(s.values),
+                        AutomationScenario.from_taguchi_values(
+                            s.values, selected_resource_id=selected_resource_id),
                         store.scenario_dir(exp_dir, s.id) / "params.json",
                     )
                     scenario_json_paths[s.id] = s_json

@@ -11,6 +11,7 @@ class Parameter:
     label: str
     levels: list[Any]                          # exactly 3 values for L9/L18/L27
     kind: Literal["percentage", "duration_s", "cost", "categorical"] = "percentage"
+    frozen: bool = False                       # if True, excluded from OA; levels[0] used in all scenarios
 
 
 @dataclass
@@ -29,12 +30,13 @@ class AutomationScenario:
     Primary fields are set directly. Complements are computed properties so
     the caller never has to manage them explicitly.
     """
-    automation_rate:       float  # [0, 1] fraction of cases routed to the bot
-    bot_failure_rate:      float  # [0, 1] fraction of bot attempts that fail
-    bot_execution_time:    float  # mean bot task duration (seconds)
-    manual_execution_time: float  # mean human task duration (seconds)
-    num_bots:              int    # bot resource pool size
-    num_manual_resources:  int    # human resource pool size
+    automation_rate:       float       # [0, 1] fraction of cases routed to the bot
+    bot_failure_rate:      float       # [0, 1] fraction of bot attempts that fail
+    bot_execution_time:    float       # mean bot task duration (seconds)
+    manual_execution_time: float       # mean human task duration (seconds)
+    num_bots:              int         # bot resource pool size
+    num_manual_resources:  int         # human resource pool size
+    selected_resource_id:  str | None = None  # resource to resize; None = fallback to resources[0]
 
     def __post_init__(self) -> None:
         for name, val in (("automation_rate",  self.automation_rate),
@@ -55,7 +57,8 @@ class AutomationScenario:
         return round(1.0 - self.bot_failure_rate, 10)
 
     @classmethod
-    def from_taguchi_values(cls, values: dict) -> "AutomationScenario":
+    def from_taguchi_values(cls, values: dict,
+                            selected_resource_id: str | None = None) -> "AutomationScenario":
         """Bridge: construct from a Taguchi-generated values dict."""
         def _v(suffix: str, default: float) -> float:
             for k, v in values.items():
@@ -70,4 +73,5 @@ class AutomationScenario:
             manual_execution_time=_v("t_manual", 1800.0),
             num_bots=int(_v("num_bots", 1.0)),
             num_manual_resources=int(_v("num_manual_resources", 1.0)),
+            selected_resource_id=selected_resource_id,
         )

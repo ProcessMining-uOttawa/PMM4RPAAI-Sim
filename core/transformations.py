@@ -1,6 +1,6 @@
 """Pluggable BPMN+JSON mutations — pattern definitions and their contracts."""
 from __future__ import annotations
-import copy, json
+import copy, json, warnings
 import xml.etree.ElementTree as ET
 from abc import ABC, abstractmethod
 from dataclasses import dataclass
@@ -74,8 +74,12 @@ class Transformation(ABC):
 
     @abstractmethod
     def parameters(self, target_activity: str,
-                   current_duration_s: float | None = None) -> list[Parameter]:
-        """Declare factors. `current_duration_s` (Simod mean) prepopulates levels."""
+                   current_duration_s: float | None = None,
+                   selected_resource_id: str | None = None,
+                   frozen_pool_size: int | None = None) -> list[Parameter]:
+        """Declare factors. `current_duration_s` prepopulates duration levels.
+        `selected_resource_id` identifies which resource pool to vary.
+        `frozen_pool_size` freezes the manual pool factor at that value when set."""
 
     def prepare_experiment(self, bpmn_in: Path, json_in: Path, target_activity: str,
                            out_dir: Path) -> BpmnTransformResult:
@@ -186,9 +190,13 @@ class XORSplitAutomation(Transformation):
 
     # --- parameters ----------------------------------------------------------
     def parameters(self, target_activity: str,
-                   current_duration_s: float | None = None) -> list[Parameter]:
+                   current_duration_s: float | None = None,
+                   selected_resource_id: str | None = None,
+                   frozen_pool_size: int | None = None) -> list[Parameter]:
         t = float(current_duration_s) if current_duration_s else DEFAULT_MANUAL_DURATION_S
         a = target_activity
+        pool_frozen = frozen_pool_size is not None
+        pool_levels = [frozen_pool_size] * 3 if pool_frozen else list(NUM_MANUAL_LEVELS)
         return [
             Parameter(f"{a}.pct_auto", f"{a}: % automated (Auto)",
                       levels=list(PCT_AUTO_LEVELS), kind="percentage"),
@@ -203,7 +211,7 @@ class XORSplitAutomation(Transformation):
             Parameter(f"{a}.num_bots", "Bot pool size",
                       levels=list(NUM_BOTS_LEVELS), kind="categorical"),
             Parameter(f"{a}.num_manual_resources", "Human pool size",
-                      levels=list(NUM_MANUAL_LEVELS), kind="categorical"),
+                      levels=pool_levels, kind="categorical", frozen=pool_frozen),
         ]
 
     # --- apply_pattern -------------------------------------------------------
@@ -353,8 +361,17 @@ class XORSplitAutomation(Transformation):
 
         _set_resource_amount(data, ids.bot_resource_id, scenario.num_bots)
         if manual_entry and manual_entry.get("resources"):
-            manual_resource_id = manual_entry["resources"][0].get("resource_id")
-            _set_resource_amount(data, manual_resource_id, scenario.num_manual_resources)
+            if scenario.selected_resource_id is not None:
+                manual_resource_id = scenario.selected_resource_id
+            else:
+                manual_resource_id = manual_entry["resources"][0].get("resource_id")
+                if len(manual_entry["resources"]) > 1:
+                    warnings.warn(
+                        f"Task {ids.task_id} has {len(manual_entry['resources'])} resources "
+                        f"but selected_resource_id is None; falling back to {manual_resource_id}."
+                    )
+            if manual_resource_id:
+                _set_resource_amount(data, manual_resource_id, scenario.num_manual_resources)
 
         json_out.parent.mkdir(parents=True, exist_ok=True)
         json_out.write_text(json.dumps(data, indent=2))

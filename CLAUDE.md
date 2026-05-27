@@ -124,6 +124,17 @@ sequenceFlow are supported. Tasks fed directly by gateways need a more
 careful wiring strategy — `apply()` raises `NotImplementedError` so this
 fails loudly rather than producing a broken model.
 
+**Multi-resource design decision:** a target activity may have multiple resources
+assigned, but they are always of the same type (all human OR all bot — never mixed).
+Rather than scaling all resources together, the UI lets the user pick which single
+resource's pool to vary via the `num_manual_resources` factor. Shared resources
+(assigned to more than one task) are shown but disabled in the selector — changing
+their pool size would affect other tasks and is considered out of scope. If all
+resources on the task are shared, `num_manual_resources` is frozen at its current
+Prosimos value and excluded from the Taguchi OA. The selected resource ID is carried
+through `AutomationScenario.selected_resource_id` and used in `apply_params()`;
+`None` falls back to `resources[0]` with a warning if multiple resources exist.
+
 ## 5. Hard-won setup caveats (Windows)
 
 Captured from the bootstrap session — flag these in any new install guide.
@@ -210,13 +221,10 @@ Known bugs / reliability gaps:
 - **Silent `cost = 0.0`** (`core/analysis.py`): when Prosimos stats are missing
   or unparseable, cost silently returns 0. Should surface a warning to the user.
   Deferred — needs more context from the PhD client on expected Prosimos output.
-- **Multi-resource tasks not handled** (`core/transformations.py:356`):
-  `apply_params()` reads only `resources[0]` when propagating `num_manual_resources`
-  to the resource pool. If the target activity has multiple resource types assigned
-  (e.g. both a human role and an existing bot), only the first is resized and the
-  rest are silently ignored. The right behaviour for this case is unresolved —
-  needs a decision on which resource(s) the `num_manual_resources` Taguchi factor
-  should control.
+- **Tasks with no resources assigned** (`core/bpmn_utils.py`): `task_resources()`
+  returns `[]` if the target task has no entry in `task_resource_distribution`.
+  Technically impossible when using Simod-generated models, but not explicitly
+  guarded — `apply_params()` silently skips the pool resize in that case.
 
 Test gaps:
 

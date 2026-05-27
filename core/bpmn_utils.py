@@ -1,8 +1,9 @@
 """Read-only helpers for BPMN files and Prosimos JSON."""
 from __future__ import annotations
+from collections import Counter
 import xml.etree.ElementTree as ET
 
-from .constants import BPMN_NS, KEY_TASK_RESOURCE_DISTRIBUTION
+from .constants import BPMN_NS, KEY_TASK_RESOURCE_DISTRIBUTION, KEY_RESOURCE_PROFILES
 
 _BPMN = BPMN_NS
 
@@ -26,6 +27,41 @@ def find_flows(tree: ET.ElementTree, node_id: str) -> tuple[list, list]:
         if fl.get("sourceRef") == node_id:
             outgoing.append(fl)
     return incoming, outgoing
+
+
+def task_resources(prosimos_json: dict, task_id: str) -> list[dict]:
+    """Return [{id, name}] for resources assigned to task_id, in assignment order."""
+    name_by_id = {
+        r["id"]: r.get("name", r["id"])
+        for profile in prosimos_json.get(KEY_RESOURCE_PROFILES, [])
+        for r in profile.get("resource_list", [])
+    }
+    for entry in prosimos_json.get(KEY_TASK_RESOURCE_DISTRIBUTION, []):
+        if entry.get("task_id") == task_id:
+            return [
+                {"id": r["resource_id"], "name": name_by_id.get(r["resource_id"], r["resource_id"])}
+                for r in entry.get("resources", [])
+            ]
+    return []
+
+
+def shared_resource_ids(prosimos_json: dict) -> set[str]:
+    """Return resource IDs that appear in more than one task's distribution entry."""
+    counts: Counter = Counter(
+        r["resource_id"]
+        for entry in prosimos_json.get(KEY_TASK_RESOURCE_DISTRIBUTION, [])
+        for r in entry.get("resources", [])
+    )
+    return {rid for rid, n in counts.items() if n > 1}
+
+
+def resource_pool_size(prosimos_json: dict, resource_id: str) -> int:
+    """Return the current pool size (amount) for a resource, defaulting to 1."""
+    for profile in prosimos_json.get(KEY_RESOURCE_PROFILES, []):
+        for r in profile.get("resource_list", []):
+            if r.get("id") == resource_id:
+                return int(r.get("amount", 1))
+    return 1
 
 
 def task_mean_duration_s(prosimos_json: dict, task_id: str) -> float | None:
