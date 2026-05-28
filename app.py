@@ -343,6 +343,9 @@ if ss.results is not None:
                 "Cost goals are marked unmet.",
                 icon="⚠️",
             )
+        if goal_max <= 0:
+            st.error("Target must be a positive number.")
+            st.stop()
         agg = analysis.aggregate(ss.results)
         ranked = analysis.rank(agg, goal_metric, goal_max)
         show = ranked.copy()
@@ -376,7 +379,7 @@ if ss.results is not None:
                       if Path(p).exists()}
         if json_paths:
             st.markdown("###### Scenario parameters (params.json)")
-            ordered = [sid for sid in ranked["scenario_id"] if sid in json_paths]
+            ordered = sorted(json_paths)
             sel = st.selectbox("Scenario", ordered, key="params_sel",
                                format_func=lambda s: f"Scenario {s}")
             if sel:
