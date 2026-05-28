@@ -137,7 +137,7 @@ their pool size would affect other tasks and is considered out of scope. If all
 resources on the task are shared, `num_manual_resources` is frozen at its current
 Prosimos value and excluded from the Taguchi OA. The selected resource ID is carried
 through `AutomationScenario.selected_resource_id` and used in `apply_params()`;
-`None` falls back to `resources[0]` with a warning if multiple resources exist.
+`None` means skip the pool resize (leave the human resource pool unchanged).
 
 ## 5. Hard-won setup caveats (Windows)
 
@@ -260,10 +260,7 @@ Known bugs / reliability gaps:
 
 Test gaps:
 
-- `AutomationScenario.from_taguchi_values()` has no test for the new
-  `num_bots` / `num_manual_resources` keys.
-- `core/analysis.py` has no test coverage at all.
-- Demo resource scaling has no monotonicity test (larger pool → shorter cycle).
+- `tests/test_analysis.py` needs a review pass for correctness and coverage.
 
 Feature work:
 

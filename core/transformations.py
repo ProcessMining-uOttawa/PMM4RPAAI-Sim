@@ -1,6 +1,6 @@
 """Pluggable BPMN+JSON mutations — pattern definitions and their contracts."""
 from __future__ import annotations
-import copy, json, warnings
+import copy, json
 import xml.etree.ElementTree as ET
 from abc import ABC, abstractmethod
 from dataclasses import dataclass
@@ -360,18 +360,8 @@ class XORSplitAutomation(Transformation):
         ]})
 
         _set_resource_amount(data, ids.bot_resource_id, scenario.num_bots)
-        if manual_entry.get("resources"):
-            if scenario.selected_resource_id is not None:
-                manual_resource_id = scenario.selected_resource_id
-            else:
-                manual_resource_id = manual_entry["resources"][0].get("resource_id")
-                if len(manual_entry["resources"]) > 1:
-                    warnings.warn(
-                        f"Task {ids.task_id} has {len(manual_entry['resources'])} resources "
-                        f"but selected_resource_id is None; falling back to {manual_resource_id}."
-                    )
-            if manual_resource_id:
-                _set_resource_amount(data, manual_resource_id, scenario.num_manual_resources)
+        if manual_entry.get("resources") and scenario.selected_resource_id is not None:
+            _set_resource_amount(data, scenario.selected_resource_id, scenario.num_manual_resources)
 
         json_out.parent.mkdir(parents=True, exist_ok=True)
         json_out.write_text(json.dumps(data, indent=2))

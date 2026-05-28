@@ -212,11 +212,18 @@ with col1:
                                 [r["name"] for r in _resources],
                                 disabled=True,
                             )
-                            st.warning(
-                                "All resources are shared across tasks — "
-                                "Human pool size is frozen at its current value."
-                            )
-                            frozen_pool_size = resource_pool_size(prosimos_data, _resources[0]["id"])
+                            _pool = resource_pool_size(prosimos_data, _resources[0]["id"])
+                            if _pool is None:
+                                st.warning(
+                                    "All resources are shared across tasks — "
+                                    "resource not found in profiles; pool size unknown."
+                                )
+                            else:
+                                st.warning(
+                                    "All resources are shared across tasks — "
+                                    "Human pool size is frozen at its current value."
+                                )
+                                frozen_pool_size = _pool
             except Exception:
                 pass
 
