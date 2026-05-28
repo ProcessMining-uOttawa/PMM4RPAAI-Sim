@@ -151,8 +151,9 @@ with st.sidebar:
 
     st.divider()
     st.subheader("Goals")
-    goal_cycle = st.number_input("Cycle time ≤ (hours)", value=24.0, step=1.0)
-    goal_cost  = st.number_input("Cost ≤ ($/case)",      value=40.0, step=1.0)
+    _GOAL_OPTIONS = {"Cycle time (hours)": "cycle_h_mean", "Cost ($/case)": "cost_mean"}
+    goal_metric = _GOAL_OPTIONS[st.selectbox("Optimise for", list(_GOAL_OPTIONS))]
+    goal_max    = st.number_input("Target ≤", value=24.0, step=1.0)
 
     st.divider()
     st.subheader("Run config")
@@ -338,13 +339,10 @@ if ss.results is not None:
                 icon="⚠️",
             )
         agg = analysis.aggregate(ss.results)
-        ranked = analysis.rank(agg, goals={
-            "cycle_h_mean": {"max": goal_cycle},
-            "cost_mean":    {"max": goal_cost},
-        })
+        ranked = analysis.rank(agg, goal_metric, goal_max)
         show = ranked.copy()
         show.insert(0, "rank", range(1, len(show)+1))
-        show["goals"] = show["goals_met"].map({True: "✓ both", False: "✗"})
+        show["goals"] = show["goals_met"].map({True: "✓ met", False: "✗"})
         st.dataframe(
             show.drop(columns=["goals_met"]),
             use_container_width=True, hide_index=True,

@@ -95,16 +95,9 @@ def main_effects(results: pd.DataFrame, metric: str,
     return pd.DataFrame(rows)
 
 
-def rank(agg: pd.DataFrame, goals: dict) -> pd.DataFrame:
-    """goals: {'cycle_h_mean': {'max': 24}, 'cost_mean': {'max': 40}}.
-    Adds 'goals_met' and 'score' (lower = better, scaled distance to targets)."""
+def rank(agg: pd.DataFrame, goal_metric: str, goal_max: float) -> pd.DataFrame:
+    """Adds 'goals_met' and 'score' (lower = better) ranked by a single goal metric."""
     out = agg.copy()
-    met = pd.Series(True, index=out.index)
-    score = pd.Series(0.0, index=out.index)
-    for col, g in goals.items():
-        if "max" in g:
-            met &= out[col].le(g["max"]).fillna(False)
-            score += (out[col] / g["max"]).clip(lower=0).fillna(0)
-    out["goals_met"] = met
-    out["score"] = score
+    out["goals_met"] = out[goal_metric].le(goal_max).fillna(False)
+    out["score"] = (out[goal_metric] / goal_max).clip(lower=0).fillna(0)
     return out.sort_values(["goals_met", "score"], ascending=[False, True])

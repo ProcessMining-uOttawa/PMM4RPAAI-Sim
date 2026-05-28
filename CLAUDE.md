@@ -262,6 +262,10 @@ Test gaps:
 
 - `tests/test_analysis.py` needs a review pass for correctness and coverage.
 
+Design decisions:
+
+- **Single-goal ranking**: `rank()` optimises for one metric at a time (cycle time or cost), selected via a sidebar dropdown. The original two-goal design used a combined normalised score, but the scales differ enough (hours vs $/case) that cost dominated silently. Tradeoff: you lose the ability to surface scenarios that satisfy *both* goals simultaneously — if that matters, consider adding a secondary "also meets" flag column without letting it affect the score.
+
 Feature work:
 
 - **Cost metric**: Prosimos's stats CSV doesn't always include

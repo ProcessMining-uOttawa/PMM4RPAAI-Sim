@@ -208,25 +208,25 @@ class TestRank:
 
     def test_goals_met_flag(self):
         agg = pd.DataFrame([
-            {"scenario_id": "S01", "cycle_h_mean": 20.0, "cost_mean": 30.0},
-            {"scenario_id": "S02", "cycle_h_mean": 30.0, "cost_mean": 50.0},
+            {"scenario_id": "S01", "cycle_h_mean": 20.0},
+            {"scenario_id": "S02", "cycle_h_mean": 30.0},
         ])
-        ranked = rank(agg, {"cycle_h_mean": {"max": 24}, "cost_mean": {"max": 40}})
+        ranked = rank(agg, "cycle_h_mean", 24.0)
         by_sid = ranked.set_index("scenario_id")
         assert bool(by_sid.loc["S01", "goals_met"]) is True
         assert bool(by_sid.loc["S02", "goals_met"]) is False
 
     def test_goals_met_sorted_first(self):
         agg = pd.DataFrame([
-            {"scenario_id": "S01", "cycle_h_mean": 30.0, "cost_mean": 50.0},
-            {"scenario_id": "S02", "cycle_h_mean": 10.0, "cost_mean": 10.0},
+            {"scenario_id": "S01", "cycle_h_mean": 30.0},
+            {"scenario_id": "S02", "cycle_h_mean": 10.0},
         ])
-        ranked = rank(agg, {"cycle_h_mean": {"max": 24}, "cost_mean": {"max": 40}})
+        ranked = rank(agg, "cycle_h_mean", 24.0)
         assert ranked.iloc[0]["scenario_id"] == "S02"
 
-    def test_nan_cost_treated_as_unmet(self):
+    def test_nan_treated_as_unmet(self):
         agg = pd.DataFrame([{
-            "scenario_id": "S01", "cycle_h_mean": 10.0, "cost_mean": float("nan"),
+            "scenario_id": "S01", "cycle_h_mean": float("nan"),
         }])
-        ranked = rank(agg, {"cycle_h_mean": {"max": 24}, "cost_mean": {"max": 40}})
+        ranked = rank(agg, "cycle_h_mean", 24.0)
         assert bool(ranked.iloc[0]["goals_met"]) is False
