@@ -10,6 +10,7 @@ from pathlib import Path
 from core.transformations import REGISTRY
 from core.experiment import build_scenarios
 from core import analysis, demo, orchestrator, preflight, runner, store
+from core.constants import COL_CYCLE_H, COL_COST, COL_CYCLE_H_MEAN, COL_COST_MEAN
 from core.bpmn_utils import (
     find_task_by_name, task_mean_duration_s,
     task_resources, shared_resource_ids, resource_pool_size,
@@ -31,6 +32,11 @@ def _level_input_kwargs(kind: str, value) -> dict:
     if kind == "cost":
         return {"value": float(value), "min_value": 0.0, "step": 0.01, "format": "%.2f"}
     return {"value": float(value)}
+
+_GOAL_OPTIONS = {
+    "Cycle time (hours)": (COL_CYCLE_H_MEAN, 40.0),
+    "Cost ($/case)":      (COL_COST_MEAN,    25.0),
+}
 
 # --- session state defaults --------------------------------------------------
 ss = st.session_state
@@ -151,8 +157,10 @@ with st.sidebar:
 
     st.divider()
     st.subheader("Goals")
-    goal_cycle = st.number_input("Cycle time ≤ (hours)", value=24.0, step=1.0)
-    goal_cost  = st.number_input("Cost ≤ ($/case)",      value=40.0, step=1.0)
+    goal_label  = st.selectbox("Optimise for", _GOAL_OPTIONS)
+    goal_metric, goal_default = _GOAL_OPTIONS[goal_label]
+    goal_max = st.number_input("Target ≤", value=goal_default, step=1.0,
+                               key=f"goal_max_{goal_metric}")
 
     st.divider()
     st.subheader("Run config")
@@ -337,26 +345,26 @@ if ss.results is not None:
                 "Cost goals are marked unmet.",
                 icon="⚠️",
             )
+        if goal_max <= 0:
+            st.error("Target must be a positive number.")
+            st.stop()
         agg = analysis.aggregate(ss.results)
-        ranked = analysis.rank(agg, goals={
-            "cycle_h_mean": {"max": goal_cycle},
-            "cost_mean":    {"max": goal_cost},
-        })
+        ranked = analysis.rank(agg, goal_metric, goal_max)
         show = ranked.copy()
         show.insert(0, "rank", range(1, len(show)+1))
-        show["goals"] = show["goals_met"].map({True: "✓ both", False: "✗"})
+        show["goals"] = show["goal_met"].map({True: "✓ met", False: "✗"})
         st.dataframe(
-            show.drop(columns=["goals_met"]),
+            show.drop(columns=["goal_met", "score"]),
             use_container_width=True, hide_index=True,
         )
 
         st.markdown("###### Main effects (smaller is better)")
         tab_cycle, tab_cost = st.tabs(["Cycle time", "Cost"])
         with tab_cycle:
-            me = analysis.main_effects(ss.results, "cycle_h")
+            me = analysis.main_effects(ss.results, COL_CYCLE_H)
             st.dataframe(me, use_container_width=True, hide_index=True)
         with tab_cost:
-            me = analysis.main_effects(ss.results, "cost")
+            me = analysis.main_effects(ss.results, COL_COST)
             st.dataframe(me, use_container_width=True, hide_index=True)
 
         bpmn_path = ss.get("experiment_bpmn_path")
@@ -373,7 +381,7 @@ if ss.results is not None:
                       if Path(p).exists()}
         if json_paths:
             st.markdown("###### Scenario parameters (params.json)")
-            ordered = [sid for sid in ranked["scenario_id"] if sid in json_paths]
+            ordered = sorted(json_paths)
             sel = st.selectbox("Scenario", ordered, key="params_sel",
                                format_func=lambda s: f"Scenario {s}")
             if sel:

@@ -66,7 +66,7 @@ Taguchi designer**. Three contracts make that work:
 | File | Responsibility |
 |---|---|
 | [app.py](app.py) | Streamlit dashboard (Mockup B): sidebar = experiment state + run config; 4 panels = Activity & pattern · Factor levels · Execution · Ranked scenarios. |
-| [core/constants.py](core/constants.py) | Shared constants: XML namespaces, Prosimos JSON keys, and pattern defaults (Taguchi level lists). |
+| [core/constants.py](core/constants.py) | Shared constants: XML namespaces, Prosimos JSON keys, pattern defaults (Taguchi level lists), and analysis column names (`COL_CYCLE_H`, `COL_COST`, `COL_CYCLE_H_MEAN`, `COL_COST_MEAN`). |
 | [core/orchestrator.py](core/orchestrator.py) | Run loop: iterates scenarios × replications, calls `runner.simulate`, collects results into a tidy DataFrame. |
 | [core/preflight.py](core/preflight.py) | Detects Python 3.9, Corretto 8 (auto-finds `C:\Program Files\Amazon Corretto\jdk1.8*`), and both venvs. Surfaces per-row fixes in the UI. |
 | [core/runner.py](core/runner.py) | Subprocess wrappers: `discover()` (Simod one-shot, XES auto-converted to CSV first), `simulate()` (Prosimos `start-simulation`), `list_activities()` (ET read of BPMN task names). Stdout/stderr captured to log files via `_run_logged()`. |
@@ -75,7 +75,7 @@ Taguchi designer**. Three contracts make that work:
 | [core/bpmn_utils.py](core/bpmn_utils.py) | Read-only BPMN helpers: task-by-name lookup, sequenceFlow neighbours, `task_mean_duration_s()` for prepopulating Non-Auto-Time. |
 | [core/experiment.py](core/experiment.py) | Hard-coded Taguchi L9 and L18 arrays + `pick_array(n_factors)`. L27 still TODO. |
 | [core/parameters.py](core/parameters.py) | `Parameter`, `Scenario`, and `AutomationScenario` dataclasses. `AutomationScenario.from_taguchi_values()` bridges Taguchi output to simulation inputs. |
-| [core/analysis.py](core/analysis.py) | `per_log_metrics()` (cycle time from event log, cost from stats), `aggregate()`, `main_effects()` (Taguchi S/N), `rank()` (goals-met then weighted score). |
+| [core/analysis.py](core/analysis.py) | `per_log_metrics()` (cycle time from event log, cost from stats), `aggregate()`, `main_effects()` (Taguchi S/N), `rank()` (single-goal: goals-met flag + ratio-to-target score). |
 | [core/store.py](core/store.py) | Experiment directory layout. Each run gets a timestamped folder under `runs/<exp-id>/`; subprocess logs co-located with CSV outputs. |
 | [core/demo.py](core/demo.py) | Synthetic simulator behind the Demo-mode toggle — lets you click through the UI with no Simod/Prosimos installed. Resource pool size affects cycle time via sqrt scaling. |
 | [samples/IssueTracker.xes](samples/IssueTracker.xes) | 100k-event synthetic log used for testing. Borrowed from the pm4py-ucm project. |
@@ -222,12 +222,6 @@ Then in the browser: toggle **Demo mode** off, upload
 
 Known bugs / reliability gaps:
 
-- **~~Silent `cost = 0.0`~~** *(fixed)*: original code looked for section
-  `"scenario statistics"` and column `"Average Cost"` — both wrong for the actual
-  Prosimos output format (`"Overall Scenario Statistics"` / `"Individual Task
-  Statistics"` with `"Total Cost"`). Cost is now computed as sum of `Total Cost`
-  across all tasks divided by case count. `per_log_metrics()` returns `None` when
-  stats are unavailable; `rank()` handles NaN; UI shows a warning banner.
 - **Bot cost is hardcoded to zero** (`core/constants.py`): `BOT_COST_PER_HOUR = "0"`
   means the bot resource never contributes to the cost metric — only human labour
   does. In practice, automation has real costs (licensing, infrastructure, etc.).
@@ -260,14 +254,18 @@ Known bugs / reliability gaps:
 
 Test gaps:
 
-- `tests/test_analysis.py` needs a review pass for correctness and coverage.
+- **`TestRank` missing three paths** (`tests/test_analysis.py`): (1) no test calls `rank()` with `goal_metric="cost_mean"` — a `KeyError` from an `aggregate()` column rename would not be caught; (2) no test inspects the `score` column value — the formula could silently change without a test failure; (3) no test exercises `goal_max=0` or negative values, which is the divide-by-zero path now guarded in `app.py`.
+
+Design decisions:
+
+- **Single-goal ranking**: `rank()` optimises for one metric at a time (cycle time or cost), selected via a sidebar dropdown. The original two-goal design used a combined normalised score, but the scales differ enough (hours vs $/case) that cost dominated silently. Tradeoff: you lose the ability to surface scenarios that satisfy *both* goals simultaneously — if that matters, consider adding a secondary "also meets" flag column without letting it affect the score.
+- **Results panel recomputation**: `analysis.aggregate()` and `analysis.main_effects()` are called unconditionally on every Streamlit rerun while results exist (no caching). At current scale (L18 × ~5 reps = ~90 rows) the groupby is negligible. If the project adds L27 with many replications and the results panel becomes sluggish, cache `agg` in session state keyed by `id(ss.results)`, or apply `@st.cache_data` to the analysis functions.
+- **Dead `.clip(lower=0)` in `rank()`** (`core/analysis.py`): `score = (metric / goal_max).clip(lower=0)` — `clip` only fires for negative metric values, which neither `cycle_h_mean` nor `cost_mean` can produce. Remove it, or replace with an assertion if a signed metric is ever added.
+- **Double DataFrame copy in results panel** (`app.py`): `show = ranked.copy()` followed immediately by `.insert()` and column assignment is redundant — `ranked` is already a fresh object from `sort_values()` and can be mutated directly. Minor memory waste, scales linearly with replication count.
 
 Feature work:
 
-- **Cost metric**: Prosimos's stats CSV doesn't always include
-  `Average Cost`. Compute it ourselves: per-replication, sum
-  `resource_seconds × cost_per_hour` from the params JSON. Hook into
-  `analysis.per_log_metrics()`.
+- **Cost metric from first principles**: cost is currently read from Prosimos's stats CSV (`Individual Task Statistics` / `Total Cost`). A more reliable alternative is to compute it ourselves: per-replication, sum `resource_seconds × cost_per_hour` from the params JSON and the event log. This would also enable bot cost once `BOT_COST_PER_HOUR` is non-zero. Hook into `analysis.per_log_metrics()`.
 - **Plots in Panel 4**: a Plotly main-effects plot (factor × level) above
   the ranking table. The data is already in `analysis.main_effects()`.
 - **More patterns**: `ParallelHybrid` (auto runs alongside manual review),
