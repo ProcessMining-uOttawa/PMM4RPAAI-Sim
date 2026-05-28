@@ -117,6 +117,7 @@ _SCENARIO = AutomationScenario(
     manual_execution_time=1800.0,
     num_bots=2,
     num_manual_resources=3,
+    selected_resource_id="res_human_1",
 )
 
 
