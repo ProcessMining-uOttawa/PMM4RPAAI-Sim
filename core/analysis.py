@@ -4,10 +4,13 @@ import csv, math
 from pathlib import Path
 import pandas as pd
 
-from .constants import PROSIMOS_SECTION_TASK_STATS, PROSIMOS_COL_TOTAL_COST
+from .constants import (
+    PROSIMOS_SECTION_TASK_STATS, PROSIMOS_COL_TOTAL_COST,
+    COL_CYCLE_H, COL_COST, COL_CYCLE_H_MEAN, COL_COST_MEAN,
+)
 
 
-_NON_FACTOR_COLS = frozenset({"scenario_id", "replication", "cycle_h", "cost"})
+_NON_FACTOR_COLS = frozenset({"scenario_id", "replication", COL_CYCLE_H, COL_COST})
 
 
 def _parse_section(rows: list, header: str) -> tuple[list[str], list[list[str]]]:
@@ -53,7 +56,7 @@ def per_log_metrics(log_csv: Path, stats_csv: Path | None = None) -> dict:
                 cost = total_cost / len(per_case)
         except (ValueError, IndexError):
             pass
-    return {"cycle_h": float(cycle_h.median()), "cost": cost}
+    return {COL_CYCLE_H: float(cycle_h.median()), COL_COST: cost}
 
 
 def aggregate(results: pd.DataFrame) -> pd.DataFrame:
@@ -61,10 +64,12 @@ def aggregate(results: pd.DataFrame) -> pd.DataFrame:
     factor_cols = [c for c in results.columns
                    if c not in _NON_FACTOR_COLS]
     agg = (results.groupby(["scenario_id", *factor_cols], as_index=False)
-                  .agg(cycle_h_mean=("cycle_h", "mean"),
-                       cycle_h_std=("cycle_h", "std"),
-                       cost_mean=("cost", "mean"),
-                       cost_std=("cost", "std")))
+                  .agg(**{
+                      COL_CYCLE_H_MEAN:  (COL_CYCLE_H, "mean"),
+                      "cycle_h_std":     (COL_CYCLE_H, "std"),
+                      COL_COST_MEAN:     (COL_COST,    "mean"),
+                      "cost_std":        (COL_COST,    "std"),
+                  }))
     return agg
 
 

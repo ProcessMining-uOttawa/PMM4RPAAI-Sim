@@ -10,6 +10,7 @@ from pathlib import Path
 from core.transformations import REGISTRY
 from core.experiment import build_scenarios
 from core import analysis, demo, orchestrator, preflight, runner, store
+from core.constants import COL_CYCLE_H, COL_COST, COL_CYCLE_H_MEAN, COL_COST_MEAN
 from core.bpmn_utils import (
     find_task_by_name, task_mean_duration_s,
     task_resources, shared_resource_ids, resource_pool_size,
@@ -33,8 +34,8 @@ def _level_input_kwargs(kind: str, value) -> dict:
     return {"value": float(value)}
 
 _GOAL_OPTIONS = {
-    "Cycle time (hours)": ("cycle_h_mean", 40.0),
-    "Cost ($/case)":      ("cost_mean",    25.0),
+    "Cycle time (hours)": (COL_CYCLE_H_MEAN, 40.0),
+    "Cost ($/case)":      (COL_COST_MEAN,    25.0),
 }
 
 # --- session state defaults --------------------------------------------------
@@ -360,10 +361,10 @@ if ss.results is not None:
         st.markdown("###### Main effects (smaller is better)")
         tab_cycle, tab_cost = st.tabs(["Cycle time", "Cost"])
         with tab_cycle:
-            me = analysis.main_effects(ss.results, "cycle_h")
+            me = analysis.main_effects(ss.results, COL_CYCLE_H)
             st.dataframe(me, use_container_width=True, hide_index=True)
         with tab_cost:
-            me = analysis.main_effects(ss.results, "cost")
+            me = analysis.main_effects(ss.results, COL_COST)
             st.dataframe(me, use_container_width=True, hide_index=True)
 
         bpmn_path = ss.get("experiment_bpmn_path")

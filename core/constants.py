@@ -32,6 +32,12 @@ F_HUMAN_BRANCH_LABEL = "human"
 F_BOT_SUCCESS_LABEL  = "success"
 F_BOT_FAILURE_LABEL  = "failure"
 
+# ── Analysis column names ────────────────────────────────────────────────────
+COL_CYCLE_H      = "cycle_h"
+COL_COST         = "cost"
+COL_CYCLE_H_MEAN = "cycle_h_mean"
+COL_COST_MEAN    = "cost_mean"
+
 # ── Prosimos stats CSV sections and columns ───────────────────────────────────
 PROSIMOS_SECTION_TASK_STATS = "Individual Task Statistics"
 PROSIMOS_COL_TOTAL_COST     = "Total Cost"
