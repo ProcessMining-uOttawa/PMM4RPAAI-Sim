@@ -36,7 +36,7 @@ class AutomationScenario:
     manual_execution_time: float       # mean human task duration (seconds)
     num_bots:              int         # bot resource pool size
     num_manual_resources:  int         # human resource pool size
-    selected_resource_id:  str | None = None  # resource to resize; None = fallback to resources[0]
+    selected_resource_id:  str | None = None  # resource to resize; None = skip pool resize
 
     def __post_init__(self) -> None:
         for name, val in (("automation_rate",  self.automation_rate),

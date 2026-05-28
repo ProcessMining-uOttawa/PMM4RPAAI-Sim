@@ -260,7 +260,7 @@ Known bugs / reliability gaps:
 
 Test gaps:
 
-- `tests/test_analysis.py` and `tests/test_experiment.py` need a review pass for correctness and coverage.
+- `tests/test_analysis.py` needs a review pass for correctness and coverage.
 
 Feature work:
 
