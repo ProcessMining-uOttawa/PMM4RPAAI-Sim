@@ -98,6 +98,6 @@ def main_effects(results: pd.DataFrame, metric: str,
 def rank(agg: pd.DataFrame, goal_metric: str, goal_max: float) -> pd.DataFrame:
     """Adds 'goals_met' and 'score' (lower = better) ranked by a single goal metric."""
     out = agg.copy()
-    out["goals_met"] = out[goal_metric].le(goal_max).fillna(False)
+    out["goal_met"] = out[goal_metric].le(goal_max).fillna(False)
     out["score"] = (out[goal_metric] / goal_max).clip(lower=0).fillna(0)
-    return out.sort_values(["goals_met", "score"], ascending=[False, True])
+    return out.sort_values(["goal_met", "score"], ascending=[False, True])

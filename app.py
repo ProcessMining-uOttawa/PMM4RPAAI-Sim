@@ -32,6 +32,11 @@ def _level_input_kwargs(kind: str, value) -> dict:
         return {"value": float(value), "min_value": 0.0, "step": 0.01, "format": "%.2f"}
     return {"value": float(value)}
 
+_GOAL_OPTIONS = {
+    "Cycle time (hours)": ("cycle_h_mean", 40.0),
+    "Cost ($/case)":      ("cost_mean",    25.0),
+}
+
 # --- session state defaults --------------------------------------------------
 ss = st.session_state
 ss.setdefault("log_name", None)
@@ -151,11 +156,7 @@ with st.sidebar:
 
     st.divider()
     st.subheader("Goals")
-    _GOAL_OPTIONS = {
-        "Cycle time (hours)": ("cycle_h_mean", 40.0),
-        "Cost ($/case)":      ("cost_mean",    25.0),
-    }
-    goal_label  = st.selectbox("Optimise for", list(_GOAL_OPTIONS))
+    goal_label  = st.selectbox("Optimise for", _GOAL_OPTIONS)
     goal_metric, goal_default = _GOAL_OPTIONS[goal_label]
     goal_max = st.number_input("Target ≤", value=goal_default, step=1.0,
                                key=f"goal_max_{goal_metric}")
@@ -350,9 +351,9 @@ if ss.results is not None:
         ranked = analysis.rank(agg, goal_metric, goal_max)
         show = ranked.copy()
         show.insert(0, "rank", range(1, len(show)+1))
-        show["goals"] = show["goals_met"].map({True: "✓ met", False: "✗"})
+        show["goals"] = show["goal_met"].map({True: "✓ met", False: "✗"})
         st.dataframe(
-            show.drop(columns=["goals_met"]),
+            show.drop(columns=["goal_met", "score"]),
             use_container_width=True, hide_index=True,
         )
 

@@ -265,6 +265,7 @@ Test gaps:
 Design decisions:
 
 - **Single-goal ranking**: `rank()` optimises for one metric at a time (cycle time or cost), selected via a sidebar dropdown. The original two-goal design used a combined normalised score, but the scales differ enough (hours vs $/case) that cost dominated silently. Tradeoff: you lose the ability to surface scenarios that satisfy *both* goals simultaneously — if that matters, consider adding a secondary "also meets" flag column without letting it affect the score.
+- **Results panel recomputation**: `analysis.aggregate()` and `analysis.main_effects()` are called unconditionally on every Streamlit rerun while results exist (no caching). At current scale (L18 × ~5 reps = ~90 rows) the groupby is negligible. If the project adds L27 with many replications and the results panel becomes sluggish, cache `agg` in session state keyed by `id(ss.results)`, or apply `@st.cache_data` to the analysis functions.
 
 Feature work:
 

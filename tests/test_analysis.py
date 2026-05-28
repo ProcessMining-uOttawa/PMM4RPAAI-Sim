@@ -213,8 +213,8 @@ class TestRank:
         ])
         ranked = rank(agg, "cycle_h_mean", 24.0)
         by_sid = ranked.set_index("scenario_id")
-        assert bool(by_sid.loc["S01", "goals_met"]) is True
-        assert bool(by_sid.loc["S02", "goals_met"]) is False
+        assert by_sid.loc["S01", "goal_met"]
+        assert not by_sid.loc["S02", "goal_met"]
 
     def test_goals_met_sorted_first(self):
         agg = pd.DataFrame([
@@ -229,4 +229,4 @@ class TestRank:
             "scenario_id": "S01", "cycle_h_mean": float("nan"),
         }])
         ranked = rank(agg, "cycle_h_mean", 24.0)
-        assert bool(ranked.iloc[0]["goals_met"]) is False
+        assert not ranked.iloc[0]["goal_met"]
