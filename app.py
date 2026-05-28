@@ -151,9 +151,14 @@ with st.sidebar:
 
     st.divider()
     st.subheader("Goals")
-    _GOAL_OPTIONS = {"Cycle time (hours)": "cycle_h_mean", "Cost ($/case)": "cost_mean"}
-    goal_metric = _GOAL_OPTIONS[st.selectbox("Optimise for", list(_GOAL_OPTIONS))]
-    goal_max    = st.number_input("Target ≤", value=24.0, step=1.0)
+    _GOAL_OPTIONS = {
+        "Cycle time (hours)": ("cycle_h_mean", 40.0),
+        "Cost ($/case)":      ("cost_mean",    25.0),
+    }
+    goal_label  = st.selectbox("Optimise for", list(_GOAL_OPTIONS))
+    goal_metric, goal_default = _GOAL_OPTIONS[goal_label]
+    goal_max = st.number_input("Target ≤", value=goal_default, step=1.0,
+                               key=f"goal_max_{goal_metric}")
 
     st.divider()
     st.subheader("Run config")
