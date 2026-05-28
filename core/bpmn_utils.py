@@ -47,13 +47,13 @@ def shared_resource_ids(prosimos_json: dict) -> set[str]:
     return {rid for rid, n in counts.items() if n > 1}
 
 
-def resource_pool_size(prosimos_json: dict, resource_id: str) -> int:
-    """Return the current pool size (amount) for a resource, defaulting to 1."""
+def resource_pool_size(prosimos_json: dict, resource_id: str) -> int | None:
+    """Return the current pool size (amount) for a resource, or None if not found."""
     for profile in prosimos_json.get(KEY_RESOURCE_PROFILES, []):
         for r in profile.get("resource_list", []):
             if r.get("id") == resource_id:
                 return int(r.get("amount", 1))
-    return 1
+    return None
 
 
 def task_mean_duration_s(prosimos_json: dict, task_id: str) -> float | None:
