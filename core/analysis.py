@@ -103,6 +103,8 @@ def main_effects(results: pd.DataFrame, metric: str,
 
 def rank(agg: pd.DataFrame, goal_metric: str, goal_max: float) -> pd.DataFrame:
     """Adds 'goal_met' and 'score' (lower = better) ranked by a single goal metric."""
+    if goal_max <= 0:
+        raise ValueError(f"goal_max must be positive, got {goal_max}")
     out = agg.copy()
     out["goal_met"] = out[goal_metric].le(goal_max).fillna(False)
     out["score"] = (out[goal_metric] / goal_max).fillna(0)

@@ -182,6 +182,21 @@ class TestApplyParams:
         _, _, base_json = result
         assert len(base_json[KEY_GATEWAY_BRANCHING_PROBS]) == 0
 
+    def test_selected_resource_none_skips_pool_resize(self, pattern, params_file, applied, tmp_path):
+        _, ids = applied
+        base_json = pattern.build_base_json(params_file, ids)
+        scenario = AutomationScenario(
+            automation_rate=0.5, bot_failure_rate=0.1,
+            bot_execution_time=60.0, manual_execution_time=1800.0,
+            num_bots=1, num_manual_resources=3,
+            selected_resource_id=None,
+        )
+        json_out = tmp_path / "scenario_none" / "params.json"
+        pattern.apply_params(base_json, ids, scenario, json_out)
+        data = json.loads(json_out.read_text())
+        # amount was 1 in the fixture; should be unchanged since selected_resource_id is None
+        assert resource_pool_size(data, "res_human_1") == 1
+
 
 # ── AutomationScenario validation ────────────────────────────────────────────
 

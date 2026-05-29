@@ -1,7 +1,10 @@
 """Streamlit dashboard — Mockup B layout."""
+
 from __future__ import annotations
+import io
 import json
 import xml.etree.ElementTree as ET
+import zipfile
 import streamlit as st
 
 from pathlib import Path
@@ -10,19 +13,28 @@ from core.experiment import build_scenarios
 from core import analysis, demo, orchestrator, preflight, runner, store
 from core.constants import COL_CYCLE_H, COL_COST, COL_CYCLE_H_MEAN, COL_COST_MEAN
 from core.bpmn_utils import (
-    find_task_by_name, task_mean_duration_s,
-    task_resources, shared_resource_ids, resource_pool_size,
+    find_task_by_name,
+    task_mean_duration_s,
+    task_resources,
+    shared_resource_ids,
+    resource_pool_size,
 )
 
-st.set_page_config(page_title="Automation What-If Simulator",
-                   page_icon="⚙", layout="wide")
+st.set_page_config(
+    page_title="Automation What-If Simulator", page_icon="⚙", layout="wide"
+)
 
 
 def _level_input_kwargs(kind: str, value) -> dict:
     """Map Parameter.kind to st.number_input constraints."""
     if kind == "percentage":
-        return {"value": float(value), "min_value": 0.0, "max_value": 100.0,
-                "step": 1.0, "format": "%.0f"}
+        return {
+            "value": float(value),
+            "min_value": 0.0,
+            "max_value": 100.0,
+            "step": 1.0,
+            "format": "%.0f",
+        }
     if kind == "duration_s":
         return {"value": float(value), "min_value": 0.0, "step": 1.0, "format": "%.1f"}
     if kind == "categorical":
@@ -31,21 +43,42 @@ def _level_input_kwargs(kind: str, value) -> dict:
         return {"value": float(value), "min_value": 0.0, "step": 0.01, "format": "%.2f"}
     return {"value": float(value)}
 
+
+def _json_zip(json_paths: dict) -> bytes:
+    buf = io.BytesIO()
+    with zipfile.ZipFile(buf, "w", zipfile.ZIP_DEFLATED) as z:
+        for sid, p in sorted(json_paths.items()):
+            z.writestr(f"scenarios/{sid}_params.json", p.read_text())
+    return buf.getvalue()
+
+
+def _group_zip(bpmn_path: Path, json_paths: dict, stats_csv: str) -> bytes:
+    buf = io.BytesIO()
+    with zipfile.ZipFile(buf, "w", zipfile.ZIP_DEFLATED) as z:
+        z.write(str(bpmn_path), arcname="model.bpmn")
+        z.writestr("statistics.csv", stats_csv)
+        for sid, p in sorted(json_paths.items()):
+            z.writestr(f"scenarios/{sid}_params.json", p.read_text())
+    return buf.getvalue()
+
+
 _GOAL_OPTIONS = {
     "Cycle time (hours)": (COL_CYCLE_H_MEAN, 40.0),
-    "Cost ($/case)":      (COL_COST_MEAN,    25.0),
+    "Cost ($/case)": (COL_COST_MEAN, 25.0),
 }
 
 # --- session state defaults --------------------------------------------------
 ss = st.session_state
 ss.setdefault("log_name", None)
-ss.setdefault("log_path", None)       # Path to uploaded log
+ss.setdefault("log_path", None)  # Path to uploaded log
 ss.setdefault("activities", [])
 ss.setdefault("bpmn_path", None)
 ss.setdefault("json_path", None)
-ss.setdefault("results", None)        # tidy per-replication DataFrame
-ss.setdefault("experiment_bpmn_path", None)  # single transformed BPMN, shared across scenarios
-ss.setdefault("scenario_json_paths", {})     # sid -> Path, one params.json per scenario
+ss.setdefault("results", None)  # tidy per-replication DataFrame
+ss.setdefault(
+    "experiment_bpmn_path", None
+)  # single transformed BPMN, shared across scenarios
+ss.setdefault("scenario_json_paths", {})  # sid -> Path, one params.json per scenario
 ss.setdefault("array_name", None)
 ss.setdefault("scenarios", [])
 
@@ -61,9 +94,12 @@ st.markdown(
 # --- sidebar: experiment state ----------------------------------------------
 with st.sidebar:
     st.subheader("Experiment")
-    demo_mode = st.toggle("Demo mode (no Simod/Prosimos)", value=True,
-                          help="Uses synthetic discovery + simulation so you can "
-                               "click through the UI without external tools.")
+    demo_mode = st.toggle(
+        "Demo mode (no Simod/Prosimos)",
+        value=True,
+        help="Uses synthetic discovery + simulation so you can "
+        "click through the UI without external tools.",
+    )
 
     if not demo_mode:
         with st.expander("Simod preflight", expanded=True):
@@ -74,15 +110,21 @@ with st.sidebar:
                     st.caption(c.fix)
             preflight_ok = preflight.all_ok(checks)
             detected = preflight.detect_corretto8() or ""
-            java_home = st.text_input(
-                "JAVA_HOME for Simod", value=detected,
-                help="Used only for Simod's subprocess; leaves your system Java alone.",
-            ) or None
+            java_home = (
+                st.text_input(
+                    "JAVA_HOME for Simod",
+                    value=detected,
+                    help="Used only for Simod's subprocess; leaves your system Java alone.",
+                )
+                or None
+            )
     else:
         preflight_ok, java_home = True, None
 
     uploaded = st.file_uploader("Event log (XES or CSV)", type=["xes", "csv"])
-    use_sample = st.button("Use sample log", use_container_width=True, disabled=not demo_mode)
+    use_sample = st.button(
+        "Use sample log", use_container_width=True, disabled=not demo_mode
+    )
 
     # Fingerprint the upload so we only discover ONCE per unique file.
     # CRITICAL: Streamlit reruns the script top-to-bottom on every interaction,
@@ -92,11 +134,10 @@ with st.sidebar:
     # also hold a per-session "discovering" lock.
     upload_fp = (uploaded.name, uploaded.size) if uploaded else None
     already_discovered = ss.get("log_fingerprint") == upload_fp and ss.activities
-    discovering        = ss.get("discovering", False)
+    discovering = ss.get("discovering", False)
 
-    needs_discovery = (
-        (uploaded and not already_discovered and not discovering)
-        or (use_sample and demo_mode and not ss.activities)
+    needs_discovery = (uploaded and not already_discovered and not discovering) or (
+        use_sample and demo_mode and not ss.activities
     )
 
     if discovering and uploaded:
@@ -124,15 +165,23 @@ with st.sidebar:
             run_dir = store.new_experiment(uploaded.name)
             log_path = run_dir / uploaded.name
             log_path.write_bytes(uploaded.getbuffer())
-            with st.status("Running Simod discovery (~2 min for 100k events)…",
-                           expanded=True) as s:
+            with st.status(
+                "Running Simod discovery (~2 min for 100k events)…", expanded=True
+            ) as s:
                 try:
-                    bpmn, params = runner.discover(log_path, run_dir, java_home=java_home,
-                                                   proc_log=store.discovery_log(run_dir))
+                    bpmn, params = runner.discover(
+                        log_path,
+                        run_dir,
+                        java_home=java_home,
+                        proc_log=store.discovery_log(run_dir),
+                    )
                     ss.bpmn_path, ss.json_path = bpmn, params
                     ss.activities = runner.list_activities(bpmn)
                     ss.log_name, ss.log_path = uploaded.name, log_path
-                    s.update(label=f"Discovered {len(ss.activities)} activities", state="complete")
+                    s.update(
+                        label=f"Discovered {len(ss.activities)} activities",
+                        state="complete",
+                    )
                 except Exception as e:
                     ss.log_fingerprint = None
                     s.update(label="Simod failed", state="error")
@@ -146,8 +195,15 @@ with st.sidebar:
     if ss.log_name:
         st.caption(f"📄 Loaded: **{ss.log_name}** · {len(ss.activities)} activities")
         if st.button("Reset log", use_container_width=True):
-            for k in ("log_name", "log_path", "activities", "bpmn_path",
-                      "json_path", "log_fingerprint", "results"):
+            for k in (
+                "log_name",
+                "log_path",
+                "activities",
+                "bpmn_path",
+                "json_path",
+                "log_fingerprint",
+                "results",
+            ):
                 ss[k] = None if k != "activities" else []
             ss.experiment_bpmn_path = None
             ss.scenario_json_paths = {}
@@ -155,15 +211,16 @@ with st.sidebar:
 
     st.divider()
     st.subheader("Goals")
-    goal_label  = st.selectbox("Optimise for", _GOAL_OPTIONS)
+    goal_label = st.selectbox("Optimise for", _GOAL_OPTIONS)
     goal_metric, goal_default = _GOAL_OPTIONS[goal_label]
-    goal_max = st.number_input("Target ≤", value=goal_default, step=1.0,
-                               key=f"goal_max_{goal_metric}")
+    goal_max = st.number_input(
+        "Target ≤", value=goal_default, step=1.0, key=f"goal_max_{goal_metric}"
+    )
 
     st.divider()
     st.subheader("Run config")
-    n_reps   = st.number_input("Replications (N)", 1, 100, 5)
-    n_cases  = st.number_input("Cases per rep (C)", 10, 100_000, 500, step=100)
+    n_reps = st.number_input("Replications (N)", 1, 100, 5)
+    n_cases = st.number_input("Cases per rep (C)", 10, 100_000, 500, step=100)
 
 # --- gate: need a log first --------------------------------------------------
 if not ss.activities:
@@ -199,7 +256,7 @@ with col1:
                     elif len(_resources) > 1:
                         _shared = shared_resource_ids(prosimos_data)
                         _selectable = [r for r in _resources if r["id"] not in _shared]
-                        _frozen    = [r for r in _resources if r["id"] in _shared]
+                        _frozen = [r for r in _resources if r["id"] in _shared]
                         if _selectable:
                             if _frozen:
                                 st.caption(
@@ -218,7 +275,9 @@ with col1:
                                 [r["name"] for r in _resources],
                                 disabled=True,
                             )
-                            _pool = resource_pool_size(prosimos_data, _resources[0]["id"])
+                            _pool = resource_pool_size(
+                                prosimos_data, _resources[0]["id"]
+                            )
                             if _pool is None:
                                 st.warning(
                                     "All resources are shared across tasks — "
@@ -261,7 +320,7 @@ with col2:
         hdr = st.columns([3, 1, 1, 1])
         hdr[0].caption("Factor")
         for i, lbl in enumerate(("Low", "Mid", "High")):
-            hdr[i+1].caption(lbl)
+            hdr[i + 1].caption(lbl)
         for p in params:
             row = st.columns([3, 1, 1, 1])
             row[0].markdown(f"**{p.label}**")
@@ -277,11 +336,14 @@ with col2:
             else:
                 new = []
                 for i in range(3):
-                    new.append(row[i+1].number_input(
-                        f"{p.id}_{i}",
-                        **_level_input_kwargs(p.kind, p.levels[i]),
-                        label_visibility="collapsed", key=f"{p.id}_{i}",
-                    ))
+                    new.append(
+                        row[i + 1].number_input(
+                            f"{p.id}_{i}",
+                            **_level_input_kwargs(p.kind, p.levels[i]),
+                            label_visibility="collapsed",
+                            key=f"{p.id}_{i}",
+                        )
+                    )
                 p.levels = new
 
 # --- Design + execution panel ------------------------------------------------
@@ -298,8 +360,9 @@ with st.container(border=True):
         f"{len(scenarios)} scenarios × {n_reps} reps = {total_runs} runs</span>",
         unsafe_allow_html=True,
     )
-    run_clicked = right.button("▶ Run all scenarios", type="primary",
-                               use_container_width=True)
+    run_clicked = right.button(
+        "▶ Run all scenarios", type="primary", use_container_width=True
+    )
 
     if run_clicked:
         if not demo_mode and (not ss.bpmn_path or not ss.json_path):
@@ -308,11 +371,15 @@ with st.container(border=True):
         progress = st.progress(0.0, text="Starting…")
 
         def _on_progress(done: int, total: int, sid: str, rep: int) -> None:
-            progress.progress(done / total,
-                              text=f"Scenario {sid} · rep {rep + 1}/{n_reps}")
+            progress.progress(
+                done / total, text=f"Scenario {sid} · rep {rep + 1}/{n_reps}"
+            )
 
-        exp_dir = (store.new_experiment("demo") if demo_mode
-                   else store.new_experiment(ss.log_name or "run"))
+        exp_dir = (
+            store.new_experiment("demo")
+            if demo_mode
+            else store.new_experiment(ss.log_name or "run")
+        )
         result = orchestrator.run_experiment(
             transformation=transformation,
             bpmn_path=ss.bpmn_path,
@@ -326,9 +393,9 @@ with st.container(border=True):
             on_progress=_on_progress,
             selected_resource_id=selected_resource_id,
         )
-        ss.results               = result.results
-        ss.experiment_bpmn_path  = result.experiment_bpmn_path
-        ss.scenario_json_paths   = result.scenario_json_paths
+        ss.results = result.results
+        ss.experiment_bpmn_path = result.experiment_bpmn_path
+        ss.scenario_json_paths = result.scenario_json_paths
         progress.empty()
         st.success(f"Completed {total_runs} simulations.")
 
@@ -348,11 +415,13 @@ if ss.results is not None:
             st.stop()
         agg = analysis.aggregate(ss.results)
         ranked = analysis.rank(agg, goal_metric, goal_max)
-        ranked.insert(0, "rank", range(1, len(ranked)+1))
-        ranked["goals"] = ranked["goal_met"].map({True: "✓ met", False: "✗"})
+        ranked.insert(0, "rank", range(1, len(ranked) + 1))
         st.dataframe(
-            ranked.drop(columns=["goal_met", "score"]),
-            use_container_width=True, hide_index=True,
+            ranked.assign(
+                goals=ranked["goal_met"].map({True: "✓ met", False: "✗"})
+            ).drop(columns=["goal_met", "score"]),
+            use_container_width=True,
+            hide_index=True,
         )
 
         st.markdown("###### Main effects (smaller is better)")
@@ -365,30 +434,56 @@ if ss.results is not None:
             st.dataframe(me, use_container_width=True, hide_index=True)
 
         bpmn_path = ss.get("experiment_bpmn_path")
-        if bpmn_path and Path(bpmn_path).exists():
-            st.markdown("###### Download transformed BPMN")
-            st.download_button(
-                "⬇ Download BPMN",
+        bpmn_exists = bpmn_path and Path(bpmn_path).exists()
+        json_paths = {
+            sid: Path(p)
+            for sid, p in ss.get("scenario_json_paths", {}).items()
+            if Path(p).exists()
+        }
+
+        if json_paths:
+            st.markdown("###### Scenario parameters (params.json)")
+            sel = st.selectbox(
+                "Scenario",
+                sorted(json_paths),
+                key="params_sel",
+                format_func=lambda s: f"Scenario {s}",
+            )
+            if sel:
+                with st.expander("View params.json"):
+                    st.json(json_paths[sel].read_text())
+
+        st.markdown("###### Export")
+        stats_csv = ranked.to_csv(index=False)
+        col_bpmn, col_json, col_stats, col_all = st.columns(4)
+        if json_paths:
+            col_json.download_button(
+                "⬇ Scenarios (JSON zip)",
+                _json_zip(json_paths),
+                file_name="scenarios.zip",
+                mime="application/zip",
+                use_container_width=True,
+            )
+        col_stats.download_button(
+            "⬇ Statistics (CSV)",
+            stats_csv,
+            file_name="statistics.csv",
+            mime="text/csv",
+            use_container_width=True,
+        )
+        if bpmn_exists:
+            col_bpmn.download_button(
+                "⬇ BPMN",
                 Path(bpmn_path).read_bytes(),
                 file_name="model.bpmn",
                 mime="application/xml",
+                use_container_width=True,
             )
-
-        json_paths = {sid: Path(p) for sid, p in ss.get("scenario_json_paths", {}).items()
-                      if Path(p).exists()}
-        if json_paths:
-            st.markdown("###### Scenario parameters (params.json)")
-            ordered = sorted(json_paths)
-            sel = st.selectbox("Scenario", ordered, key="params_sel",
-                               format_func=lambda s: f"Scenario {s}")
-            if sel:
-                content = json_paths[sel].read_text()
-                with st.expander("View params.json"):
-                    st.json(content)
-                st.download_button(
-                    "⬇ Download params.json",
-                    content,
-                    file_name=f"scenario_{sel}_params.json",
-                    mime="application/json",
-                    key="params_dl",
-                )
+        if bpmn_exists and json_paths:
+            col_all.download_button(
+                "⬇ All (ZIP)",
+                _group_zip(Path(bpmn_path), json_paths, stats_csv),
+                file_name="export.zip",
+                mime="application/zip",
+                use_container_width=True,
+            )

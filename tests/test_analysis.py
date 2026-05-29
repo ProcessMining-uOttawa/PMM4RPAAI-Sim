@@ -233,3 +233,23 @@ class TestRank:
         }])
         ranked = rank(agg, COL_CYCLE_H_MEAN, 24.0)
         assert not ranked.iloc[0]["goal_met"]
+
+    def test_cost_mean_metric(self):
+        agg = pd.DataFrame([
+            {"scenario_id": "S01", COL_COST_MEAN: 10.0},
+            {"scenario_id": "S02", COL_COST_MEAN: 30.0},
+        ])
+        ranked = rank(agg, COL_COST_MEAN, 20.0)
+        by_sid = ranked.set_index("scenario_id")
+        assert by_sid.loc["S01", "goal_met"]
+        assert not by_sid.loc["S02", "goal_met"]
+
+    def test_score_value(self):
+        agg = pd.DataFrame([{"scenario_id": "S01", COL_CYCLE_H_MEAN: 20.0}])
+        ranked = rank(agg, COL_CYCLE_H_MEAN, 40.0)
+        assert ranked.iloc[0]["score"] == pytest.approx(0.5)
+
+    def test_zero_goal_max_raises(self):
+        agg = pd.DataFrame([{"scenario_id": "S01", COL_CYCLE_H_MEAN: 20.0}])
+        with pytest.raises(ValueError):
+            rank(agg, COL_CYCLE_H_MEAN, 0.0)
