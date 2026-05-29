@@ -1,6 +1,9 @@
 """Detect Simod's runtime prerequisites and report them to the UI."""
 from __future__ import annotations
-import os, re, shutil, subprocess
+import os
+import re
+import shutil
+import subprocess
 from dataclasses import dataclass
 from pathlib import Path
 

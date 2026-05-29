@@ -1,6 +1,7 @@
 """Aggregation + Taguchi S/N + ranking. Operates on tidy per-replication frames."""
 from __future__ import annotations
-import csv, math
+import csv
+import math
 from pathlib import Path
 import pandas as pd
 

@@ -1,9 +1,7 @@
 """Streamlit dashboard — Mockup B layout."""
 from __future__ import annotations
 import json
-import time
 import xml.etree.ElementTree as ET
-import pandas as pd
 import streamlit as st
 
 from pathlib import Path

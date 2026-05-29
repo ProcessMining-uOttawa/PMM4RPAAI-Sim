@@ -1,6 +1,7 @@
 """Pluggable BPMN+JSON mutations — pattern definitions and their contracts."""
 from __future__ import annotations
-import copy, json
+import copy
+import json
 import xml.etree.ElementTree as ET
 from abc import ABC, abstractmethod
 from dataclasses import dataclass

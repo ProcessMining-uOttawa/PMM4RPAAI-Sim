@@ -1,6 +1,7 @@
 """Subprocess wrappers around Simod and Prosimos."""
 from __future__ import annotations
-import os, subprocess
+import os
+import subprocess
 from pathlib import Path
 
 from .constants import BPMN_NS
@@ -121,7 +122,8 @@ def list_activities(bpmn_path: Path) -> list[str]:
     seen, out = set(), []
     for n in names:
         if n not in seen:
-            seen.add(n); out.append(n)
+            seen.add(n)
+            out.append(n)
     return out
 
 
