@@ -15,7 +15,10 @@ from core.analysis import (
     signal_to_noise,
     rank,
 )
-from core.constants import PROSIMOS_SECTION_TASK_STATS, PROSIMOS_COL_TOTAL_COST
+from core.constants import (
+    PROSIMOS_SECTION_TASK_STATS, PROSIMOS_COL_TOTAL_COST,
+    COL_CYCLE_H, COL_COST, COL_CYCLE_H_MEAN, COL_COST_MEAN,
+)
 
 
 # ── Helpers ───────────────────────────────────────────────────────────────────
@@ -40,10 +43,10 @@ def _write_stats(path: Path, tasks: list[tuple]) -> None:
 
 def _results_df() -> pd.DataFrame:
     return pd.DataFrame([
-        {"scenario_id": "S01", "replication": 0, "cycle_h": 10.0, "cost":  5.0, "f_a": "low"},
-        {"scenario_id": "S01", "replication": 1, "cycle_h": 12.0, "cost":  7.0, "f_a": "low"},
-        {"scenario_id": "S02", "replication": 0, "cycle_h": 20.0, "cost": 10.0, "f_a": "high"},
-        {"scenario_id": "S02", "replication": 1, "cycle_h": 22.0, "cost": 12.0, "f_a": "high"},
+        {"scenario_id": "S01", "replication": 0, COL_CYCLE_H: 10.0, COL_COST:  5.0, "f_a": "low"},
+        {"scenario_id": "S01", "replication": 1, COL_CYCLE_H: 12.0, COL_COST:  7.0, "f_a": "low"},
+        {"scenario_id": "S02", "replication": 0, COL_CYCLE_H: 20.0, COL_COST: 10.0, "f_a": "high"},
+        {"scenario_id": "S02", "replication": 1, COL_CYCLE_H: 22.0, COL_COST: 12.0, "f_a": "high"},
     ])
 
 
@@ -130,7 +133,7 @@ class TestPerLogMetrics:
             ("c1", "2025-01-01T08:00:00", "2025-01-01T10:00:00"),  # 2 h
             ("c2", "2025-01-01T08:00:00", "2025-01-01T12:00:00"),  # 4 h
         ])
-        assert per_log_metrics(log)["cycle_h"] == pytest.approx(3.0)
+        assert per_log_metrics(log)[COL_CYCLE_H] == pytest.approx(3.0)
 
     def test_cost_from_stats(self, tmp_path):
         log = tmp_path / "log.csv"
@@ -141,24 +144,24 @@ class TestPerLogMetrics:
         ])
         _write_stats(stats, [("task_a", 100.0), ("task_b", 50.0)])
         # total 150 / 2 cases = 75.0 per case
-        assert per_log_metrics(log, stats)["cost"] == pytest.approx(75.0)
+        assert per_log_metrics(log, stats)[COL_COST] == pytest.approx(75.0)
 
     def test_cost_none_without_stats(self, tmp_path):
         log = tmp_path / "log.csv"
         _write_log(log, [("c1", "2025-01-01T08:00:00", "2025-01-01T09:00:00")])
-        assert per_log_metrics(log)["cost"] is None
+        assert per_log_metrics(log)[COL_COST] is None
 
     def test_cost_none_when_stats_file_missing(self, tmp_path):
         log = tmp_path / "log.csv"
         _write_log(log, [("c1", "2025-01-01T08:00:00", "2025-01-01T09:00:00")])
-        assert per_log_metrics(log, tmp_path / "nonexistent.csv")["cost"] is None
+        assert per_log_metrics(log, tmp_path / "nonexistent.csv")[COL_COST] is None
 
     def test_cost_none_when_stats_malformed(self, tmp_path):
         log = tmp_path / "log.csv"
         stats = tmp_path / "stats.csv"
         _write_log(log, [("c1", "2025-01-01T08:00:00", "2025-01-01T09:00:00")])
         stats.write_text("no recognisable sections here\n")
-        assert per_log_metrics(log, stats)["cost"] is None
+        assert per_log_metrics(log, stats)[COL_COST] is None
 
 
 # ── aggregate ─────────────────────────────────────────────────────────────────
@@ -171,16 +174,16 @@ class TestAggregate:
     def test_means_correct(self):
         agg = aggregate(_results_df())
         row = agg[agg["scenario_id"] == "S01"].iloc[0]
-        assert row["cycle_h_mean"] == pytest.approx(11.0)
-        assert row["cost_mean"]    == pytest.approx(6.0)
+        assert row[COL_CYCLE_H_MEAN] == pytest.approx(11.0)
+        assert row[COL_COST_MEAN]    == pytest.approx(6.0)
 
     def test_nan_cost_propagates(self):
         df = pd.DataFrame([{
             "scenario_id": "S01", "replication": 0,
-            "cycle_h": 10.0, "cost": float("nan"), "f_a": "low",
+            COL_CYCLE_H: 10.0, COL_COST: float("nan"), "f_a": "low",
         }])
         agg = aggregate(df)
-        assert math.isnan(agg["cost_mean"].iloc[0])
+        assert math.isnan(agg[COL_COST_MEAN].iloc[0])
 
 
 # ── main_effects ──────────────────────────────────────────────────────────────
@@ -188,16 +191,16 @@ class TestAggregate:
 class TestMainEffects:
 
     def test_has_required_columns(self):
-        me = main_effects(_results_df(), "cycle_h")
+        me = main_effects(_results_df(), COL_CYCLE_H)
         assert {"factor", "level", "mean", "sn"} <= set(me.columns)
 
     def test_correct_factors_and_levels(self):
-        me = main_effects(_results_df(), "cycle_h")
+        me = main_effects(_results_df(), COL_CYCLE_H)
         assert set(me["factor"].unique()) == {"f_a"}
         assert set(me["level"].unique()) == {"low", "high"}
 
     def test_level_mean_correct(self):
-        me = main_effects(_results_df(), "cycle_h")
+        me = main_effects(_results_df(), COL_CYCLE_H)
         low_mean = me[me["level"] == "low"]["mean"].iloc[0]
         assert low_mean == pytest.approx(11.0)
 
@@ -208,25 +211,25 @@ class TestRank:
 
     def test_goals_met_flag(self):
         agg = pd.DataFrame([
-            {"scenario_id": "S01", "cycle_h_mean": 20.0},
-            {"scenario_id": "S02", "cycle_h_mean": 30.0},
+            {"scenario_id": "S01", COL_CYCLE_H_MEAN: 20.0},
+            {"scenario_id": "S02", COL_CYCLE_H_MEAN: 30.0},
         ])
-        ranked = rank(agg, "cycle_h_mean", 24.0)
+        ranked = rank(agg, COL_CYCLE_H_MEAN, 24.0)
         by_sid = ranked.set_index("scenario_id")
         assert by_sid.loc["S01", "goal_met"]
         assert not by_sid.loc["S02", "goal_met"]
 
     def test_goals_met_sorted_first(self):
         agg = pd.DataFrame([
-            {"scenario_id": "S01", "cycle_h_mean": 30.0},
-            {"scenario_id": "S02", "cycle_h_mean": 10.0},
+            {"scenario_id": "S01", COL_CYCLE_H_MEAN: 30.0},
+            {"scenario_id": "S02", COL_CYCLE_H_MEAN: 10.0},
         ])
-        ranked = rank(agg, "cycle_h_mean", 24.0)
+        ranked = rank(agg, COL_CYCLE_H_MEAN, 24.0)
         assert ranked.iloc[0]["scenario_id"] == "S02"
 
     def test_nan_treated_as_unmet(self):
         agg = pd.DataFrame([{
-            "scenario_id": "S01", "cycle_h_mean": float("nan"),
+            "scenario_id": "S01", COL_CYCLE_H_MEAN: float("nan"),
         }])
-        ranked = rank(agg, "cycle_h_mean", 24.0)
+        ranked = rank(agg, COL_CYCLE_H_MEAN, 24.0)
         assert not ranked.iloc[0]["goal_met"]

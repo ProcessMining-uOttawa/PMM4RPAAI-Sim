@@ -6,6 +6,7 @@ import pytest
 
 from core.transformations import _make_ids
 from core.parameters import AutomationScenario
+from core.bpmn_utils import resource_pool_size
 from core.constants import (
     BPMN_NS,
     BOT_CALENDAR_ID, BOT_PROFILE_ID,
@@ -169,12 +170,12 @@ class TestApplyParams:
 
     def test_bot_resource_amount_set(self, result):
         data, ids, _ = result
-        amount = _resource_amount(data, ids.bot_resource_id)
+        amount = resource_pool_size(data, ids.bot_resource_id)
         assert amount == 2
 
     def test_manual_resource_amount_set(self, result):
         data, ids, _ = result
-        amount = _resource_amount(data, "res_human_1")
+        amount = resource_pool_size(data, "res_human_1")
         assert amount == 3
 
     def test_base_json_not_mutated(self, result):
@@ -237,11 +238,3 @@ def _task_dist_bounds(data: dict, task_id: str) -> tuple[float, float]:
                  if e["task_id"] == task_id)
     params = entry["resources"][0]["distribution_params"]
     return params[0]["value"], params[1]["value"]
-
-
-def _resource_amount(data: dict, resource_id: str) -> int | None:
-    for profile in data[KEY_RESOURCE_PROFILES]:
-        for resource in profile["resource_list"]:
-            if resource["id"] == resource_id:
-                return resource["amount"]
-    return None

@@ -1,6 +1,7 @@
 """Aggregation + Taguchi S/N + ranking. Operates on tidy per-replication frames."""
 from __future__ import annotations
-import csv, math
+import csv
+import math
 from pathlib import Path
 import pandas as pd
 
@@ -64,7 +65,7 @@ def aggregate(results: pd.DataFrame) -> pd.DataFrame:
     factor_cols = [c for c in results.columns
                    if c not in _NON_FACTOR_COLS]
     agg = (results.groupby(["scenario_id", *factor_cols], as_index=False)
-                  .agg(**{
+                  .agg(**{  # type: ignore[call-overload]
                       COL_CYCLE_H_MEAN:  (COL_CYCLE_H, "mean"),
                       "cycle_h_std":     (COL_CYCLE_H, "std"),
                       COL_COST_MEAN:     (COL_COST,    "mean"),
@@ -101,8 +102,8 @@ def main_effects(results: pd.DataFrame, metric: str,
 
 
 def rank(agg: pd.DataFrame, goal_metric: str, goal_max: float) -> pd.DataFrame:
-    """Adds 'goals_met' and 'score' (lower = better) ranked by a single goal metric."""
+    """Adds 'goal_met' and 'score' (lower = better) ranked by a single goal metric."""
     out = agg.copy()
     out["goal_met"] = out[goal_metric].le(goal_max).fillna(False)
-    out["score"] = (out[goal_metric] / goal_max).clip(lower=0).fillna(0)
+    out["score"] = (out[goal_metric] / goal_max).fillna(0)
     return out.sort_values(["goal_met", "score"], ascending=[False, True])

@@ -2,6 +2,7 @@
 from __future__ import annotations
 from pathlib import Path
 
+from core.constants import COL_CYCLE_H, COL_COST
 from core.experiment import build_scenarios
 from core.orchestrator import ExperimentResult, run_experiment
 from core.transformations import XORSplitAutomation
@@ -45,7 +46,7 @@ class TestDemoMode:
             scenarios=scenarios, n_reps=1, n_cases=10,
             exp_dir=Path("irrelevant"), demo_mode=True,
         )
-        assert {"scenario_id", "replication", "cycle_h", "cost"} <= set(result.results.columns)
+        assert {"scenario_id", "replication", COL_CYCLE_H, COL_COST} <= set(result.results.columns)
 
     def test_bpmn_path_and_json_paths_empty_in_demo(self):
         transformation, scenarios = _scenarios()
@@ -83,5 +84,5 @@ class TestDemoMode:
             scenarios=scenarios, n_reps=1, n_cases=10,
             exp_dir=Path("irrelevant"), demo_mode=True,
         )
-        assert (result.results["cycle_h"] > 0).all()
-        assert (result.results["cost"] > 0).all()
+        assert (result.results[COL_CYCLE_H] > 0).all()
+        assert (result.results[COL_COST] > 0).all()

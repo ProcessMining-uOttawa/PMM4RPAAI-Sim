@@ -260,8 +260,6 @@ Design decisions:
 
 - **Single-goal ranking**: `rank()` optimises for one metric at a time (cycle time or cost), selected via a sidebar dropdown. The original two-goal design used a combined normalised score, but the scales differ enough (hours vs $/case) that cost dominated silently. Tradeoff: you lose the ability to surface scenarios that satisfy *both* goals simultaneously — if that matters, consider adding a secondary "also meets" flag column without letting it affect the score.
 - **Results panel recomputation**: `analysis.aggregate()` and `analysis.main_effects()` are called unconditionally on every Streamlit rerun while results exist (no caching). At current scale (L18 × ~5 reps = ~90 rows) the groupby is negligible. If the project adds L27 with many replications and the results panel becomes sluggish, cache `agg` in session state keyed by `id(ss.results)`, or apply `@st.cache_data` to the analysis functions.
-- **Dead `.clip(lower=0)` in `rank()`** (`core/analysis.py`): `score = (metric / goal_max).clip(lower=0)` — `clip` only fires for negative metric values, which neither `cycle_h_mean` nor `cost_mean` can produce. Remove it, or replace with an assertion if a signed metric is ever added.
-- **Double DataFrame copy in results panel** (`app.py`): `show = ranked.copy()` followed immediately by `.insert()` and column assignment is redundant — `ranked` is already a fresh object from `sort_values()` and can be mutated directly. Minor memory waste, scales linearly with replication count.
 
 Feature work:
 

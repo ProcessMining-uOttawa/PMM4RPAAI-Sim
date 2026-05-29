@@ -1,9 +1,7 @@
 """Streamlit dashboard — Mockup B layout."""
 from __future__ import annotations
 import json
-import time
 import xml.etree.ElementTree as ET
-import pandas as pd
 import streamlit as st
 
 from pathlib import Path
@@ -338,7 +336,7 @@ with st.container(border=True):
 if ss.results is not None:
     with st.container(border=True):
         st.markdown("##### 4 · Ranked scenarios")
-        if ss.results["cost"].isna().any():
+        if ss.results[COL_COST].isna().any():
             st.warning(
                 "Cost data is unavailable for one or more runs — Prosimos did not "
                 "produce a stats CSV with a parseable 'Individual Task Statistics' section. "
@@ -350,11 +348,10 @@ if ss.results is not None:
             st.stop()
         agg = analysis.aggregate(ss.results)
         ranked = analysis.rank(agg, goal_metric, goal_max)
-        show = ranked.copy()
-        show.insert(0, "rank", range(1, len(show)+1))
-        show["goals"] = show["goal_met"].map({True: "✓ met", False: "✗"})
+        ranked.insert(0, "rank", range(1, len(ranked)+1))
+        ranked["goals"] = ranked["goal_met"].map({True: "✓ met", False: "✗"})
         st.dataframe(
-            show.drop(columns=["goal_met", "score"]),
+            ranked.drop(columns=["goal_met", "score"]),
             use_container_width=True, hide_index=True,
         )
 
