@@ -11,7 +11,7 @@ are passed explicitly to add_task_el and add_xor_el rather than computed here.
 from __future__ import annotations
 import xml.etree.ElementTree as ET
 
-from .constants import BPMN_NS as _BPMN, BPMNDI_NS as _BPMNDI, DC_NS as _DC, DI_NS as _DI
+from .constants import BPMN_NS as _BPMN, BPMNDI_NS as _BPMNDI, DC_NS as _DC, DI_NS as _DI, BPMN_TASK_TAGS
 
 ET.register_namespace("bpmn",   _BPMN)
 ET.register_namespace("bpmndi", _BPMNDI)
@@ -23,12 +23,7 @@ TASK_W, TASK_H = 100, 80
 GW_W,   GW_H   = 50,  50
 
 # ── Task element tags ──────────────────────────────────────────────────────────
-_TASK_TAGS = frozenset({
-    f"{{{_BPMN}}}task",             f"{{{_BPMN}}}userTask",
-    f"{{{_BPMN}}}serviceTask",      f"{{{_BPMN}}}manualTask",
-    f"{{{_BPMN}}}businessRuleTask", f"{{{_BPMN}}}scriptTask",
-    f"{{{_BPMN}}}sendTask",         f"{{{_BPMN}}}receiveTask",
-})
+_TASK_TAGS = frozenset(f"{{{_BPMN}}}{t}" for t in BPMN_TASK_TAGS)
 
 
 # ── DI helpers ─────────────────────────────────────────────────────────────────

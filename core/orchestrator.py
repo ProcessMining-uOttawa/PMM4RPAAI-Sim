@@ -7,6 +7,7 @@ from typing import Callable
 import pandas as pd
 
 from . import analysis, demo, runner, store
+from .constants import COL_CYCLE_H, COL_COST
 from .parameters import AutomationScenario, Scenario
 from .transformations import Transformation
 
@@ -70,13 +71,13 @@ def run_experiment(
                                 int(n_cases), out_log, stat_out=out_stat,
                                 proc_log=proc_log)
                 m = analysis.per_log_metrics(out_log, out_stat)
-                cycle_h, cost = m["cycle_h"], m["cost"]
+                cycle_h, cost = m[COL_CYCLE_H], m[COL_COST]
 
             rows.append({
                 "scenario_id": s.id,
                 "replication":  rep,
-                "cycle_h":      cycle_h,
-                "cost":         cost,
+                COL_CYCLE_H:    cycle_h,
+                COL_COST:       cost,
                 **s.values,
             })
             done += 1

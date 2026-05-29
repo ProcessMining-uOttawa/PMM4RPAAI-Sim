@@ -54,6 +54,12 @@ BPMNDI_NS = "http://www.omg.org/spec/BPMN/20100524/DI"
 DC_NS     = "http://www.omg.org/spec/DD/20100524/DC"
 DI_NS     = "http://www.omg.org/spec/DD/20100524/DI"
 
+# ── BPMN task element tag names (without namespace prefix) ────────────────────
+BPMN_TASK_TAGS = (
+    "task", "userTask", "serviceTask", "manualTask",
+    "businessRuleTask", "scriptTask", "sendTask", "receiveTask",
+)
+
 # ── XOR split automation: Taguchi parameter defaults ──────────────────────────
 DEFAULT_MANUAL_DURATION_S = 1800.0        # fallback when Simod mean is unavailable
 PCT_AUTO_LEVELS           = [25, 50, 75]  # XOR1 branch % to bot

@@ -3,14 +3,11 @@ from __future__ import annotations
 from collections import Counter
 import xml.etree.ElementTree as ET
 
-from .constants import BPMN_NS, KEY_TASK_RESOURCE_DISTRIBUTION, KEY_RESOURCE_PROFILES
+from .constants import (
+    BPMN_NS, KEY_TASK_RESOURCE_DISTRIBUTION, KEY_RESOURCE_PROFILES, BPMN_TASK_TAGS as _TASK_TAGS,
+)
 
 _BPMN = BPMN_NS
-
-_TASK_TAGS = (
-    "task", "userTask", "serviceTask", "manualTask",
-    "businessRuleTask", "scriptTask", "sendTask", "receiveTask",
-)
 
 
 def find_task_by_name(tree: ET.ElementTree, name: str) -> ET.Element | None:

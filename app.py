@@ -338,7 +338,7 @@ with st.container(border=True):
 if ss.results is not None:
     with st.container(border=True):
         st.markdown("##### 4 · Ranked scenarios")
-        if ss.results["cost"].isna().any():
+        if ss.results[COL_COST].isna().any():
             st.warning(
                 "Cost data is unavailable for one or more runs — Prosimos did not "
                 "produce a stats CSV with a parseable 'Individual Task Statistics' section. "
