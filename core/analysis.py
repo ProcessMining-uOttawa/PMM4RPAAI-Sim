@@ -65,7 +65,7 @@ def aggregate(results: pd.DataFrame) -> pd.DataFrame:
     factor_cols = [c for c in results.columns
                    if c not in _NON_FACTOR_COLS]
     agg = (results.groupby(["scenario_id", *factor_cols], as_index=False)
-                  .agg(**{
+                  .agg(**{  # type: ignore[call-overload]
                       COL_CYCLE_H_MEAN:  (COL_CYCLE_H, "mean"),
                       "cycle_h_std":     (COL_CYCLE_H, "std"),
                       COL_COST_MEAN:     (COL_COST,    "mean"),

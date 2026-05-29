@@ -2,6 +2,7 @@
 from __future__ import annotations
 import os
 import subprocess
+import xml.etree.ElementTree as ET
 from pathlib import Path
 
 from .constants import BPMN_NS
@@ -110,7 +111,6 @@ def discover(log_path: Path, run_dir: Path,
 
 def list_activities(bpmn_path: Path) -> list[str]:
     """Pull task names out of a BPMN file without loading pm4py."""
-    import xml.etree.ElementTree as ET
     tree = ET.parse(str(bpmn_path))
     names = []
     for tag in ("task", "userTask", "serviceTask", "manualTask",

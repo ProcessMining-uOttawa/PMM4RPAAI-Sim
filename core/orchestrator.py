@@ -45,6 +45,7 @@ def run_experiment(
 
     bpmn_tr = None
     if not demo_mode:
+        assert bpmn_path is not None and json_path is not None
         bpmn_tr = transformation.prepare_experiment(
             bpmn_path, json_path, target, exp_dir)
         experiment_bpmn_path = bpmn_tr.bpmn_path
@@ -56,6 +57,7 @@ def run_experiment(
                 r = demo.fake_simulate(s, rep, n_cases)
                 cycle_h, cost = r.cycle_h, r.cost
             else:
+                assert bpmn_tr is not None
                 if rep == 0:
                     s_json = transformation.apply_params(
                         bpmn_tr.base_json, bpmn_tr.ids,
@@ -67,6 +69,7 @@ def run_experiment(
                 out_log  = store.replication_log(exp_dir, s.id, rep)
                 out_stat = store.replication_stats(exp_dir, s.id, rep)
                 proc_log = store.replication_subprocess_log(exp_dir, s.id, rep)
+                assert s_json is not None
                 runner.simulate(bpmn_tr.bpmn_path, s_json,
                                 int(n_cases), out_log, stat_out=out_stat,
                                 proc_log=proc_log)

@@ -232,8 +232,8 @@ class XORSplitAutomation(Transformation):
         if task is None:
             raise ValueError(f"Activity {target_activity!r} not found in {bpmn_in}")
 
-        T_id   = task.get("id")
-        T_name = task.get("name")
+        T_id   = task.get("id", "")
+        T_name = task.get("name", "")
 
         incoming = flows_targeting(process, T_id)
         outgoing = flows_from(process, T_id)
@@ -245,9 +245,9 @@ class XORSplitAutomation(Transformation):
             )
 
         ids = _make_ids(T_id, T_name)
-        in_flow_id       = incoming[0].get("id")
-        out_flow_id      = outgoing[0].get("id")
-        original_next_id = outgoing[0].get("targetRef")
+        in_flow_id       = incoming[0].get("id", "")
+        out_flow_id      = outgoing[0].get("id", "")
+        original_next_id = outgoing[0].get("targetRef", "")
 
         # 1. Add all new elements in free space below the existing diagram.
         lo = _xor_bypass_layout(root, ids)
@@ -361,7 +361,7 @@ class XORSplitAutomation(Transformation):
         ]})
 
         _set_resource_amount(data, ids.bot_resource_id, scenario.num_bots)
-        if manual_entry.get("resources") and scenario.selected_resource_id is not None:
+        if manual_entry and manual_entry.get("resources") and scenario.selected_resource_id is not None:
             _set_resource_amount(data, scenario.selected_resource_id, scenario.num_manual_resources)
 
         json_out.parent.mkdir(parents=True, exist_ok=True)
