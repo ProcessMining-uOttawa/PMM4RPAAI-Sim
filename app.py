@@ -348,11 +348,10 @@ if ss.results is not None:
             st.stop()
         agg = analysis.aggregate(ss.results)
         ranked = analysis.rank(agg, goal_metric, goal_max)
-        show = ranked.copy()
-        show.insert(0, "rank", range(1, len(show)+1))
-        show["goals"] = show["goal_met"].map({True: "✓ met", False: "✗"})
+        ranked.insert(0, "rank", range(1, len(ranked)+1))
+        ranked["goals"] = ranked["goal_met"].map({True: "✓ met", False: "✗"})
         st.dataframe(
-            show.drop(columns=["goal_met", "score"]),
+            ranked.drop(columns=["goal_met", "score"]),
             use_container_width=True, hide_index=True,
         )
 
