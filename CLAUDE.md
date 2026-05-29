@@ -254,7 +254,7 @@ Known bugs / reliability gaps:
 
 Test gaps:
 
-- **`TestRank` missing three paths** (`tests/test_analysis.py`): (1) no test calls `rank()` with `goal_metric="cost_mean"` — a `KeyError` from an `aggregate()` column rename would not be caught; (2) no test inspects the `score` column value — the formula could silently change without a test failure; (3) no test exercises `goal_max=0` or negative values, which is the divide-by-zero path now guarded in `app.py`.
+- **`apply_pattern()` multi-flow `NotImplementedError` untested** (`tests/test_transformations.py`): `XORSplitAutomation.apply_pattern()` raises `NotImplementedError` when the target task has more than one incoming or outgoing `sequenceFlow`. The conftest fixture uses a simple single-flow task, so this path is never exercised. A test would need a synthetic BPMN with a gateway feeding directly into the target task.
 
 Design decisions:
 
