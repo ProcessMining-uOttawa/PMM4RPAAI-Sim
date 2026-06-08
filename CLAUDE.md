@@ -55,7 +55,7 @@ Taguchi designer**. Three contracts make that work:
   in `app.py` (min/max/step/format). The pattern's `apply()` reads `values` by
   id directly and does not use `kind`.
 
-- **Job-folder store** ([core/store.py](core/store.py)) — every experiment
+- **Job-folder store** ([core/simulation/store.py](core/simulation/store.py)) — every experiment
   is a folder under `runs/<exp-id>/`. Replications land at
   `runs/<exp-id>/scenarios/<sid>/rep_NNN_log.csv` + `..._stats.csv`. Tidy
   long-format DataFrame in `app.py` is the single source of truth for
@@ -65,19 +65,21 @@ Taguchi designer**. Three contracts make that work:
 
 | File | Responsibility |
 |---|---|
-| [app.py](app.py) | Streamlit dashboard (Mockup B): sidebar = experiment state + run config; 4 panels = Activity & pattern · Factor levels · Execution · Ranked scenarios. Panel 4 includes an export row: stats CSV, scenario JSON zip, BPMN, and group ZIP (all three combined). |
+| [app.py](app.py) | Streamlit dashboard (Mockup B): sidebar = experiment state + run config; 5 panels = Activity & pattern · Factor levels · Execution · Ranked scenarios · Baseline comparison. Panel 4 includes an export row: stats CSV, scenario JSON zip, BPMN, and group ZIP (all three combined). |
 | [.github/workflows/ci.yml](.github/workflows/ci.yml) | GitHub Actions CI: three parallel jobs — **lint** (ruff), **type-check** (`mypy core/ --ignore-missing-imports`), **test** (pytest). Triggered on push and PR to main. Only `pandas` and the respective tool are installed per job — heavy packages (streamlit, pm4py) are not needed for the test suite. |
-| [core/constants.py](core/constants.py) | Shared constants: XML namespaces, Prosimos JSON keys, pattern defaults (Taguchi level lists), and analysis column names (`COL_CYCLE_H`, `COL_COST`, `COL_CYCLE_H_MEAN`, `COL_COST_MEAN`). |
-| [core/orchestrator.py](core/orchestrator.py) | Run loop: iterates scenarios × replications, calls `runner.simulate`, collects results into a tidy DataFrame. |
+| [core/constants.py](core/constants.py) | Cross-cutting constants only: eight `COL_*` analysis column names and `KEY_RESOURCE_PROFILES` / `KEY_TASK_RESOURCE_DISTRIBUTION` (used in both `bpmn/utils.py` and `transformations.py`). Everything else lives in its home module. |
+| [core/orchestrator.py](core/orchestrator.py) | Run loop: iterates scenarios × replications, calls `simulation.runner.simulate`, collects results into a tidy DataFrame. Also runs the baseline (original, untransformed model) before the scenarios and returns mean total metrics for Panel 5. |
 | [core/preflight.py](core/preflight.py) | Detects Python 3.9, Corretto 8 (auto-finds `C:\Program Files\Amazon Corretto\jdk1.8*`), and both venvs. Surfaces per-row fixes in the UI. |
-| [core/runner.py](core/runner.py) | Subprocess wrappers: `discover()` (Simod one-shot, XES auto-converted to CSV first), `simulate()` (Prosimos `start-simulation`), `list_activities()` (ET read of BPMN task names). Stdout/stderr captured to log files via `_run_logged()`. |
-| [core/transformations.py](core/transformations.py) | `Transformation` ABC + `XORSplitAutomation` impl + `REGISTRY` of available patterns. |
-| [core/bpmn_edit.py](core/bpmn_edit.py) | Low-level BPMN XML editing: DI shape/edge creation, process element insertion, sequence-flow rewiring. All `xml.etree.ElementTree` surgery lives here. |
-| [core/bpmn_utils.py](core/bpmn_utils.py) | Read-only BPMN helpers: task-by-name lookup, sequenceFlow neighbours, `task_mean_duration_s()` for prepopulating Non-Auto-Time. |
+| [core/transformations.py](core/transformations.py) | `Transformation` ABC + `XORSplitAutomation` impl + `REGISTRY` of available patterns. Owns all XORSplitAutomation-specific constants inline (BOT_*, GW*_NAME, F_*, Taguchi level lists). |
+| [core/bpmn/\_\_init\_\_.py](core/bpmn/__init__.py) | BPMN XML namespace constants (`BPMN_NS`, `BPMNDI_NS`, `DC_NS`, `DI_NS`, `BPMN_TASK_TAGS`). |
+| [core/bpmn/edit.py](core/bpmn/edit.py) | Low-level BPMN XML editing: DI shape/edge creation, process element insertion, sequence-flow rewiring. All `xml.etree.ElementTree` surgery lives here. |
+| [core/bpmn/utils.py](core/bpmn/utils.py) | Read-only BPMN/Prosimos helpers: task-by-name lookup, `list_activities()`, `task_mean_duration_s()` for prepopulating Non-Auto-Time, resource helpers (`task_resources`, `shared_resource_ids`, `resource_pool_size`). |
+| [core/simulation/runner.py](core/simulation/runner.py) | Subprocess wrappers: `discover()` (Simod one-shot, XES auto-converted to CSV first) and `simulate()` (Prosimos `start-simulation`). Stdout/stderr captured to log files via `_run_logged()`. |
+| [core/simulation/store.py](core/simulation/store.py) | Experiment directory layout. Each run gets a timestamped folder under `runs/<exp-id>/`; subprocess logs co-located with CSV outputs. |
+| [core/simulation/prosimos_csv.py](core/simulation/prosimos_csv.py) | Prosimos output reader: parses event-log CSV and stats CSV. `replication_metrics()` does a single stats CSV parse to return all four per-replication metrics (`COL_CYCLE_H`, `COL_COST`, `COL_TOTAL_CYCLE_S`, `COL_TOTAL_COST`). PROSIMOS_* format constants are defined inline here. |
 | [core/experiment.py](core/experiment.py) | Hard-coded Taguchi L9 and L18 arrays + `pick_array(n_factors)`. L27 still TODO. |
 | [core/parameters.py](core/parameters.py) | `Parameter`, `Scenario`, and `AutomationScenario` dataclasses. `AutomationScenario.from_taguchi_values()` bridges Taguchi output to simulation inputs. |
-| [core/analysis.py](core/analysis.py) | `per_log_metrics()` (cycle time from event log, cost from stats), `aggregate()`, `main_effects()` (Taguchi S/N), `rank()` (single-goal: goals-met flag + ratio-to-target score). |
-| [core/store.py](core/store.py) | Experiment directory layout. Each run gets a timestamped folder under `runs/<exp-id>/`; subprocess logs co-located with CSV outputs. |
+| [core/analysis.py](core/analysis.py) | Pure analysis: `aggregate()`, `compare_to_baseline()`, `main_effects()` (Taguchi S/N), `rank()` (single-goal: goals-met flag + ratio-to-target score). No file I/O. |
 | [core/demo.py](core/demo.py) | Synthetic simulator behind the Demo-mode toggle — lets you click through the UI with no Simod/Prosimos installed. Resource pool size affects cycle time via sqrt scaling. |
 | [samples/IssueTracker.xes](samples/IssueTracker.xes) | 100k-event synthetic log used for testing. Borrowed from the pm4py-ucm project. |
 | [mockups/](mockups/) | Three early HTML UI mockups (wizard / dashboard / tabbed). Kept as design history. |
@@ -222,7 +224,7 @@ Then in the browser: toggle **Demo mode** off, upload
 Dev commands (no external tools required):
 
 ```powershell
-pytest                                 # run test suite (95 tests, demo mode only)
+pytest                                 # run test suite (105 tests, demo mode only)
 ruff check .                           # lint
 mypy core/ --ignore-missing-imports    # type-check (--ignore-missing-imports suppresses pm4py stub warning)
 ```
@@ -231,16 +233,16 @@ mypy core/ --ignore-missing-imports    # type-check (--ignore-missing-imports su
 
 Known bugs / reliability gaps:
 
-- **Bot cost is hardcoded to zero** (`core/constants.py`): `BOT_COST_PER_HOUR = "0"`
+- **Bot cost is hardcoded to zero** (`core/transformations.py`): `BOT_COST_PER_HOUR = "0"`
   means the bot resource never contributes to the cost metric — only human labour
   does. In practice, automation has real costs (licensing, infrastructure, etc.).
   Needs a concrete cost model from the PhD client before implementing; likely
   surfaces as a new Taguchi factor or a fixed input in the UI.
-- **Tasks with no resources assigned** (`core/bpmn_utils.py`): `task_resources()`
+- **Tasks with no resources assigned** (`core/bpmn/utils.py`): `task_resources()`
   returns `[]` if the target task has no entry in `task_resource_distribution`.
   Technically impossible when using Simod-generated models, but not explicitly
   guarded — `apply_params()` silently skips the pool resize in that case.
-- **Incomplete cases in cycle time** (`core/analysis.py`): `per_log_metrics()` computes
+- **Incomplete cases in cycle time** (`core/simulation/prosimos_csv.py`): `per_log_metrics()` computes
   cycle time as `max(end_time) − min(start_time)` over all cases with no filter for
   completion. Currently safe because Prosimos runs until `--total_cases N` cases
   **complete**, so the output log should never contain truncated cases. If that
@@ -252,12 +254,12 @@ Known bugs / reliability gaps:
   is empty and the function returns `NaN` — silently voiding S/N analysis for the
   most-automated scenarios. The log formula requires positive inputs, so a floor
   (e.g. `max(v, 1e-9)`) or a special-case for zero is needed. Deferred pending
-  decision on bot cost model (see "Bot cost hardcoded to zero" below).
+  decision on bot cost model (see "Bot cost hardcoded to zero" above).
 - **Bot task uses uniform distribution instead of fix** (`core/transformations.py`):
   `apply_params()` calls `_set_uniform()` for both the manual and bot task entries,
   giving the bot a ±5% jitter around `t_auto`. A bot (deterministic automation script)
   should use `"fix"` with a single value. Note: `BOT_DISTRIBUTION_NAME = "fix"` in
-  `constants.py` was the original intent but is dead — `build_base_json` sets it as a
+  `transformations.py` was the original intent but is dead — `build_base_json` sets it as a
   placeholder and `apply_params` immediately overwrites it. Fix: add a separate
   `_set_fixed(entry, mean_s)` helper and use it for the bot entry in `apply_params()`.
 
@@ -269,10 +271,12 @@ Design decisions:
 
 - **Single-goal ranking**: `rank()` optimises for one metric at a time (cycle time or cost), selected via a sidebar dropdown. The original two-goal design used a combined normalised score, but the scales differ enough (hours vs $/case) that cost dominated silently. Tradeoff: you lose the ability to surface scenarios that satisfy *both* goals simultaneously — if that matters, consider adding a secondary "also meets" flag column without letting it affect the score.
 - **Results panel recomputation**: `analysis.aggregate()` and `analysis.main_effects()` are called unconditionally on every Streamlit rerun while results exist (no caching). At current scale (L18 × ~5 reps = ~90 rows) the groupby is negligible. If the project adds L27 with many replications and the results panel becomes sluggish, cache `agg` in session state keyed by `id(ss.results)`, or apply `@st.cache_data` to the analysis functions.
+- **Constants placement strategy**: `constants.py` holds only the eight `COL_*` analysis columns and the two `KEY_*` Prosimos JSON keys that are consumed by both `bpmn/utils.py` and `transformations.py`. Everything else lives in its home module — BPMN namespace constants in `bpmn/__init__.py`, Prosimos CSV format strings in `simulation/prosimos_csv.py`, and XORSplitAutomation-specific values (BOT_*, GW*_NAME, F_*, Taguchi defaults) inline in `transformations.py`. The rule: a constant belongs in `constants.py` only if removing it would require two or more otherwise-unrelated modules to import from each other.
+- **`core/` subpackage structure**: `core/` is split into `bpmn/` (BPMN reading and editing) and `simulation/` (Prosimos/Simod subprocess wrappers, store, output parsing). The flat modules (`bpmn_edit.py`, `bpmn_utils.py`, `runner.py`, `store.py`, `prosimos_csv.py`) were merged into these subpackages. `list_activities` moved from `simulation/runner.py` to `bpmn/utils.py` since it reads BPMN XML, not a subprocess concern. `analysis.py`, `transformations.py`, `orchestrator.py`, and the dataclass modules remain at the top level of `core/` because they don't belong cleanly to either subpackage.
 
 Feature work:
 
-- **Cost metric from first principles**: cost is currently read from Prosimos's stats CSV (`Individual Task Statistics` / `Total Cost`). A more reliable alternative is to compute it ourselves: per-replication, sum `resource_seconds × cost_per_hour` from the params JSON and the event log. This would also enable bot cost once `BOT_COST_PER_HOUR` is non-zero. Hook into `analysis.per_log_metrics()`.
+- **Cost metric from first principles**: cost is currently read from Prosimos's stats CSV (`Individual Task Statistics` / `Total Cost`). A more reliable alternative is to compute it ourselves: per-replication, sum `resource_seconds × cost_per_hour` from the params JSON and the event log. This would also enable bot cost once `BOT_COST_PER_HOUR` is non-zero. Hook into `simulation.prosimos_csv.per_log_metrics()`.
 - **Plots in Panel 4**: a Plotly main-effects plot (factor × level) above
   the ranking table. The data is already in `analysis.main_effects()`.
 - **More patterns**: `ParallelHybrid` (auto runs alongside manual review),
@@ -304,5 +308,7 @@ sessions added `num_bots`/`num_manual_resources` as Taguchi factors (L18),
 subprocess log capture, XML namespace centralisation in `constants.py`, and
 dead-code removal (`new_id`, `Parameter.inject`, `store.ACTIVE` clobber).
 Later sessions added code quality tooling (ruff, mypy), a full test suite
-(95 tests across all core modules), export features (stats CSV, JSON zip,
-BPMN, group ZIP in Panel 4), and GitHub Actions CI.*
+(105 tests across all core modules), export features (stats CSV, JSON zip,
+BPMN, group ZIP in Panel 4), GitHub Actions CI, baseline comparison (Panel 5),
+Prosimos output parsing split into `simulation/prosimos_csv.py`, and
+restructure of `core/` into `bpmn/` and `simulation/` subpackages.*
