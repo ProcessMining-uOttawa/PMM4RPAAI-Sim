@@ -91,16 +91,16 @@ class TestCompareToBaseline:
 
     def _agg(self):
         return pd.DataFrame([
-            {"scenario_id": "S01", COL_TOTAL_CYCLE_S_MEAN: 7200.0, COL_TOTAL_COST_MEAN: 200.0},
-            {"scenario_id": "S02", COL_TOTAL_CYCLE_S_MEAN: 3600.0, COL_TOTAL_COST_MEAN: 80.0},
+            {"scenario_id": "S01", "Act.num_cases": 100, COL_TOTAL_CYCLE_S_MEAN: 7200.0, COL_TOTAL_COST_MEAN: 200.0},
+            {"scenario_id": "S02", "Act.num_cases": 100, COL_TOTAL_CYCLE_S_MEAN: 3600.0, COL_TOTAL_COST_MEAN: 80.0},
         ])
 
     def _baseline(self):
-        return {COL_TOTAL_CYCLE_S_MEAN: 3600.0, COL_TOTAL_COST_MEAN: 100.0}
+        return {100: {COL_TOTAL_CYCLE_S_MEAN: 3600.0, COL_TOTAL_COST_MEAN: 100.0}}
 
     def test_baseline_row_is_first(self):
         df = compare_to_baseline(self._agg(), self._baseline())
-        assert df.iloc[0]["Scenario"] == "Baseline (original)"
+        assert df.iloc[0]["Scenario"] == "Baseline (100 cases)"
 
     def test_row_count(self):
         df = compare_to_baseline(self._agg(), self._baseline())
@@ -118,6 +118,20 @@ class TestCompareToBaseline:
         assert s02["Δ Time (h)"] == pytest.approx(0.0)
         assert s02["Δ Cost ($)"] == pytest.approx(-20.0)
         assert s02["Δ Cost (%)"] == pytest.approx(-20.0)
+
+    def test_multiple_levels_produce_multiple_baseline_rows(self):
+        agg = pd.DataFrame([
+            {"scenario_id": "S01", "Act.num_cases": 100,  COL_TOTAL_CYCLE_S_MEAN: 3600.0, COL_TOTAL_COST_MEAN: 100.0},
+            {"scenario_id": "S02", "Act.num_cases": 1000, COL_TOTAL_CYCLE_S_MEAN: 3600.0, COL_TOTAL_COST_MEAN: 100.0},
+        ])
+        baseline = {
+            100:  {COL_TOTAL_CYCLE_S_MEAN: 3600.0,  COL_TOTAL_COST_MEAN: 100.0},
+            1000: {COL_TOTAL_CYCLE_S_MEAN: 36000.0, COL_TOTAL_COST_MEAN: 1000.0},
+        }
+        df = compare_to_baseline(agg, baseline)
+        baseline_rows = df[df["Scenario"].str.startswith("Baseline")]
+        assert len(baseline_rows) == 2
+        assert set(baseline_rows["Cases"]) == {100, 1000}
 
 
 # ── main_effects ──────────────────────────────────────────────────────────────

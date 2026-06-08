@@ -118,6 +118,7 @@ _SCENARIO = AutomationScenario(
     manual_execution_time=1800.0,
     num_bots=2,
     num_manual_resources=3,
+    num_cases=100,
     selected_resource_id="res_human_1",
 )
 
@@ -188,7 +189,7 @@ class TestApplyParams:
         scenario = AutomationScenario(
             automation_rate=0.5, bot_failure_rate=0.1,
             bot_execution_time=60.0, manual_execution_time=1800.0,
-            num_bots=1, num_manual_resources=3,
+            num_bots=1, num_manual_resources=3, num_cases=100,
             selected_resource_id=None,
         )
         json_out = tmp_path / "scenario_none" / "params.json"
@@ -204,7 +205,7 @@ class TestAutomationScenarioValidation:
     _base = dict(
         automation_rate=0.5, bot_failure_rate=0.1,
         bot_execution_time=60.0, manual_execution_time=1800.0,
-        num_bots=1, num_manual_resources=1,
+        num_bots=1, num_manual_resources=1, num_cases=100,
     )
 
     def _make(self, **overrides):
@@ -236,6 +237,14 @@ class TestAutomationScenarioValidation:
     def test_num_manual_resources_zero_raises(self):
         with pytest.raises(ValueError, match="num_manual_resources"):
             self._make(num_manual_resources=0)
+
+    def test_num_cases_zero_raises(self):
+        with pytest.raises(ValueError, match="num_cases"):
+            self._make(num_cases=0)
+
+    def test_num_cases_negative_raises(self):
+        with pytest.raises(ValueError, match="num_cases"):
+            self._make(num_cases=-1)
 
 
 # ── Helpers used by multiple test classes ─────────────────────────────────────

@@ -29,7 +29,7 @@ def fake_discovery():
     return [name for name, _ in DEMO_ACTIVITIES]
 
 
-def fake_simulate(scenario: Scenario, replication: int, n_cases: int) -> DemoResult:
+def fake_simulate(scenario: Scenario, replication: int) -> DemoResult:
     """Synthetic but monotonic: more automation → faster, cheaper, with noise."""
     rng = random.Random(hash((scenario.id, replication)) & 0xffffffff)
 

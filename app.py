@@ -226,7 +226,6 @@ with st.sidebar:
     st.divider()
     st.subheader("Run config")
     n_reps = st.number_input("Replications (N)", 1, 100, 5)
-    n_cases = st.number_input("Cases per rep (C)", 10, 100_000, 500, step=100)
 
 # --- gate: need a log first --------------------------------------------------
 if not ss.activities:
@@ -393,7 +392,6 @@ with st.container(border=True):
             target=target,
             scenarios=scenarios,
             n_reps=n_reps,
-            n_cases=n_cases,
             exp_dir=exp_dir,
             demo_mode=demo_mode,
             on_progress=_on_progress,
