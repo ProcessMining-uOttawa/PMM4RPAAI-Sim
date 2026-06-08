@@ -6,7 +6,7 @@ from typing import Callable
 
 import pandas as pd
 
-from . import analysis, demo, runner, store
+from . import analysis, demo, prosimos_csv, runner, store
 from .constants import (
     COL_CYCLE_H, COL_COST, COL_TOTAL_CYCLE_S, COL_TOTAL_COST,
     COL_TOTAL_CYCLE_S_MEAN, COL_TOTAL_COST_MEAN,
@@ -38,7 +38,7 @@ def _run_baseline(bpmn_path: Path, json_path: Path, n_reps: int, n_cases: int,
         proc_log = store.baseline_subprocess_log(exp_dir, rep)
         runner.simulate(bpmn_path, json_path, n_cases, out_log,
                         stat_out=out_stat, proc_log=proc_log)
-        m = analysis.total_metrics(out_stat)
+        m = prosimos_csv.total_metrics(out_stat)
         totals_cycle.append(m[COL_TOTAL_CYCLE_S])
         totals_cost.append(m[COL_TOTAL_COST])
     return {
@@ -104,7 +104,7 @@ def run_experiment(
                 runner.simulate(bpmn_tr.bpmn_path, s_json,
                                 int(n_cases), out_log, stat_out=out_stat,
                                 proc_log=proc_log)
-                m = analysis.replication_metrics(out_log, out_stat)
+                m = prosimos_csv.replication_metrics(out_log, out_stat)
                 cycle_h, cost = m[COL_CYCLE_H], m[COL_COST]
                 total_cycle_s, total_cost = m[COL_TOTAL_CYCLE_S], m[COL_TOTAL_COST]
 
