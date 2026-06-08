@@ -36,13 +36,53 @@ def _parse_section(rows: list, header: str) -> tuple[list[str], list[list[str]]]
     return [], []
 
 
+def _cost_from_rows(rows: list, n_cases: int) -> float | None:
+    """Lenient: returns None if cost data is missing or unparseable."""
+    try:
+        task_hdr, task_data = _parse_section(rows, PROSIMOS_SECTION_TASK_STATS)
+        if task_hdr and task_data:
+            total = sum(float(r[task_hdr.index(PROSIMOS_COL_TOTAL_COST)]) for r in task_data)
+            return total / n_cases
+    except (ValueError, IndexError):
+        pass
+    return None
+
+
+def _totals_from_rows(rows: list, source: Path) -> dict:
+    """Strict: raises ValueError if any total metric is missing or unparseable."""
+    overall_hdr, overall_data = _parse_section(rows, PROSIMOS_SECTION_OVERALL)
+    if not overall_hdr or not overall_data:
+        raise ValueError(f"'{PROSIMOS_SECTION_OVERALL}' not found in {source}")
+    try:
+        acc_idx = overall_hdr.index(PROSIMOS_COL_ACCUMULATED)
+    except ValueError:
+        raise ValueError(f"'{PROSIMOS_COL_ACCUMULATED}' column missing in {source}")
+    cycle_row = next((r for r in overall_data if r and r[0].strip() == PROSIMOS_KPI_CYCLE_TIME), None)
+    if cycle_row is None:
+        raise ValueError(f"'{PROSIMOS_KPI_CYCLE_TIME}' KPI not found in {source}")
+    total_cycle_s = float(cycle_row[acc_idx])
+
+    task_hdr, task_data = _parse_section(rows, PROSIMOS_SECTION_TASK_STATS)
+    if not task_hdr or not task_data:
+        raise ValueError(f"'{PROSIMOS_SECTION_TASK_STATS}' not found in {source}")
+    try:
+        cost_idx = task_hdr.index(PROSIMOS_COL_TOTAL_COST)
+    except ValueError:
+        raise ValueError(f"'{PROSIMOS_COL_TOTAL_COST}' column missing in {source}")
+    total_cost = 0.0
+    for r in task_data:
+        try:
+            total_cost += float(r[cost_idx])
+        except (ValueError, IndexError):
+            raise ValueError(f"Non-numeric Total Cost in {source}: {r}")
+    return {COL_TOTAL_CYCLE_S: total_cycle_s, COL_TOTAL_COST: total_cost}
+
+
 def per_log_metrics(log_csv: Path, stats_csv: Path | None = None) -> dict:
     """Summary metrics for one Prosimos replication.
 
     cycle_h: median per-case cycle time in hours (last end − first start).
-    cost: average cost per case — sum of Total Cost across all tasks from
-          Individual Task Statistics, divided by case count from the event log.
-          None if stats unavailable or unparseable.
+    cost: average cost per case — None if stats unavailable or unparseable.
     """
     df = pd.read_csv(log_csv, parse_dates=["start_time", "end_time"])
     per_case = df.groupby("case_id").agg(
@@ -53,56 +93,34 @@ def per_log_metrics(log_csv: Path, stats_csv: Path | None = None) -> dict:
     if stats_csv and Path(stats_csv).exists():
         with open(stats_csv) as f:
             rows = list(csv.reader(f))
-        try:
-            task_hdr, task_data = _parse_section(rows, PROSIMOS_SECTION_TASK_STATS)
-            if task_hdr and task_data:
-                total_cost = sum(
-                    float(r[task_hdr.index(PROSIMOS_COL_TOTAL_COST)]) for r in task_data
-                )
-                cost = total_cost / len(per_case)
-        except (ValueError, IndexError):
-            pass
+        cost = _cost_from_rows(rows, len(per_case))
     return {COL_CYCLE_H: float(cycle_h.median()), COL_COST: cost}
 
 
 def total_metrics(stats_csv: Path) -> dict:
-    """Total accumulated metrics for one Prosimos replication.
-
-    total_cycle_s: Accumulated Value for cycle_time from Overall Scenario Statistics.
-    total_cost: sum of Total Cost across all tasks from Individual Task Statistics.
-
-    Raises ValueError if either metric is missing or unparseable.
-    """
+    """Run-total metrics for one Prosimos replication. Raises ValueError on missing data."""
     with open(stats_csv) as f:
         rows = list(csv.reader(f))
+    return _totals_from_rows(rows, stats_csv)
 
-    overall_hdr, overall_data = _parse_section(rows, PROSIMOS_SECTION_OVERALL)
-    if not overall_hdr or not overall_data:
-        raise ValueError(f"'{PROSIMOS_SECTION_OVERALL}' not found in {stats_csv}")
-    try:
-        acc_idx = overall_hdr.index(PROSIMOS_COL_ACCUMULATED)
-    except ValueError:
-        raise ValueError(f"'{PROSIMOS_COL_ACCUMULATED}' column missing in {stats_csv}")
-    cycle_row = next((r for r in overall_data if r and r[0].strip() == PROSIMOS_KPI_CYCLE_TIME), None)
-    if cycle_row is None:
-        raise ValueError(f"'{PROSIMOS_KPI_CYCLE_TIME}' KPI not found in {stats_csv}")
-    total_cycle_s = float(cycle_row[acc_idx])
 
-    task_hdr, task_data = _parse_section(rows, PROSIMOS_SECTION_TASK_STATS)
-    if not task_hdr or not task_data:
-        raise ValueError(f"'{PROSIMOS_SECTION_TASK_STATS}' not found in {stats_csv}")
-    try:
-        cost_idx = task_hdr.index(PROSIMOS_COL_TOTAL_COST)
-    except ValueError:
-        raise ValueError(f"'{PROSIMOS_COL_TOTAL_COST}' column missing in {stats_csv}")
-    total_cost = 0.0
-    for r in task_data:
-        try:
-            total_cost += float(r[cost_idx])
-        except (ValueError, IndexError):
-            raise ValueError(f"Non-numeric Total Cost in {stats_csv}: {r}")
+def replication_metrics(log_csv: Path, stats_csv: Path) -> dict:
+    """All per-replication metrics in a single stats CSV parse.
 
-    return {COL_TOTAL_CYCLE_S: total_cycle_s, COL_TOTAL_COST: total_cost}
+    Returns COL_CYCLE_H, COL_COST, COL_TOTAL_CYCLE_S, COL_TOTAL_COST.
+    Raises ValueError if total metrics are missing (delegates to _totals_from_rows).
+    """
+    df = pd.read_csv(log_csv, parse_dates=["start_time", "end_time"])
+    per_case = df.groupby("case_id").agg(
+        start=("start_time", "min"), end=("end_time", "max"))
+    cycle_h = (per_case["end"] - per_case["start"]).dt.total_seconds().div(3600)
+    with open(stats_csv) as f:
+        rows = list(csv.reader(f))
+    return {
+        COL_CYCLE_H: float(cycle_h.median()),
+        COL_COST: _cost_from_rows(rows, len(per_case)),
+        **_totals_from_rows(rows, stats_csv),
+    }
 
 
 def aggregate(results: pd.DataFrame) -> pd.DataFrame:

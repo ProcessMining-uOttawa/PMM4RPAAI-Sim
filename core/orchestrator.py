@@ -86,7 +86,7 @@ def run_experiment(
             if demo_mode:
                 r = demo.fake_simulate(s, rep, n_cases)
                 cycle_h, cost = r.cycle_h, r.cost
-                total_cycle_s, total_cost_val = float("nan"), float("nan")
+                total_cycle_s, total_cost = float("nan"), float("nan")
             else:
                 assert bpmn_tr is not None
                 if rep == 0:
@@ -104,10 +104,9 @@ def run_experiment(
                 runner.simulate(bpmn_tr.bpmn_path, s_json,
                                 int(n_cases), out_log, stat_out=out_stat,
                                 proc_log=proc_log)
-                m = analysis.per_log_metrics(out_log, out_stat)
+                m = analysis.replication_metrics(out_log, out_stat)
                 cycle_h, cost = m[COL_CYCLE_H], m[COL_COST]
-                tm = analysis.total_metrics(out_stat)
-                total_cycle_s, total_cost_val = tm[COL_TOTAL_CYCLE_S], tm[COL_TOTAL_COST]
+                total_cycle_s, total_cost = m[COL_TOTAL_CYCLE_S], m[COL_TOTAL_COST]
 
             rows.append({
                 "scenario_id":   s.id,
@@ -115,7 +114,7 @@ def run_experiment(
                 COL_CYCLE_H:     cycle_h,
                 COL_COST:        cost,
                 COL_TOTAL_CYCLE_S: total_cycle_s,
-                COL_TOTAL_COST:    total_cost_val,
+                COL_TOTAL_COST:    total_cost,
                 **s.values,
             })
             done += 1

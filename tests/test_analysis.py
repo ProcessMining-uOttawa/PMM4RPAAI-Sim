@@ -11,6 +11,7 @@ from core.analysis import (
     _parse_section,
     per_log_metrics,
     total_metrics,
+    replication_metrics,
     aggregate,
     main_effects,
     signal_to_noise,
@@ -216,6 +217,36 @@ class TestTotalMetrics:
             w.writerow([PROSIMOS_KPI_CYCLE_TIME, "0", "0", "0", "3600.0", "100"])
         with pytest.raises(ValueError, match="Total Cost"):
             total_metrics(stats)
+
+
+# ── replication_metrics ───────────────────────────────────────────────────────
+
+class TestReplicationMetrics:
+
+    def test_returns_all_four_keys(self, tmp_path):
+        log = tmp_path / "log.csv"
+        stats = tmp_path / "stats.csv"
+        _write_log(log, [("c1", "2025-01-01T08:00:00", "2025-01-01T10:00:00")])
+        _write_full_stats(stats, [("task_a", 100.0)], accumulated_cycle_s=3600.0)
+        m = replication_metrics(log, stats)
+        assert COL_CYCLE_H in m and COL_COST in m
+        assert COL_TOTAL_CYCLE_S in m and COL_TOTAL_COST in m
+
+    def test_matches_separate_calls(self, tmp_path):
+        log = tmp_path / "log.csv"
+        stats = tmp_path / "stats.csv"
+        _write_log(log, [
+            ("c1", "2025-01-01T08:00:00", "2025-01-01T10:00:00"),
+            ("c2", "2025-01-01T08:00:00", "2025-01-01T12:00:00"),
+        ])
+        _write_full_stats(stats, [("task_a", 100.0), ("task_b", 50.0)], accumulated_cycle_s=7200.0)
+        combined = replication_metrics(log, stats)
+        per = per_log_metrics(log, stats)
+        total = total_metrics(stats)
+        assert combined[COL_CYCLE_H] == pytest.approx(per[COL_CYCLE_H])
+        assert combined[COL_COST] == pytest.approx(per[COL_COST])
+        assert combined[COL_TOTAL_CYCLE_S] == pytest.approx(total[COL_TOTAL_CYCLE_S])
+        assert combined[COL_TOTAL_COST] == pytest.approx(total[COL_TOTAL_COST])
 
 
 # ── aggregate ─────────────────────────────────────────────────────────────────
