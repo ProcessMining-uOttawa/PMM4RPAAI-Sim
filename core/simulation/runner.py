@@ -64,8 +64,19 @@ def xes_to_simod_csv(xes_path: Path, csv_path: Path) -> Path:
                 "end_time": _attr(event, "date",   "time:timestamp"),
             })
 
+    if not rows:
+        raise ValueError(
+            f"No events parsed from {xes_path}. "
+            "Expected XES namespace http://www.xes-standard.org/ with <trace>/<event> elements."
+        )
+
     df = pd.DataFrame(rows)
     df["end_time"] = pd.to_datetime(df["end_time"], utc=True)
+    nat_count = int(df["end_time"].isna().sum())
+    if nat_count:
+        raise ValueError(
+            f"{nat_count} event(s) in {xes_path} are missing a time:timestamp attribute."
+        )
     df = df.sort_values(["case_id", "end_time"]).reset_index(drop=True)
     df["start_time"] = df.groupby("case_id")["end_time"].shift(1)
     df["start_time"] = df["start_time"].fillna(df["end_time"])

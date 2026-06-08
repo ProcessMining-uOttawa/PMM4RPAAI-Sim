@@ -33,7 +33,7 @@ def aggregate(results: pd.DataFrame) -> pd.DataFrame:
 
 
 def _pct_delta(delta: float, baseline: float) -> float:
-    return round(delta / baseline * 100, 1) if baseline else 0.0
+    return round(delta / baseline * 100, 1) if baseline != 0 else float("nan")
 
 
 def compare_to_baseline(agg: pd.DataFrame, baseline_agg: dict[int, dict]) -> pd.DataFrame:
