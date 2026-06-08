@@ -10,6 +10,8 @@ import pytest
 from core.analysis import (
     _parse_section,
     per_log_metrics,
+    total_metrics,
+    replication_metrics,
     aggregate,
     main_effects,
     signal_to_noise,
@@ -17,7 +19,9 @@ from core.analysis import (
 )
 from core.constants import (
     PROSIMOS_SECTION_TASK_STATS, PROSIMOS_COL_TOTAL_COST,
+    PROSIMOS_SECTION_OVERALL, PROSIMOS_COL_ACCUMULATED, PROSIMOS_KPI_CYCLE_TIME,
     COL_CYCLE_H, COL_COST, COL_CYCLE_H_MEAN, COL_COST_MEAN,
+    COL_TOTAL_CYCLE_S, COL_TOTAL_COST,
 )
 
 
@@ -38,6 +42,21 @@ def _write_stats(path: Path, tasks: list[tuple]) -> None:
         w.writerow(["task_id", PROSIMOS_COL_TOTAL_COST])
         for task_id, total_cost in tasks:
             w.writerow([task_id, str(total_cost)])
+        w.writerow([])
+
+
+def _write_full_stats(path: Path, tasks: list[tuple], accumulated_cycle_s: float) -> None:
+    """Write a stats CSV with both Individual Task Statistics and Overall Scenario Statistics."""
+    with open(path, "w", newline="") as f:
+        w = csv.writer(f)
+        w.writerow([PROSIMOS_SECTION_TASK_STATS])
+        w.writerow(["task_id", PROSIMOS_COL_TOTAL_COST])
+        for task_id, total_cost in tasks:
+            w.writerow([task_id, str(total_cost)])
+        w.writerow([])
+        w.writerow([PROSIMOS_SECTION_OVERALL])
+        w.writerow(["KPI", "Min", "Max", "Average", PROSIMOS_COL_ACCUMULATED, "Trace Occurrences"])
+        w.writerow([PROSIMOS_KPI_CYCLE_TIME, "0", "0", "0", str(accumulated_cycle_s), "100"])
         w.writerow([])
 
 
@@ -162,6 +181,72 @@ class TestPerLogMetrics:
         _write_log(log, [("c1", "2025-01-01T08:00:00", "2025-01-01T09:00:00")])
         stats.write_text("no recognisable sections here\n")
         assert per_log_metrics(log, stats)[COL_COST] is None
+
+
+# ── total_metrics ─────────────────────────────────────────────────────────────
+
+class TestTotalMetrics:
+
+    def test_total_cycle_s(self, tmp_path):
+        stats = tmp_path / "stats.csv"
+        _write_full_stats(stats, [("task_a", 50.0)], accumulated_cycle_s=3600.0)
+        assert total_metrics(stats)[COL_TOTAL_CYCLE_S] == pytest.approx(3600.0)
+
+    def test_total_cost_sum(self, tmp_path):
+        stats = tmp_path / "stats.csv"
+        _write_full_stats(stats, [("task_a", 100.0), ("task_b", 50.0)], accumulated_cycle_s=1.0)
+        assert total_metrics(stats)[COL_TOTAL_COST] == pytest.approx(150.0)
+
+    def test_missing_overall_section_raises(self, tmp_path):
+        stats = tmp_path / "stats.csv"
+        _write_stats(stats, [("task_a", 50.0)])  # only task stats, no overall section
+        with pytest.raises(ValueError, match="Overall Scenario Statistics"):
+            total_metrics(stats)
+
+    def test_missing_cost_column_raises(self, tmp_path):
+        stats = tmp_path / "stats.csv"
+        with open(stats, "w", newline="") as f:
+            import csv as _csv
+            w = _csv.writer(f)
+            w.writerow([PROSIMOS_SECTION_TASK_STATS])
+            w.writerow(["task_id", "Some Other Column"])
+            w.writerow(["task_a", "50.0"])
+            w.writerow([])
+            w.writerow([PROSIMOS_SECTION_OVERALL])
+            w.writerow(["KPI", "Min", "Max", "Average", PROSIMOS_COL_ACCUMULATED, "Trace Occurrences"])
+            w.writerow([PROSIMOS_KPI_CYCLE_TIME, "0", "0", "0", "3600.0", "100"])
+        with pytest.raises(ValueError, match="Total Cost"):
+            total_metrics(stats)
+
+
+# ── replication_metrics ───────────────────────────────────────────────────────
+
+class TestReplicationMetrics:
+
+    def test_returns_all_four_keys(self, tmp_path):
+        log = tmp_path / "log.csv"
+        stats = tmp_path / "stats.csv"
+        _write_log(log, [("c1", "2025-01-01T08:00:00", "2025-01-01T10:00:00")])
+        _write_full_stats(stats, [("task_a", 100.0)], accumulated_cycle_s=3600.0)
+        m = replication_metrics(log, stats)
+        assert COL_CYCLE_H in m and COL_COST in m
+        assert COL_TOTAL_CYCLE_S in m and COL_TOTAL_COST in m
+
+    def test_matches_separate_calls(self, tmp_path):
+        log = tmp_path / "log.csv"
+        stats = tmp_path / "stats.csv"
+        _write_log(log, [
+            ("c1", "2025-01-01T08:00:00", "2025-01-01T10:00:00"),
+            ("c2", "2025-01-01T08:00:00", "2025-01-01T12:00:00"),
+        ])
+        _write_full_stats(stats, [("task_a", 100.0), ("task_b", 50.0)], accumulated_cycle_s=7200.0)
+        combined = replication_metrics(log, stats)
+        per = per_log_metrics(log, stats)
+        total = total_metrics(stats)
+        assert combined[COL_CYCLE_H] == pytest.approx(per[COL_CYCLE_H])
+        assert combined[COL_COST] == pytest.approx(per[COL_COST])
+        assert combined[COL_TOTAL_CYCLE_S] == pytest.approx(total[COL_TOTAL_CYCLE_S])
+        assert combined[COL_TOTAL_COST] == pytest.approx(total[COL_TOTAL_COST])
 
 
 # ── aggregate ─────────────────────────────────────────────────────────────────
