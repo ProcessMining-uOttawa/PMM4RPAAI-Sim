@@ -286,6 +286,16 @@ Feature work:
   textbook listing; `pyDOE2.gsd` is not it.
 - **Cancel mid-run**: the discovery cancel works; the simulation run loop
   doesn't yet check a session-state flag between iterations.
+- **Parallel simulation runs**: at the client-cited 30 replications, the full
+  experiment is 540 scenario runs + 90 baseline runs = 630 Prosimos invocations.
+  With `num_cases` levels of 100/500/1000, the weighted sequential runtime is
+  roughly 9 hours on a real-world process (optimistic 10s per 100-case run,
+  scaling linearly). Every replication is fully independent — this is an
+  embarrassingly parallel problem. `concurrent.futures.ProcessPoolExecutor`
+  across all scenario×replication pairs would reduce runtime to approximately
+  `9h / num_cores` (~90 min on 8 cores). Scenarios are currently run
+  sequentially in `orchestrator.run_experiment()`; baseline runs per cases-level
+  are also independent and can be parallelised the same way.
 - **Real BPMN preview**: replace the activity dropdown with a clickable
   BPMN canvas (Mockup C had this idea). `bpmn-js` via a Streamlit custom
   component would do it.

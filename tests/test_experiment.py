@@ -81,6 +81,7 @@ class TestFromTaguchiValues:
         "Act.t_manual":          1800.0,
         "Act.num_bots":               2,
         "Act.num_manual_resources":   3,
+        "Act.num_cases":            500,
     }
 
     def test_full_values_mapped_correctly(self):
@@ -91,6 +92,7 @@ class TestFromTaguchiValues:
         assert s.manual_execution_time == pytest.approx(1800.0)
         assert s.num_bots              == 2
         assert s.num_manual_resources  == 3
+        assert s.num_cases             == 500
 
     def test_empty_dict_uses_defaults(self):
         s = AutomationScenario.from_taguchi_values({})
@@ -98,6 +100,7 @@ class TestFromTaguchiValues:
         assert s.bot_failure_rate     == pytest.approx(0.10)
         assert s.num_bots             == 1
         assert s.num_manual_resources == 1
+        assert s.num_cases            == 100
 
     def test_num_bots_and_num_manual_keys_used(self):
         s = AutomationScenario.from_taguchi_values(
@@ -128,6 +131,6 @@ class TestDemoMonotonicity:
                 },
                 "t_id", "Act",
             )
-            return sum(fake_simulate(s, r, 100).cycle_h for r in range(n_reps)) / n_reps
+            return sum(fake_simulate(s, r).cycle_h for r in range(n_reps)) / n_reps
 
         assert _mean_cycle(3, 3) < _mean_cycle(1, 1)

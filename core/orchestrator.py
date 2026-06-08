@@ -21,31 +21,34 @@ class ExperimentResult:
     results: pd.DataFrame
     experiment_bpmn_path: Path | None = None
     scenario_json_paths: dict[str, Path] = field(default_factory=dict)
-    baseline_agg: dict | None = None  # mean total metrics for baseline; None in demo mode
+    baseline_agg: dict[int, dict] | None = None  # {n_cases: mean totals}; None in demo mode
 
 
-def _run_baseline(bpmn_path: Path, json_path: Path, n_reps: int, n_cases: int,
-                  exp_dir: Path) -> dict:
-    """Run the original untransformed model for n_reps replications.
+def _run_baseline(bpmn_path: Path, json_path: Path, n_reps: int,
+                  cases_levels: list[int], exp_dir: Path) -> dict[int, dict]:
+    """Run the original untransformed model for each unique cases level.
 
-    Returns mean total_cycle_s and mean total_cost across those replications.
-    Uses the same n_cases as the scenario runs so totals are comparable.
+    Returns {n_cases: {COL_TOTAL_CYCLE_S_MEAN: ..., COL_TOTAL_COST_MEAN: ...}} so
+    each scenario can be compared to a baseline at the same case count.
     """
-    totals_cycle: list[float] = []
-    totals_cost: list[float] = []
-    for rep in range(n_reps):
-        out_log  = store.baseline_log(exp_dir, rep)
-        out_stat = store.baseline_stats(exp_dir, rep)
-        proc_log = store.baseline_subprocess_log(exp_dir, rep)
-        runner.simulate(bpmn_path, json_path, n_cases, out_log,
-                        stat_out=out_stat, proc_log=proc_log)
-        m = prosimos_csv.total_metrics(out_stat)
-        totals_cycle.append(m[COL_TOTAL_CYCLE_S])
-        totals_cost.append(m[COL_TOTAL_COST])
-    return {
-        COL_TOTAL_CYCLE_S_MEAN: sum(totals_cycle) / len(totals_cycle),
-        COL_TOTAL_COST_MEAN:    sum(totals_cost)  / len(totals_cost),
-    }
+    result: dict[int, dict] = {}
+    for n_cases in cases_levels:
+        totals_cycle: list[float] = []
+        totals_cost: list[float] = []
+        for rep in range(n_reps):
+            out_log  = store.baseline_log(exp_dir, rep, n_cases)
+            out_stat = store.baseline_stats(exp_dir, rep, n_cases)
+            proc_log = store.baseline_subprocess_log(exp_dir, rep, n_cases)
+            runner.simulate(bpmn_path, json_path, n_cases, out_log,
+                            stat_out=out_stat, proc_log=proc_log)
+            m = prosimos_csv.total_metrics(out_stat)
+            totals_cycle.append(m[COL_TOTAL_CYCLE_S])
+            totals_cost.append(m[COL_TOTAL_COST])
+        result[n_cases] = {
+            COL_TOTAL_CYCLE_S_MEAN: sum(totals_cycle) / len(totals_cycle),
+            COL_TOTAL_COST_MEAN:    sum(totals_cost)  / len(totals_cost),
+        }
+    return result
 
 
 def run_experiment(
@@ -55,7 +58,6 @@ def run_experiment(
     target: str,
     scenarios: list[Scenario],
     n_reps: int,
-    n_cases: int,
     exp_dir: Path,
     demo_mode: bool,
     on_progress: Callable[[int, int, str, int], None] | None = None,
@@ -79,32 +81,40 @@ def run_experiment(
         bpmn_tr = transformation.prepare_experiment(
             bpmn_path, json_path, target, exp_dir)
         experiment_bpmn_path = bpmn_tr.bpmn_path
-        baseline_agg = _run_baseline(bpmn_path, json_path, n_reps, n_cases, exp_dir)
+        cases_levels = sorted({
+            AutomationScenario.from_taguchi_values(s.values).num_cases
+            for s in scenarios
+        })
+        baseline_agg = _run_baseline(bpmn_path, json_path, n_reps, cases_levels, exp_dir)
 
     for s in scenarios:
         s_json: Path | None = None
+        automation_scenario: AutomationScenario | None = None
+        if not demo_mode:
+            assert bpmn_tr is not None
+            automation_scenario = AutomationScenario.from_taguchi_values(
+                s.values, selected_resource_id=selected_resource_id)
+            s_json = transformation.apply_params(
+                bpmn_tr.base_json, bpmn_tr.ids,
+                automation_scenario,
+                store.scenario_dir(exp_dir, s.id) / "params.json",
+            )
+            scenario_json_paths[s.id] = s_json
         for rep in range(n_reps):
             if demo_mode:
-                r = demo.fake_simulate(s, rep, n_cases)
+                r = demo.fake_simulate(s, rep)
                 cycle_h, cost = r.cycle_h, r.cost
                 total_cycle_s, total_cost = float("nan"), float("nan")
             else:
                 assert bpmn_tr is not None
-                if rep == 0:
-                    s_json = transformation.apply_params(
-                        bpmn_tr.base_json, bpmn_tr.ids,
-                        AutomationScenario.from_taguchi_values(
-                            s.values, selected_resource_id=selected_resource_id),
-                        store.scenario_dir(exp_dir, s.id) / "params.json",
-                    )
-                    scenario_json_paths[s.id] = s_json
+                assert s_json is not None
+                assert automation_scenario is not None
                 out_log  = store.replication_log(exp_dir, s.id, rep)
                 out_stat = store.replication_stats(exp_dir, s.id, rep)
                 proc_log = store.replication_subprocess_log(exp_dir, s.id, rep)
-                assert s_json is not None
                 runner.simulate(bpmn_tr.bpmn_path, s_json,
-                                int(n_cases), out_log, stat_out=out_stat,
-                                proc_log=proc_log)
+                                automation_scenario.num_cases, out_log,
+                                stat_out=out_stat, proc_log=proc_log)
                 m = prosimos_csv.replication_metrics(out_log, out_stat)
                 cycle_h, cost = m[COL_CYCLE_H], m[COL_COST]
                 total_cycle_s, total_cost = m[COL_TOTAL_CYCLE_S], m[COL_TOTAL_COST]

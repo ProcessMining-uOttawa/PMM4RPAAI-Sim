@@ -22,7 +22,7 @@ class TestDemoMode:
         result = run_experiment(
             transformation=transformation,
             bpmn_path=None, json_path=None, target="Test Task",
-            scenarios=scenarios, n_reps=2, n_cases=10,
+            scenarios=scenarios, n_reps=2,
             exp_dir=Path("irrelevant"), demo_mode=True,
         )
         assert isinstance(result, ExperimentResult)
@@ -33,7 +33,7 @@ class TestDemoMode:
         result = run_experiment(
             transformation=transformation,
             bpmn_path=None, json_path=None, target="Test Task",
-            scenarios=scenarios, n_reps=n_reps, n_cases=10,
+            scenarios=scenarios, n_reps=n_reps,
             exp_dir=Path("irrelevant"), demo_mode=True,
         )
         assert len(result.results) == len(scenarios) * n_reps
@@ -43,7 +43,7 @@ class TestDemoMode:
         result = run_experiment(
             transformation=transformation,
             bpmn_path=None, json_path=None, target="Test Task",
-            scenarios=scenarios, n_reps=1, n_cases=10,
+            scenarios=scenarios, n_reps=1,
             exp_dir=Path("irrelevant"), demo_mode=True,
         )
         assert {"scenario_id", "replication", COL_CYCLE_H, COL_COST} <= set(result.results.columns)
@@ -53,7 +53,7 @@ class TestDemoMode:
         result = run_experiment(
             transformation=transformation,
             bpmn_path=None, json_path=None, target="Test Task",
-            scenarios=scenarios, n_reps=1, n_cases=10,
+            scenarios=scenarios, n_reps=1,
             exp_dir=Path("irrelevant"), demo_mode=True,
         )
         assert result.experiment_bpmn_path is None
@@ -67,7 +67,7 @@ class TestDemoMode:
         run_experiment(
             transformation=transformation,
             bpmn_path=None, json_path=None, target="Test Task",
-            scenarios=scenarios, n_reps=n_reps, n_cases=10,
+            scenarios=scenarios, n_reps=n_reps,
             exp_dir=Path("irrelevant"), demo_mode=True,
             on_progress=lambda done, total, sid, rep: calls.append((done, total)),
         )
@@ -81,7 +81,7 @@ class TestDemoMode:
         result = run_experiment(
             transformation=transformation,
             bpmn_path=None, json_path=None, target="Test Task",
-            scenarios=scenarios, n_reps=1, n_cases=10,
+            scenarios=scenarios, n_reps=1,
             exp_dir=Path("irrelevant"), demo_mode=True,
         )
         assert (result.results[COL_CYCLE_H] > 0).all()

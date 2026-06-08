@@ -61,6 +61,7 @@ T_AUTO_FRACTIONS   = [0.05, 0.10, 0.20]
 T_MANUAL_FACTORS   = [0.80, 1.00, 1.20]
 NUM_BOTS_LEVELS    = [1, 2, 3]
 NUM_MANUAL_LEVELS  = [1, 2, 3]
+NUM_CASES_LEVELS   = [100, 500, 1000]
 
 
 # ── XORSplitAutomation: scenario input type ───────────────────────────────────
@@ -78,6 +79,7 @@ class AutomationScenario:
     manual_execution_time: float       # mean human task duration (seconds)
     num_bots:              int         # bot resource pool size
     num_manual_resources:  int         # human resource pool size
+    num_cases:             int         # cases per replication
     selected_resource_id:  str | None = None  # resource to resize; None = skip pool resize
 
     def __post_init__(self) -> None:
@@ -86,7 +88,8 @@ class AutomationScenario:
             if not 0.0 <= val <= 1.0:
                 raise ValueError(f"{name} must be in [0, 1], got {val}")
         for name, val in (("num_bots", self.num_bots),
-                          ("num_manual_resources", self.num_manual_resources)):
+                          ("num_manual_resources", self.num_manual_resources),
+                          ("num_cases", self.num_cases)):
             if val < 1:
                 raise ValueError(f"{name} must be ≥ 1, got {val}")
 
@@ -115,6 +118,7 @@ class AutomationScenario:
             manual_execution_time=_v("t_manual", 1800.0),
             num_bots=int(_v("num_bots", 1.0)),
             num_manual_resources=int(_v("num_manual_resources", 1.0)),
+            num_cases=int(_v("num_cases", 100.0)),
             selected_resource_id=selected_resource_id,
         )
 
@@ -300,6 +304,8 @@ class XORSplitAutomation(Transformation):
                       levels=list(NUM_BOTS_LEVELS), kind="categorical"),
             Parameter(f"{a}.num_manual_resources", "Human pool size",
                       levels=pool_levels, kind="categorical", frozen=pool_frozen),
+            Parameter(f"{a}.num_cases", "Cases per replication",
+                      levels=list(NUM_CASES_LEVELS), kind="categorical"),
         ]
 
     # --- apply_pattern -------------------------------------------------------

@@ -48,19 +48,19 @@ def replication_subprocess_log(exp: Path, scenario_id: str, replication: int) ->
 
 # ── Baseline replication paths ─────────────────────────────────────────────────
 
-def baseline_dir(exp: Path) -> Path:
-    d = exp / "baseline"
+def baseline_dir(exp: Path, n_cases: int) -> Path:
+    d = exp / "baseline" / f"cases_{n_cases}"
     d.mkdir(parents=True, exist_ok=True)
     return d
 
 
-def baseline_log(exp: Path, replication: int) -> Path:
-    return _rep_path(baseline_dir(exp), replication, "log.csv")
+def baseline_log(exp: Path, replication: int, n_cases: int) -> Path:
+    return _rep_path(baseline_dir(exp, n_cases), replication, "log.csv")
 
 
-def baseline_stats(exp: Path, replication: int) -> Path:
-    return _rep_path(baseline_dir(exp), replication, "stats.csv")
+def baseline_stats(exp: Path, replication: int, n_cases: int) -> Path:
+    return _rep_path(baseline_dir(exp, n_cases), replication, "stats.csv")
 
 
-def baseline_subprocess_log(exp: Path, replication: int) -> Path:
-    return _rep_path(baseline_dir(exp), replication, "prosimos.log")
+def baseline_subprocess_log(exp: Path, replication: int, n_cases: int) -> Path:
+    return _rep_path(baseline_dir(exp, n_cases), replication, "prosimos.log")

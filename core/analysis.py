@@ -32,33 +32,44 @@ def aggregate(results: pd.DataFrame) -> pd.DataFrame:
     return results.groupby(["scenario_id", *factor_cols], as_index=False).agg(**agg_spec)  # type: ignore[call-overload]
 
 
-def compare_to_baseline(agg: pd.DataFrame, baseline_agg: dict) -> pd.DataFrame:
-    """Build a display DataFrame comparing each scenario's run totals to the baseline.
+def _pct_delta(delta: float, baseline: float) -> float:
+    return round(delta / baseline * 100, 1) if baseline else 0.0
 
-    Returns one row per scenario plus a leading baseline row, with absolute and
-    percentage deltas for total cycle time (hours) and total cost.
+
+def compare_to_baseline(agg: pd.DataFrame, baseline_agg: dict[int, dict]) -> pd.DataFrame:
+    """Build a display DataFrame comparing each scenario's totals to its matching baseline.
+
+    baseline_agg maps {n_cases: {COL_TOTAL_CYCLE_S_MEAN: ..., COL_TOTAL_COST_MEAN: ...}}.
+    Scenarios are grouped by their cases level; each group is preceded by its baseline row.
     """
-    b_cycle_h = baseline_agg[COL_TOTAL_CYCLE_S_MEAN] / 3600
-    b_cost    = baseline_agg[COL_TOTAL_COST_MEAN]
-    rows: list[dict] = [{"Scenario": "Baseline (original)",
-                         "Total Cycle Time (h)": round(b_cycle_h, 2),
-                         "Δ Time (h)": 0.0, "Δ Time (%)": 0.0,
-                         "Total Cost ($)": round(b_cost, 2),
-                         "Δ Cost ($)": 0.0, "Δ Cost (%)": 0.0}]
-    for _, row in agg.iterrows():
-        s_cycle_h = row[COL_TOTAL_CYCLE_S_MEAN] / 3600
-        s_cost    = row[COL_TOTAL_COST_MEAN]
-        d_cycle   = s_cycle_h - b_cycle_h
-        d_cost    = s_cost - b_cost
-        rows.append({
-            "Scenario":             row["scenario_id"],
-            "Total Cycle Time (h)": round(s_cycle_h, 2),
-            "Δ Time (h)":           round(d_cycle, 2),
-            "Δ Time (%)":           round(d_cycle / b_cycle_h * 100, 1) if b_cycle_h else 0.0,
-            "Total Cost ($)":       round(s_cost, 2),
-            "Δ Cost ($)":           round(d_cost, 2),
-            "Δ Cost (%)":           round(d_cost / b_cost * 100, 1) if b_cost else 0.0,
-        })
+    num_cases_col = next((c for c in agg.columns if c.endswith(".num_cases")), None)
+    rows: list[dict] = []
+    for n_cases in sorted(baseline_agg):
+        b = baseline_agg[n_cases]
+        b_cycle_h = b[COL_TOTAL_CYCLE_S_MEAN] / 3600
+        b_cost    = b[COL_TOTAL_COST_MEAN]
+        rows.append({"Scenario": f"Baseline ({n_cases} cases)",
+                     "Cases": n_cases,
+                     "Total Cycle Time (h)": round(b_cycle_h, 2),
+                     "Δ Time (h)": 0.0, "Δ Time (%)": 0.0,
+                     "Total Cost ($)": round(b_cost, 2),
+                     "Δ Cost ($)": 0.0, "Δ Cost (%)": 0.0})
+        group = agg if num_cases_col is None else agg[agg[num_cases_col] == n_cases]
+        for _, row in group.iterrows():
+            s_cycle_h = row[COL_TOTAL_CYCLE_S_MEAN] / 3600
+            s_cost    = row[COL_TOTAL_COST_MEAN]
+            d_cycle   = s_cycle_h - b_cycle_h
+            d_cost    = s_cost - b_cost
+            rows.append({
+                "Scenario":             row["scenario_id"],
+                "Cases":                n_cases,
+                "Total Cycle Time (h)": round(s_cycle_h, 2),
+                "Δ Time (h)":           round(d_cycle, 2),
+                "Δ Time (%)":           _pct_delta(d_cycle, b_cycle_h),
+                "Total Cost ($)":       round(s_cost, 2),
+                "Δ Cost ($)":           round(d_cost, 2),
+                "Δ Cost (%)":           _pct_delta(d_cost, b_cost),
+            })
     return pd.DataFrame(rows)
 
 
