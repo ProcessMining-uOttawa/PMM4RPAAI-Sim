@@ -1,13 +1,10 @@
 """Read-only helpers for BPMN files and Prosimos JSON."""
 from __future__ import annotations
-from collections import Counter
 import xml.etree.ElementTree as ET
+from collections import Counter
 
-from .constants import (
-    BPMN_NS, KEY_TASK_RESOURCE_DISTRIBUTION, KEY_RESOURCE_PROFILES, BPMN_TASK_TAGS as _TASK_TAGS,
-)
-
-_BPMN = BPMN_NS
+from . import BPMN_NS as _BPMN, BPMN_TASK_TAGS as _TASK_TAGS
+from ..constants import KEY_TASK_RESOURCE_DISTRIBUTION, KEY_RESOURCE_PROFILES
 
 
 def find_task_by_name(tree: ET.ElementTree, name: str) -> ET.Element | None:
@@ -16,6 +13,23 @@ def find_task_by_name(tree: ET.ElementTree, name: str) -> ET.Element | None:
             if el.get("name") == name:
                 return el
     return None
+
+
+def list_activities(bpmn_path) -> list[str]:
+    """Pull task names out of a BPMN file without loading pm4py."""
+    tree = ET.parse(str(bpmn_path))
+    names = []
+    for tag in _TASK_TAGS:
+        for el in tree.findall(f".//{{{_BPMN}}}{tag}"):
+            n = el.get("name")
+            if n:
+                names.append(n)
+    seen, out = set(), []
+    for n in names:
+        if n not in seen:
+            seen.add(n)
+            out.append(n)
+    return out
 
 
 def task_resources(prosimos_json: dict, task_id: str) -> list[dict]:

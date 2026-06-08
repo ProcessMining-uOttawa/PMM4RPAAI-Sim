@@ -10,12 +10,14 @@ import streamlit as st
 from pathlib import Path
 from core.transformations import REGISTRY
 from core.experiment import build_scenarios
-from core import analysis, demo, orchestrator, preflight, runner, store
+from core import analysis, demo, orchestrator, preflight
+from core.simulation import runner, store
 from core.constants import (
     COL_CYCLE_H, COL_COST, COL_CYCLE_H_MEAN, COL_COST_MEAN,
 )
-from core.bpmn_utils import (
+from core.bpmn.utils import (
     find_task_by_name,
+    list_activities,
     task_mean_duration_s,
     task_resources,
     shared_resource_ids,
@@ -179,7 +181,7 @@ with st.sidebar:
                         proc_log=store.discovery_log(run_dir),
                     )
                     ss.bpmn_path, ss.json_path = bpmn, params
-                    ss.activities = runner.list_activities(bpmn)
+                    ss.activities = list_activities(bpmn)
                     ss.log_name, ss.log_path = uploaded.name, log_path
                     s.update(
                         label=f"Discovered {len(ss.activities)} activities",

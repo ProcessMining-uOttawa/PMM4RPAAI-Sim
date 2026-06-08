@@ -1,21 +1,19 @@
-"""Tests for core/prosimos_csv.py — no external tools required."""
+"""Tests for core/simulation/prosimos_csv.py — no external tools required."""
 from __future__ import annotations
 import csv
 from pathlib import Path
 
 import pytest
 
-from core.prosimos_csv import (
+from core.simulation.prosimos_csv import (
     _parse_section,
     per_log_metrics,
     total_metrics,
     replication_metrics,
-)
-from core.constants import (
     PROSIMOS_SECTION_TASK_STATS, PROSIMOS_COL_TOTAL_COST,
     PROSIMOS_SECTION_OVERALL, PROSIMOS_COL_ACCUMULATED, PROSIMOS_KPI_CYCLE_TIME,
-    COL_CYCLE_H, COL_COST, COL_TOTAL_CYCLE_S, COL_TOTAL_COST,
 )
+from core.constants import COL_CYCLE_H, COL_COST, COL_TOTAL_CYCLE_S, COL_TOTAL_COST
 
 
 # ── Helpers ───────────────────────────────────────────────────────────────────

@@ -4,15 +4,15 @@ import json
 import xml.etree.ElementTree as ET
 import pytest
 
-from core.transformations import _make_ids
-from core.parameters import AutomationScenario
-from core.bpmn_utils import resource_pool_size
-from core.constants import (
-    BPMN_NS,
+from core.transformations import (
+    _make_ids,
     BOT_CALENDAR_ID, BOT_PROFILE_ID,
-    KEY_RESOURCE_CALENDARS, KEY_RESOURCE_PROFILES,
-    KEY_TASK_RESOURCE_DISTRIBUTION, KEY_GATEWAY_BRANCHING_PROBS,
+    KEY_RESOURCE_CALENDARS, KEY_GATEWAY_BRANCHING_PROBS,
 )
+from core.parameters import AutomationScenario
+from core.bpmn.utils import resource_pool_size
+from core.bpmn import BPMN_NS
+from core.constants import KEY_RESOURCE_PROFILES, KEY_TASK_RESOURCE_DISTRIBUTION
 
 
 # ── TestApplyPattern ──────────────────────────────────────────────────────────

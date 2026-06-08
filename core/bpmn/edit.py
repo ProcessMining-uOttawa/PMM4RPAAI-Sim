@@ -11,7 +11,7 @@ are passed explicitly to add_task_el and add_xor_el rather than computed here.
 from __future__ import annotations
 import xml.etree.ElementTree as ET
 
-from .constants import BPMN_NS as _BPMN, BPMNDI_NS as _BPMNDI, DC_NS as _DC, DI_NS as _DI, BPMN_TASK_TAGS
+from . import BPMN_NS as _BPMN, BPMNDI_NS as _BPMNDI, DC_NS as _DC, DI_NS as _DI, BPMN_TASK_TAGS
 
 ET.register_namespace("bpmn",   _BPMN)
 ET.register_namespace("bpmndi", _BPMNDI)

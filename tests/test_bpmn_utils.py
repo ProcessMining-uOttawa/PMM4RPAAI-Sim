@@ -1,17 +1,18 @@
-"""Tests for core/bpmn_utils.py — no external tools required."""
+"""Tests for core/bpmn/utils.py — no external tools required."""
 from __future__ import annotations
 import xml.etree.ElementTree as ET
 
 import pytest
 
-from core.bpmn_utils import (
+from core.bpmn.utils import (
     find_task_by_name,
     task_resources,
     shared_resource_ids,
     resource_pool_size,
     task_mean_duration_s,
 )
-from core.constants import BPMN_NS, KEY_RESOURCE_PROFILES, KEY_TASK_RESOURCE_DISTRIBUTION
+from core.bpmn import BPMN_NS
+from core.constants import KEY_RESOURCE_PROFILES, KEY_TASK_RESOURCE_DISTRIBUTION
 
 _BPMN_XML = f"""\
 <?xml version="1.0"?>

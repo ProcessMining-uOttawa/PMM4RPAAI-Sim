@@ -6,7 +6,8 @@ from typing import Callable
 
 import pandas as pd
 
-from . import analysis, demo, prosimos_csv, runner, store
+from . import demo
+from .simulation import prosimos_csv, runner, store
 from .constants import (
     COL_CYCLE_H, COL_COST, COL_TOTAL_CYCLE_S, COL_TOTAL_COST,
     COL_TOTAL_CYCLE_S_MEAN, COL_TOTAL_COST_MEAN,

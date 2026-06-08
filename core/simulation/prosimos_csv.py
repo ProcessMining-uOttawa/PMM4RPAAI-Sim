@@ -5,11 +5,18 @@ from pathlib import Path
 
 import pandas as pd
 
-from .constants import (
-    PROSIMOS_SECTION_TASK_STATS, PROSIMOS_COL_TOTAL_COST,
-    PROSIMOS_SECTION_OVERALL, PROSIMOS_COL_ACCUMULATED, PROSIMOS_KPI_CYCLE_TIME,
+from ..constants import (
     COL_CYCLE_H, COL_COST, COL_TOTAL_CYCLE_S, COL_TOTAL_COST,
 )
+
+# ── Prosimos stats CSV: section header names ───────────────────────────────────
+PROSIMOS_SECTION_TASK_STATS = "Individual Task Statistics"
+PROSIMOS_SECTION_OVERALL    = "Overall Scenario Statistics"
+
+# ── Prosimos stats CSV: column and row-key lookup strings ─────────────────────
+PROSIMOS_COL_TOTAL_COST  = "Total Cost"        # column in SECTION_TASK_STATS
+PROSIMOS_COL_ACCUMULATED = "Accumulated Value"  # column in SECTION_OVERALL
+PROSIMOS_KPI_CYCLE_TIME  = "cycle_time"         # KPI row key in SECTION_OVERALL
 
 
 def _parse_section(rows: list, header: str) -> tuple[list[str], list[list[str]]]:
