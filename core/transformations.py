@@ -1,4 +1,4 @@
-"""Pluggable BPMN+JSON mutations — pattern definitions and their contracts."""
+"""Pluggable BPMN+JSON mutations — pattern definitions, contracts, and scenario inputs."""
 from __future__ import annotations
 import copy
 import json
@@ -8,7 +8,7 @@ from dataclasses import dataclass
 from typing import Any
 from pathlib import Path
 
-from .parameters import Parameter, AutomationScenario
+from .parameters import Parameter
 from .constants import KEY_RESOURCE_PROFILES, KEY_TASK_RESOURCE_DISTRIBUTION
 from .bpmn.edit import (
     find_process, find_task_in_process,
@@ -61,6 +61,62 @@ T_AUTO_FRACTIONS   = [0.05, 0.10, 0.20]
 T_MANUAL_FACTORS   = [0.80, 1.00, 1.20]
 NUM_BOTS_LEVELS    = [1, 2, 3]
 NUM_MANUAL_LEVELS  = [1, 2, 3]
+
+
+# ── XORSplitAutomation: scenario input type ───────────────────────────────────
+
+@dataclass(frozen=True)
+class AutomationScenario:
+    """Concrete inputs for one XORSplitAutomation simulation run.
+
+    Primary fields are set directly. Complements are computed properties so
+    the caller never has to manage them explicitly.
+    """
+    automation_rate:       float       # [0, 1] fraction of cases routed to the bot
+    bot_failure_rate:      float       # [0, 1] fraction of bot attempts that fail
+    bot_execution_time:    float       # mean bot task duration (seconds)
+    manual_execution_time: float       # mean human task duration (seconds)
+    num_bots:              int         # bot resource pool size
+    num_manual_resources:  int         # human resource pool size
+    selected_resource_id:  str | None = None  # resource to resize; None = skip pool resize
+
+    def __post_init__(self) -> None:
+        for name, val in (("automation_rate",  self.automation_rate),
+                          ("bot_failure_rate", self.bot_failure_rate)):
+            if not 0.0 <= val <= 1.0:
+                raise ValueError(f"{name} must be in [0, 1], got {val}")
+        for name, val in (("num_bots", self.num_bots),
+                          ("num_manual_resources", self.num_manual_resources)):
+            if val < 1:
+                raise ValueError(f"{name} must be ≥ 1, got {val}")
+
+    @property
+    def manual_branch_rate(self) -> float:
+        return 1.0 - self.automation_rate
+
+    @property
+    def bot_success_rate(self) -> float:
+        return 1.0 - self.bot_failure_rate
+
+    @classmethod
+    def from_taguchi_values(cls, values: dict,
+                            selected_resource_id: str | None = None) -> "AutomationScenario":
+        """Bridge: construct AutomationScenario from a Taguchi-generated values dict."""
+        def _v(suffix: str, default: float) -> float:
+            for k, v in values.items():
+                if k.endswith("." + suffix):
+                    return float(v)
+            return default
+
+        return cls(
+            automation_rate=_v("pct_auto", 50.0) / 100.0,
+            bot_failure_rate=1.0 - _v("pct_ok", 90.0) / 100.0,
+            bot_execution_time=_v("t_auto", 60.0),
+            manual_execution_time=_v("t_manual", 1800.0),
+            num_bots=int(_v("num_bots", 1.0)),
+            num_manual_resources=int(_v("num_manual_resources", 1.0)),
+            selected_resource_id=selected_resource_id,
+        )
 
 
 # ── Public dataclasses ────────────────────────────────────────────────────────

@@ -12,8 +12,8 @@ from .constants import (
     COL_CYCLE_H, COL_COST, COL_TOTAL_CYCLE_S, COL_TOTAL_COST,
     COL_TOTAL_CYCLE_S_MEAN, COL_TOTAL_COST_MEAN,
 )
-from .parameters import AutomationScenario, Scenario
-from .transformations import Transformation
+from .parameters import Scenario
+from .transformations import AutomationScenario, Transformation
 
 
 @dataclass

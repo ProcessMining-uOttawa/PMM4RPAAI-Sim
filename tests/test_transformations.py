@@ -9,7 +9,7 @@ from core.transformations import (
     BOT_CALENDAR_ID, BOT_PROFILE_ID,
     KEY_RESOURCE_CALENDARS, KEY_GATEWAY_BRANCHING_PROBS,
 )
-from core.parameters import AutomationScenario
+from core.transformations import AutomationScenario
 from core.bpmn.utils import resource_pool_size
 from core.bpmn import BPMN_NS
 from core.constants import KEY_RESOURCE_PROFILES, KEY_TASK_RESOURCE_DISTRIBUTION
