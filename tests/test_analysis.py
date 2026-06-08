@@ -12,6 +12,7 @@ from core.analysis import (
     per_log_metrics,
     total_metrics,
     replication_metrics,
+    compare_to_baseline,
     aggregate,
     main_effects,
     signal_to_noise,
@@ -21,7 +22,7 @@ from core.constants import (
     PROSIMOS_SECTION_TASK_STATS, PROSIMOS_COL_TOTAL_COST,
     PROSIMOS_SECTION_OVERALL, PROSIMOS_COL_ACCUMULATED, PROSIMOS_KPI_CYCLE_TIME,
     COL_CYCLE_H, COL_COST, COL_CYCLE_H_MEAN, COL_COST_MEAN,
-    COL_TOTAL_CYCLE_S, COL_TOTAL_COST,
+    COL_TOTAL_CYCLE_S, COL_TOTAL_COST, COL_TOTAL_CYCLE_S_MEAN, COL_TOTAL_COST_MEAN,
 )
 
 
@@ -247,6 +248,41 @@ class TestReplicationMetrics:
         assert combined[COL_COST] == pytest.approx(per[COL_COST])
         assert combined[COL_TOTAL_CYCLE_S] == pytest.approx(total[COL_TOTAL_CYCLE_S])
         assert combined[COL_TOTAL_COST] == pytest.approx(total[COL_TOTAL_COST])
+
+
+# ── compare_to_baseline ───────────────────────────────────────────────────────
+
+class TestCompareToBaseline:
+
+    def _agg(self):
+        return pd.DataFrame([
+            {"scenario_id": "S01", COL_TOTAL_CYCLE_S_MEAN: 7200.0, COL_TOTAL_COST_MEAN: 200.0},
+            {"scenario_id": "S02", COL_TOTAL_CYCLE_S_MEAN: 3600.0, COL_TOTAL_COST_MEAN: 80.0},
+        ])
+
+    def _baseline(self):
+        return {COL_TOTAL_CYCLE_S_MEAN: 3600.0, COL_TOTAL_COST_MEAN: 100.0}
+
+    def test_baseline_row_is_first(self):
+        df = compare_to_baseline(self._agg(), self._baseline())
+        assert df.iloc[0]["Scenario"] == "Baseline (original)"
+
+    def test_row_count(self):
+        df = compare_to_baseline(self._agg(), self._baseline())
+        assert len(df) == 3  # baseline + 2 scenarios
+
+    def test_baseline_deltas_are_zero(self):
+        df = compare_to_baseline(self._agg(), self._baseline())
+        assert df.iloc[0]["Δ Time (h)"] == 0.0
+        assert df.iloc[0]["Δ Cost ($)"] == 0.0
+
+    def test_delta_values(self):
+        df = compare_to_baseline(self._agg(), self._baseline())
+        s02 = df[df["Scenario"] == "S02"].iloc[0]
+        assert s02["Total Cycle Time (h)"] == pytest.approx(1.0)
+        assert s02["Δ Time (h)"] == pytest.approx(0.0)
+        assert s02["Δ Cost ($)"] == pytest.approx(-20.0)
+        assert s02["Δ Cost (%)"] == pytest.approx(-20.0)
 
 
 # ── aggregate ─────────────────────────────────────────────────────────────────
