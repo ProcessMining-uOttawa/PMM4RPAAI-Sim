@@ -21,7 +21,7 @@ BPMN model + Prosimos simulation-parameters JSON
         ▼  user picks: target activity + substitution pattern
 Pattern.parameters(target) → N factors × 3 levels (Taguchi)
         │
-        ▼  curated L9, L18 OAs
+        ▼  curated L9, L18, L27 OAs
 list[Scenario]  (one per row of the OA)
         │
         ▼  Pattern.apply(scenario)  — mutates BPMN + JSON
@@ -66,7 +66,7 @@ Taguchi designer**. Three contracts make that work:
 | File | Responsibility |
 |---|---|
 | [app.py](app.py) | Streamlit dashboard (Mockup B): sidebar = experiment state + run config; 5 panels = Activity & pattern · Factor levels · Execution · Ranked scenarios · Baseline comparison. Panel 4 includes an export row: stats CSV, scenario JSON zip, BPMN, and group ZIP (all three combined). |
-| [.github/workflows/ci.yml](.github/workflows/ci.yml) | GitHub Actions CI: three parallel jobs — **lint** (ruff), **type-check** (`mypy core/ --ignore-missing-imports`), **test** (pytest). Triggered on push and PR to main. Only `pandas` and the respective tool are installed per job — heavy packages (streamlit, pm4py) are not needed for the test suite. |
+| [.github/workflows/ci.yml](.github/workflows/ci.yml) | GitHub Actions CI: three parallel jobs — **lint** (ruff), **type-check** (`mypy core/ --ignore-missing-imports`), **test** (pytest). Triggered on push and PR to main. Only `pandas` and the respective tool are installed per job — heavy packages (streamlit, simod, prosimos) are not needed for the test suite. |
 | [core/constants.py](core/constants.py) | Cross-cutting constants only: eight `COL_*` analysis column names and `KEY_RESOURCE_PROFILES` / `KEY_TASK_RESOURCE_DISTRIBUTION` (used in both `bpmn/utils.py` and `transformations.py`). Everything else lives in its home module. |
 | [core/orchestrator.py](core/orchestrator.py) | Run loop: iterates scenarios × replications, calls `simulation.runner.simulate`, collects results into a tidy DataFrame. Also runs the baseline (original, untransformed model) before the scenarios and returns mean total metrics for Panel 5. |
 | [core/preflight.py](core/preflight.py) | Detects Python 3.9, Corretto 8 (auto-finds `C:\Program Files\Amazon Corretto\jdk1.8*`), and both venvs. Surfaces per-row fixes in the UI. |
@@ -74,10 +74,10 @@ Taguchi designer**. Three contracts make that work:
 | [core/bpmn/\_\_init\_\_.py](core/bpmn/__init__.py) | BPMN XML namespace constants (`BPMN_NS`, `BPMNDI_NS`, `DC_NS`, `DI_NS`, `BPMN_TASK_TAGS`). |
 | [core/bpmn/edit.py](core/bpmn/edit.py) | Low-level BPMN XML editing: DI shape/edge creation, process element insertion, sequence-flow rewiring. All `xml.etree.ElementTree` surgery lives here. |
 | [core/bpmn/utils.py](core/bpmn/utils.py) | Read-only BPMN/Prosimos helpers: task-by-name lookup, `list_activities()`, `task_mean_duration_s()` for prepopulating Non-Auto-Time, resource helpers (`task_resources`, `shared_resource_ids`, `resource_pool_size`). |
-| [core/simulation/runner.py](core/simulation/runner.py) | Subprocess wrappers: `discover()` (Simod one-shot, XES auto-converted to CSV first) and `simulate()` (Prosimos `start-simulation`). Stdout/stderr captured to log files via `_run_logged()`. |
+| [core/simulation/runner.py](core/simulation/runner.py) | Subprocess wrappers: `discover()` (Simod one-shot, XES auto-converted to CSV first via stdlib `xml.etree.ElementTree`) and `simulate()` (Prosimos `start-simulation`). Stdout/stderr captured to log files via `_run_logged()`. |
 | [core/simulation/store.py](core/simulation/store.py) | Experiment directory layout. Each run gets a timestamped folder under `runs/<exp-id>/`; subprocess logs co-located with CSV outputs. |
 | [core/simulation/prosimos_csv.py](core/simulation/prosimos_csv.py) | Prosimos output reader: parses event-log CSV and stats CSV. `replication_metrics()` does a single stats CSV parse to return all four per-replication metrics (`COL_CYCLE_H`, `COL_COST`, `COL_TOTAL_CYCLE_S`, `COL_TOTAL_COST`). PROSIMOS_* format constants are defined inline here. |
-| [core/experiment.py](core/experiment.py) | Hard-coded Taguchi L9 and L18 arrays + `pick_array(n_factors)`. L27 still TODO. |
+| [core/experiment.py](core/experiment.py) | Hard-coded Taguchi L9, L18, and L27 arrays + `pick_array(n_factors)`. Supports up to 13 three-level factors. |
 | [core/parameters.py](core/parameters.py) | `Parameter`, `Scenario`, and `AutomationScenario` dataclasses. `AutomationScenario.from_taguchi_values()` bridges Taguchi output to simulation inputs. |
 | [core/analysis.py](core/analysis.py) | Pure analysis: `aggregate()`, `compare_to_baseline()`, `main_effects()` (Taguchi S/N), `rank()` (single-goal: goals-met flag + ratio-to-target score). No file I/O. |
 | [core/demo.py](core/demo.py) | Synthetic simulator behind the Demo-mode toggle — lets you click through the UI with no Simod/Prosimos installed. Resource pool size affects cycle time via sqrt scaling. |
@@ -101,7 +101,7 @@ For a target activity *Act*, the pattern produces this fragment:
                     [Act] (the original, non-automated path) ──►(XOR4)
 ```
 
-**Six factors** (`parameters()` declares them; UI auto-renders). Six factors → L18 OA → 18 scenarios.
+**Seven factors** (`parameters()` declares them; UI auto-renders). Seven factors → L27 OA → 27 scenarios.
 
 | Factor | Default levels | Meaning |
 |---|---|---|
@@ -111,6 +111,7 @@ For a target activity *Act*, the pattern produces this fragment:
 | `t_manual` (s) | 80%, 100%, 120% of Simod mean | Non-automated mean (**prepopulated from Simod**) |
 | `num_bots` | 1 / 2 / 3 | Bot resource pool size |
 | `num_manual_resources` | 1 / 2 / 3 | Human resource pool size |
+| `num_cases` | 100 / 500 / 1000 | Cases per Prosimos replication (simulation scale) |
 
 `apply()` does:
 - **BPMN**: rewires the target task's incoming → XOR1 and outgoing ← XOR4;
@@ -168,9 +169,12 @@ Captured from the bootstrap session — flag these in any new install guide.
    offset.
 
 4. **Simod accepts CSV only.** XES inputs are converted by
-   `runner.xes_to_simod_csv()` using pm4py. The XES from pm4py-ucm has only
+   `runner.xes_to_simod_csv()` using stdlib `xml.etree.ElementTree` (XES is
+   well-specified XML; no pm4py needed). The XES from pm4py-ucm has only
    `complete` events, so `start_time` is synthesized per case from the
-   previous event's `end_time` (zero-duration for the first event).
+   previous event's `end_time` (zero-duration for the first event). The
+   parser expects namespace `http://www.xes-standard.org/` and raises a clear
+   `ValueError` for empty logs or events missing `time:timestamp`.
 
 ## 6. The Streamlit rerun trap (the bug that bit us twice)
 
@@ -224,9 +228,9 @@ Then in the browser: toggle **Demo mode** off, upload
 Dev commands (no external tools required):
 
 ```powershell
-pytest                                 # run test suite (105 tests, demo mode only)
+pytest                                 # run test suite (111 tests, demo mode only)
 ruff check .                           # lint
-mypy core/ --ignore-missing-imports    # type-check (--ignore-missing-imports suppresses pm4py stub warning)
+mypy core/ --ignore-missing-imports    # type-check (--ignore-missing-imports suppresses missing stub warnings)
 ```
 
 ## 8. What's worth doing next
@@ -270,7 +274,7 @@ Test gaps:
 Design decisions:
 
 - **Single-goal ranking**: `rank()` optimises for one metric at a time (cycle time or cost), selected via a sidebar dropdown. The original two-goal design used a combined normalised score, but the scales differ enough (hours vs $/case) that cost dominated silently. Tradeoff: you lose the ability to surface scenarios that satisfy *both* goals simultaneously — if that matters, consider adding a secondary "also meets" flag column without letting it affect the score.
-- **Results panel recomputation**: `analysis.aggregate()` and `analysis.main_effects()` are called unconditionally on every Streamlit rerun while results exist (no caching). At current scale (L18 × ~5 reps = ~90 rows) the groupby is negligible. If the project adds L27 with many replications and the results panel becomes sluggish, cache `agg` in session state keyed by `id(ss.results)`, or apply `@st.cache_data` to the analysis functions.
+- **Results panel recomputation**: `analysis.aggregate()` and `analysis.main_effects()` are called unconditionally on every Streamlit rerun while results exist (no caching). At current scale (L27 × ~5 reps = ~135 rows) the groupby is negligible. If replications are scaled up (client cited 30 reps → ~810 rows) and the results panel becomes sluggish, cache `agg` in session state keyed by `id(ss.results)`, or apply `@st.cache_data` to the analysis functions.
 - **Constants placement strategy**: `constants.py` holds only the eight `COL_*` analysis columns and the two `KEY_*` Prosimos JSON keys that are consumed by both `bpmn/utils.py` and `transformations.py`. Everything else lives in its home module — BPMN namespace constants in `bpmn/__init__.py`, Prosimos CSV format strings in `simulation/prosimos_csv.py`, and XORSplitAutomation-specific values (BOT_*, GW*_NAME, F_*, Taguchi defaults) inline in `transformations.py`. The rule: a constant belongs in `constants.py` only if removing it would require two or more otherwise-unrelated modules to import from each other.
 - **`core/` subpackage structure**: `core/` is split into `bpmn/` (BPMN reading and editing) and `simulation/` (Prosimos/Simod subprocess wrappers, store, output parsing). The flat modules (`bpmn_edit.py`, `bpmn_utils.py`, `runner.py`, `store.py`, `prosimos_csv.py`) were merged into these subpackages. `list_activities` moved from `simulation/runner.py` to `bpmn/utils.py` since it reads BPMN XML, not a subprocess concern. `analysis.py`, `transformations.py`, `orchestrator.py`, and the dataclass modules remain at the top level of `core/` because they don't belong cleanly to either subpackage.
 
@@ -299,20 +303,19 @@ Feature work:
 - **More patterns**: `ParallelHybrid` (auto runs alongside manual review),
   `LoopWithReview` (auto, then human approves N% of cases). Each is a new
   `Transformation` subclass; the rest of the system absorbs it.
-- **L27 array**: drop the literal table in `core/experiment.py`. There's a
-  textbook listing; `pyDOE2.gsd` is not it.
 - **Cancel mid-run**: the discovery cancel works; the simulation run loop
   doesn't yet check a session-state flag between iterations.
 - **Parallel simulation runs**: at the client-cited 30 replications, the full
-  experiment is 540 scenario runs + 90 baseline runs = 630 Prosimos invocations.
-  With `num_cases` levels of 100/500/1000, the weighted sequential runtime is
-  roughly 9 hours on a real-world process (optimistic 10s per 100-case run,
-  scaling linearly). Every replication is fully independent — this is an
-  embarrassingly parallel problem. `concurrent.futures.ProcessPoolExecutor`
-  across all scenario×replication pairs would reduce runtime to approximately
-  `9h / num_cores` (~90 min on 8 cores). Scenarios are currently run
-  sequentially in `orchestrator.run_experiment()`; baseline runs per cases-level
-  are also independent and can be parallelised the same way.
+  experiment is 810 scenario runs (27 scenarios × 30 reps) + 90 baseline runs
+  (3 cases-levels × 30 reps) = 900 Prosimos invocations. Weighted sequential
+  runtime is roughly 14 hours on a real-world process (optimistic 10s per
+  100-case run, scaling linearly across the three cases levels). Every
+  replication is fully independent — this is an embarrassingly parallel
+  problem. `concurrent.futures.ProcessPoolExecutor` across all
+  scenario×replication pairs would reduce runtime to approximately
+  `14h / num_cores` (~105 min on 8 cores). Scenarios are currently run
+  sequentially in `orchestrator.run_experiment()`; baseline runs per
+  cases-level are also independent and can be parallelised the same way.
 - **Real BPMN preview**: replace the activity dropdown with a clickable
   BPMN canvas (Mockup C had this idea). `bpmn-js` via a Streamlit custom
   component would do it.
@@ -322,8 +325,7 @@ Feature work:
 - Don't reintroduce a `python -m simod` invocation — Simod's package has no
   `__main__.py`; only the `simod.exe` entry-point script works.
 - Don't add a "discover on every interaction" code path. See §6.
-- Don't read pm4py inside the Simod or Prosimos venvs — those are pinned to
-  Python 3.9 and tightly constrained. pm4py belongs in the host venv only.
+- Don't add pm4py back to `requirements.txt` — XES parsing uses stdlib `xml.etree.ElementTree` and pm4py is no longer a dependency. If pm4py is needed for a future feature, import it inline and note why.
 - Don't commit `runs/`, `tools/simod-venv/`, or `tools/prosimos-venv/`.
   `.gitignore` already excludes them; keep it that way.
 
@@ -334,8 +336,10 @@ Feature work:
 sessions added `num_bots`/`num_manual_resources` as Taguchi factors (L18),
 subprocess log capture, XML namespace centralisation in `constants.py`, and
 dead-code removal (`new_id`, `Parameter.inject`, `store.ACTIVE` clobber).
-Later sessions added code quality tooling (ruff, mypy), a full test suite
-(105 tests across all core modules), export features (stats CSV, JSON zip,
-BPMN, group ZIP in Panel 4), GitHub Actions CI, baseline comparison (Panel 5),
-Prosimos output parsing split into `simulation/prosimos_csv.py`, and
-restructure of `core/` into `bpmn/` and `simulation/` subpackages.*
+Later sessions added code quality tooling (ruff, mypy), a full test suite,
+export features (stats CSV, JSON zip, BPMN, group ZIP in Panel 4), GitHub
+Actions CI, baseline comparison (Panel 5), Prosimos output parsing split into
+`simulation/prosimos_csv.py`, and restructure of `core/` into `bpmn/` and
+`simulation/` subpackages. Further sessions added `num_cases` as a Taguchi
+factor (L27 OA, 27 scenarios), replaced pm4py with stdlib XML for XES parsing,
+and hardened the XES parser against empty logs and missing timestamps (111 tests).*

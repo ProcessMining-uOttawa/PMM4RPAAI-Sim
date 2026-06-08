@@ -23,9 +23,15 @@ class TestPickArray:
     def test_seven_factors_gives_l18(self):
         assert pick_array(7)[0] == "L18"
 
-    def test_eight_factors_raises(self):
+    def test_eight_factors_gives_l27(self):
+        assert pick_array(8)[0] == "L27"
+
+    def test_thirteen_factors_gives_l27(self):
+        assert pick_array(13)[0] == "L27"
+
+    def test_fourteen_factors_raises(self):
         with pytest.raises(ValueError):
-            pick_array(8)
+            pick_array(14)
 
 
 # ── build_scenarios ───────────────────────────────────────────────────────────
@@ -42,6 +48,10 @@ class TestBuildScenarios:
     def test_six_active_factors_gives_l18_eighteen_scenarios(self):
         name, scenarios = build_scenarios(self._params(6), "t", "Act")
         assert name == "L18" and len(scenarios) == 18
+
+    def test_eight_active_factors_gives_l27_twentyseven_scenarios(self):
+        name, scenarios = build_scenarios(self._params(8), "t", "Act")
+        assert name == "L27" and len(scenarios) == 27
 
     def test_frozen_factor_constant_across_all_scenarios(self):
         params = [
