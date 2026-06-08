@@ -276,6 +276,23 @@ Design decisions:
 
 Feature work:
 
+- **Rework KPI** (`core/simulation/prosimos_csv.py`, `core/constants.py`): add process-wide
+  rework as an informational metric (not wired into ranking). Compute two values per
+  replication from the event log CSV: `COL_REWORK_COUNT` (total extra occurrences —
+  sum of `occurrences − 1` across all case/activity pairs where an activity repeats)
+  and `COL_REWORK_RATE` (fraction of cases with at least one rework event). Source is
+  always the log CSV, not the stats CSV — rework requires per-case activity counts.
+  Use pandas directly; pm4py was considered and rejected: it requires renaming
+  `case_id → case:concept:name` and `activity → concept:name`, returns only a
+  per-activity "cases-with-rework" count (not total extra occurrences), and provides
+  no process-wide rate — pandas covers all three needs in one pass with no friction.
+  Hook the two new columns into `replication_metrics()` alongside the existing four.
+  **Pending client confirmation before implementing**: pm4py's rework definition counts
+  the number of *cases* where an activity appears more than once (binary per case per
+  activity). Our `COL_REWORK_COUNT` definition counts total extra occurrences
+  (a case that visits "Fix Bug" three times contributes 2, not 1). These diverge
+  whenever any case repeats an activity more than twice. Confirm which semantics the
+  client expects — the implementation differs depending on the answer.
 - **Cost metric from first principles**: cost is currently read from Prosimos's stats CSV (`Individual Task Statistics` / `Total Cost`). A more reliable alternative is to compute it ourselves: per-replication, sum `resource_seconds × cost_per_hour` from the params JSON and the event log. This would also enable bot cost once `BOT_COST_PER_HOUR` is non-zero. Hook into `simulation.prosimos_csv.per_log_metrics()`.
 - **Plots in Panel 4**: a Plotly main-effects plot (factor × level) above
   the ranking table. The data is already in `analysis.main_effects()`.
