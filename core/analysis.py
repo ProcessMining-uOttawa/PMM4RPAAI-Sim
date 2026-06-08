@@ -32,6 +32,10 @@ def aggregate(results: pd.DataFrame) -> pd.DataFrame:
     return results.groupby(["scenario_id", *factor_cols], as_index=False).agg(**agg_spec)  # type: ignore[call-overload]
 
 
+def _pct_delta(delta: float, baseline: float) -> float:
+    return round(delta / baseline * 100, 1) if baseline else 0.0
+
+
 def compare_to_baseline(agg: pd.DataFrame, baseline_agg: dict[int, dict]) -> pd.DataFrame:
     """Build a display DataFrame comparing each scenario's totals to its matching baseline.
 
@@ -61,10 +65,10 @@ def compare_to_baseline(agg: pd.DataFrame, baseline_agg: dict[int, dict]) -> pd.
                 "Cases":                n_cases,
                 "Total Cycle Time (h)": round(s_cycle_h, 2),
                 "Δ Time (h)":           round(d_cycle, 2),
-                "Δ Time (%)":           round(d_cycle / b_cycle_h * 100, 1) if b_cycle_h else 0.0,
+                "Δ Time (%)":           _pct_delta(d_cycle, b_cycle_h),
                 "Total Cost ($)":       round(s_cost, 2),
                 "Δ Cost ($)":           round(d_cost, 2),
-                "Δ Cost (%)":           round(d_cost / b_cost * 100, 1) if b_cost else 0.0,
+                "Δ Cost (%)":           _pct_delta(d_cost, b_cost),
             })
     return pd.DataFrame(rows)
 

@@ -90,6 +90,16 @@ def run_experiment(
     for s in scenarios:
         s_json: Path | None = None
         automation_scenario: AutomationScenario | None = None
+        if not demo_mode:
+            assert bpmn_tr is not None
+            automation_scenario = AutomationScenario.from_taguchi_values(
+                s.values, selected_resource_id=selected_resource_id)
+            s_json = transformation.apply_params(
+                bpmn_tr.base_json, bpmn_tr.ids,
+                automation_scenario,
+                store.scenario_dir(exp_dir, s.id) / "params.json",
+            )
+            scenario_json_paths[s.id] = s_json
         for rep in range(n_reps):
             if demo_mode:
                 r = demo.fake_simulate(s, rep)
@@ -97,20 +107,11 @@ def run_experiment(
                 total_cycle_s, total_cost = float("nan"), float("nan")
             else:
                 assert bpmn_tr is not None
-                if rep == 0:
-                    automation_scenario = AutomationScenario.from_taguchi_values(
-                        s.values, selected_resource_id=selected_resource_id)
-                    s_json = transformation.apply_params(
-                        bpmn_tr.base_json, bpmn_tr.ids,
-                        automation_scenario,
-                        store.scenario_dir(exp_dir, s.id) / "params.json",
-                    )
-                    scenario_json_paths[s.id] = s_json
+                assert s_json is not None
                 assert automation_scenario is not None
                 out_log  = store.replication_log(exp_dir, s.id, rep)
                 out_stat = store.replication_stats(exp_dir, s.id, rep)
                 proc_log = store.replication_subprocess_log(exp_dir, s.id, rep)
-                assert s_json is not None
                 runner.simulate(bpmn_tr.bpmn_path, s_json,
                                 automation_scenario.num_cases, out_log,
                                 stat_out=out_stat, proc_log=proc_log)
