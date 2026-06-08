@@ -37,15 +37,35 @@ def xes_to_simod_csv(xes_path: Path, csv_path: Path) -> Path:
     we derive `start_time` as the previous event's end_time per case (0
     duration for the first event in each case).
     """
-    import pm4py
-    df = pm4py.read_xes(str(xes_path))
-    rename = {
-        "case:concept:name": "case_id",
-        "concept:name":      "activity",
-        "org:resource":      "resource",
-        "time:timestamp":    "end_time",
-    }
-    df = df.rename(columns=rename)[["case_id", "activity", "resource", "end_time"]]
+    import xml.etree.ElementTree as ET
+    import pandas as pd
+
+    NS = "{http://www.xes-standard.org/}"
+
+    def _attr(elem, tag: str, key: str) -> str | None:
+        child = next(
+            (c for c in elem if c.tag == f"{NS}{tag}" and c.get("key") == key), None
+        )
+        return child.get("value") if child is not None else None
+
+    root = ET.parse(str(xes_path)).getroot()
+    rows = []
+    for trace in root:
+        if trace.tag != f"{NS}trace":
+            continue
+        case_id = _attr(trace, "string", "concept:name")
+        for event in trace:
+            if event.tag != f"{NS}event":
+                continue
+            rows.append({
+                "case_id":  case_id,
+                "activity": _attr(event, "string", "concept:name"),
+                "resource": _attr(event, "string", "org:resource"),
+                "end_time": _attr(event, "date",   "time:timestamp"),
+            })
+
+    df = pd.DataFrame(rows)
+    df["end_time"] = pd.to_datetime(df["end_time"], utc=True)
     df = df.sort_values(["case_id", "end_time"]).reset_index(drop=True)
     df["start_time"] = df.groupby("case_id")["end_time"].shift(1)
     df["start_time"] = df["start_time"].fillna(df["end_time"])
