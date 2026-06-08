@@ -1,64 +1,24 @@
 """Tests for core/analysis.py — no external tools required."""
 from __future__ import annotations
-import csv
 import math
-from pathlib import Path
 
 import pandas as pd
 import pytest
 
 from core.analysis import (
-    _parse_section,
-    per_log_metrics,
-    total_metrics,
-    replication_metrics,
     aggregate,
+    compare_to_baseline,
     main_effects,
     signal_to_noise,
     rank,
 )
 from core.constants import (
-    PROSIMOS_SECTION_TASK_STATS, PROSIMOS_COL_TOTAL_COST,
-    PROSIMOS_SECTION_OVERALL, PROSIMOS_COL_ACCUMULATED, PROSIMOS_KPI_CYCLE_TIME,
     COL_CYCLE_H, COL_COST, COL_CYCLE_H_MEAN, COL_COST_MEAN,
-    COL_TOTAL_CYCLE_S, COL_TOTAL_COST,
+    COL_TOTAL_CYCLE_S_MEAN, COL_TOTAL_COST_MEAN,
 )
 
 
 # ── Helpers ───────────────────────────────────────────────────────────────────
-
-def _write_log(path: Path, cases: list[tuple]) -> None:
-    with open(path, "w", newline="") as f:
-        w = csv.writer(f)
-        w.writerow(["case_id", "start_time", "end_time"])
-        for row in cases:
-            w.writerow(row)
-
-
-def _write_stats(path: Path, tasks: list[tuple]) -> None:
-    with open(path, "w", newline="") as f:
-        w = csv.writer(f)
-        w.writerow([PROSIMOS_SECTION_TASK_STATS])
-        w.writerow(["task_id", PROSIMOS_COL_TOTAL_COST])
-        for task_id, total_cost in tasks:
-            w.writerow([task_id, str(total_cost)])
-        w.writerow([])
-
-
-def _write_full_stats(path: Path, tasks: list[tuple], accumulated_cycle_s: float) -> None:
-    """Write a stats CSV with both Individual Task Statistics and Overall Scenario Statistics."""
-    with open(path, "w", newline="") as f:
-        w = csv.writer(f)
-        w.writerow([PROSIMOS_SECTION_TASK_STATS])
-        w.writerow(["task_id", PROSIMOS_COL_TOTAL_COST])
-        for task_id, total_cost in tasks:
-            w.writerow([task_id, str(total_cost)])
-        w.writerow([])
-        w.writerow([PROSIMOS_SECTION_OVERALL])
-        w.writerow(["KPI", "Min", "Max", "Average", PROSIMOS_COL_ACCUMULATED, "Trace Occurrences"])
-        w.writerow([PROSIMOS_KPI_CYCLE_TIME, "0", "0", "0", str(accumulated_cycle_s), "100"])
-        w.writerow([])
-
 
 def _results_df() -> pd.DataFrame:
     return pd.DataFrame([
@@ -103,152 +63,6 @@ class TestSignalToNoise:
             signal_to_noise([1.0], kind="invalid")
 
 
-# ── _parse_section ────────────────────────────────────────────────────────────
-
-class TestParseSection:
-
-    def test_section_found(self):
-        rows = [
-            [PROSIMOS_SECTION_TASK_STATS],
-            ["task_id", PROSIMOS_COL_TOTAL_COST, "other"],
-            ["task_a", "100.0", "x"],
-            ["task_b",  "50.0", "y"],
-            [],
-        ]
-        hdrs, data = _parse_section(rows, PROSIMOS_SECTION_TASK_STATS)
-        assert hdrs == ["task_id", PROSIMOS_COL_TOTAL_COST, "other"]
-        assert len(data) == 2
-        assert data[0][1] == "100.0"
-
-    def test_section_not_found(self):
-        rows = [["Other Section"], ["col"], ["val"]]
-        hdrs, data = _parse_section(rows, "Missing")
-        assert hdrs == [] and data == []
-
-    def test_terminates_at_blank_row(self):
-        rows = [
-            ["My Section"],
-            ["col"],
-            ["row1"],
-            [],        # blank — stop here
-            ["row2"],  # must not appear in data
-        ]
-        _, data = _parse_section(rows, "My Section")
-        assert len(data) == 1
-
-    def test_section_at_end_of_file(self):
-        rows = [["My Section"]]   # no column header after it
-        hdrs, data = _parse_section(rows, "My Section")
-        assert hdrs == [] and data == []
-
-
-# ── per_log_metrics ───────────────────────────────────────────────────────────
-
-class TestPerLogMetrics:
-
-    def test_cycle_time_median(self, tmp_path):
-        log = tmp_path / "log.csv"
-        _write_log(log, [
-            ("c1", "2025-01-01T08:00:00", "2025-01-01T10:00:00"),  # 2 h
-            ("c2", "2025-01-01T08:00:00", "2025-01-01T12:00:00"),  # 4 h
-        ])
-        assert per_log_metrics(log)[COL_CYCLE_H] == pytest.approx(3.0)
-
-    def test_cost_from_stats(self, tmp_path):
-        log = tmp_path / "log.csv"
-        stats = tmp_path / "stats.csv"
-        _write_log(log, [
-            ("c1", "2025-01-01T08:00:00", "2025-01-01T09:00:00"),
-            ("c2", "2025-01-01T08:00:00", "2025-01-01T09:00:00"),
-        ])
-        _write_stats(stats, [("task_a", 100.0), ("task_b", 50.0)])
-        # total 150 / 2 cases = 75.0 per case
-        assert per_log_metrics(log, stats)[COL_COST] == pytest.approx(75.0)
-
-    def test_cost_none_without_stats(self, tmp_path):
-        log = tmp_path / "log.csv"
-        _write_log(log, [("c1", "2025-01-01T08:00:00", "2025-01-01T09:00:00")])
-        assert per_log_metrics(log)[COL_COST] is None
-
-    def test_cost_none_when_stats_file_missing(self, tmp_path):
-        log = tmp_path / "log.csv"
-        _write_log(log, [("c1", "2025-01-01T08:00:00", "2025-01-01T09:00:00")])
-        assert per_log_metrics(log, tmp_path / "nonexistent.csv")[COL_COST] is None
-
-    def test_cost_none_when_stats_malformed(self, tmp_path):
-        log = tmp_path / "log.csv"
-        stats = tmp_path / "stats.csv"
-        _write_log(log, [("c1", "2025-01-01T08:00:00", "2025-01-01T09:00:00")])
-        stats.write_text("no recognisable sections here\n")
-        assert per_log_metrics(log, stats)[COL_COST] is None
-
-
-# ── total_metrics ─────────────────────────────────────────────────────────────
-
-class TestTotalMetrics:
-
-    def test_total_cycle_s(self, tmp_path):
-        stats = tmp_path / "stats.csv"
-        _write_full_stats(stats, [("task_a", 50.0)], accumulated_cycle_s=3600.0)
-        assert total_metrics(stats)[COL_TOTAL_CYCLE_S] == pytest.approx(3600.0)
-
-    def test_total_cost_sum(self, tmp_path):
-        stats = tmp_path / "stats.csv"
-        _write_full_stats(stats, [("task_a", 100.0), ("task_b", 50.0)], accumulated_cycle_s=1.0)
-        assert total_metrics(stats)[COL_TOTAL_COST] == pytest.approx(150.0)
-
-    def test_missing_overall_section_raises(self, tmp_path):
-        stats = tmp_path / "stats.csv"
-        _write_stats(stats, [("task_a", 50.0)])  # only task stats, no overall section
-        with pytest.raises(ValueError, match="Overall Scenario Statistics"):
-            total_metrics(stats)
-
-    def test_missing_cost_column_raises(self, tmp_path):
-        stats = tmp_path / "stats.csv"
-        with open(stats, "w", newline="") as f:
-            import csv as _csv
-            w = _csv.writer(f)
-            w.writerow([PROSIMOS_SECTION_TASK_STATS])
-            w.writerow(["task_id", "Some Other Column"])
-            w.writerow(["task_a", "50.0"])
-            w.writerow([])
-            w.writerow([PROSIMOS_SECTION_OVERALL])
-            w.writerow(["KPI", "Min", "Max", "Average", PROSIMOS_COL_ACCUMULATED, "Trace Occurrences"])
-            w.writerow([PROSIMOS_KPI_CYCLE_TIME, "0", "0", "0", "3600.0", "100"])
-        with pytest.raises(ValueError, match="Total Cost"):
-            total_metrics(stats)
-
-
-# ── replication_metrics ───────────────────────────────────────────────────────
-
-class TestReplicationMetrics:
-
-    def test_returns_all_four_keys(self, tmp_path):
-        log = tmp_path / "log.csv"
-        stats = tmp_path / "stats.csv"
-        _write_log(log, [("c1", "2025-01-01T08:00:00", "2025-01-01T10:00:00")])
-        _write_full_stats(stats, [("task_a", 100.0)], accumulated_cycle_s=3600.0)
-        m = replication_metrics(log, stats)
-        assert COL_CYCLE_H in m and COL_COST in m
-        assert COL_TOTAL_CYCLE_S in m and COL_TOTAL_COST in m
-
-    def test_matches_separate_calls(self, tmp_path):
-        log = tmp_path / "log.csv"
-        stats = tmp_path / "stats.csv"
-        _write_log(log, [
-            ("c1", "2025-01-01T08:00:00", "2025-01-01T10:00:00"),
-            ("c2", "2025-01-01T08:00:00", "2025-01-01T12:00:00"),
-        ])
-        _write_full_stats(stats, [("task_a", 100.0), ("task_b", 50.0)], accumulated_cycle_s=7200.0)
-        combined = replication_metrics(log, stats)
-        per = per_log_metrics(log, stats)
-        total = total_metrics(stats)
-        assert combined[COL_CYCLE_H] == pytest.approx(per[COL_CYCLE_H])
-        assert combined[COL_COST] == pytest.approx(per[COL_COST])
-        assert combined[COL_TOTAL_CYCLE_S] == pytest.approx(total[COL_TOTAL_CYCLE_S])
-        assert combined[COL_TOTAL_COST] == pytest.approx(total[COL_TOTAL_COST])
-
-
 # ── aggregate ─────────────────────────────────────────────────────────────────
 
 class TestAggregate:
@@ -269,6 +83,41 @@ class TestAggregate:
         }])
         agg = aggregate(df)
         assert math.isnan(agg[COL_COST_MEAN].iloc[0])
+
+
+# ── compare_to_baseline ───────────────────────────────────────────────────────
+
+class TestCompareToBaseline:
+
+    def _agg(self):
+        return pd.DataFrame([
+            {"scenario_id": "S01", COL_TOTAL_CYCLE_S_MEAN: 7200.0, COL_TOTAL_COST_MEAN: 200.0},
+            {"scenario_id": "S02", COL_TOTAL_CYCLE_S_MEAN: 3600.0, COL_TOTAL_COST_MEAN: 80.0},
+        ])
+
+    def _baseline(self):
+        return {COL_TOTAL_CYCLE_S_MEAN: 3600.0, COL_TOTAL_COST_MEAN: 100.0}
+
+    def test_baseline_row_is_first(self):
+        df = compare_to_baseline(self._agg(), self._baseline())
+        assert df.iloc[0]["Scenario"] == "Baseline (original)"
+
+    def test_row_count(self):
+        df = compare_to_baseline(self._agg(), self._baseline())
+        assert len(df) == 3  # baseline + 2 scenarios
+
+    def test_baseline_deltas_are_zero(self):
+        df = compare_to_baseline(self._agg(), self._baseline())
+        assert df.iloc[0]["Δ Time (h)"] == 0.0
+        assert df.iloc[0]["Δ Cost ($)"] == 0.0
+
+    def test_delta_values(self):
+        df = compare_to_baseline(self._agg(), self._baseline())
+        s02 = df[df["Scenario"] == "S02"].iloc[0]
+        assert s02["Total Cycle Time (h)"] == pytest.approx(1.0)
+        assert s02["Δ Time (h)"] == pytest.approx(0.0)
+        assert s02["Δ Cost ($)"] == pytest.approx(-20.0)
+        assert s02["Δ Cost (%)"] == pytest.approx(-20.0)
 
 
 # ── main_effects ──────────────────────────────────────────────────────────────

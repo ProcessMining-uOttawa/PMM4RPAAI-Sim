@@ -1,4 +1,4 @@
-"""Pluggable BPMN+JSON mutations — pattern definitions and their contracts."""
+"""Pluggable BPMN+JSON mutations — pattern definitions, contracts, and scenario inputs."""
 from __future__ import annotations
 import copy
 import json
@@ -8,28 +8,115 @@ from dataclasses import dataclass
 from typing import Any
 from pathlib import Path
 
-from .parameters import Parameter, AutomationScenario
-from .constants import (
-    BOT_PROFILE_ID, BOT_PROFILE_NAME,
-    BOT_CALENDAR_ID, BOT_CALENDAR_NAME,
-    BOT_CALENDAR_FROM, BOT_CALENDAR_TO, BOT_CALENDAR_BEGIN, BOT_CALENDAR_END,
-    BOT_COST_PER_HOUR, BOT_AMOUNT,
-    BOT_DISTRIBUTION_NAME, BOT_DISTRIBUTION_VALUE,
-    GW1_NAME, GW2_NAME, GW3_NAME, GW4_NAME,
-    F_BOT_BRANCH_LABEL, F_HUMAN_BRANCH_LABEL,
-    F_BOT_SUCCESS_LABEL, F_BOT_FAILURE_LABEL,
-    DEFAULT_MANUAL_DURATION_S,
-    PCT_AUTO_LEVELS, PCT_OK_LEVELS, T_AUTO_FRACTIONS, T_MANUAL_FACTORS,
-    KEY_RESOURCE_CALENDARS, KEY_RESOURCE_PROFILES,
-    KEY_TASK_RESOURCE_DISTRIBUTION, KEY_GATEWAY_BRANCHING_PROBS,
-    NUM_BOTS_LEVELS, NUM_MANUAL_LEVELS,
-)
-from .bpmn_edit import (
+from .parameters import Parameter
+from .constants import KEY_RESOURCE_PROFILES, KEY_TASK_RESOURCE_DISTRIBUTION
+from .bpmn.edit import (
     find_process, find_task_in_process,
     flows_targeting, flows_from,
     add_task_el, add_xor_el, add_flow_el, update_flow_target,
     diagram_extents, TASK_W, TASK_H, GW_W, GW_H,
 )
+
+# ── Bot resource profile ──────────────────────────────────────────────────────
+BOT_PROFILE_ID   = "BOT_PROFILE"
+BOT_PROFILE_NAME = "Bot Resources"
+
+# ── Bot resource defaults ─────────────────────────────────────────────────────
+BOT_COST_PER_HOUR = "0"
+BOT_AMOUNT        = 1
+
+# ── Bot calendar ──────────────────────────────────────────────────────────────
+BOT_CALENDAR_ID    = "BOT_CALENDAR"
+BOT_CALENDAR_NAME  = "Bot 24/7 Schedule"
+BOT_CALENDAR_FROM  = "MONDAY"
+BOT_CALENDAR_TO    = "SUNDAY"
+BOT_CALENDAR_BEGIN = "00:00:00.000"
+BOT_CALENDAR_END   = "23:59:59.999"
+
+# ── Bot task distribution defaults ────────────────────────────────────────────
+BOT_DISTRIBUTION_NAME  = "fix"
+BOT_DISTRIBUTION_VALUE = 0.0
+
+# ── Gateway display names ─────────────────────────────────────────────────────
+GW1_NAME = "Bot or Human?"
+GW2_NAME = "Bot succeeded?"
+GW3_NAME = "Human needed"
+GW4_NAME = "Exit"
+
+# ── Sequence flow display labels ──────────────────────────────────────────────
+F_BOT_BRANCH_LABEL   = "bot"
+F_HUMAN_BRANCH_LABEL = "human"
+F_BOT_SUCCESS_LABEL  = "success"
+F_BOT_FAILURE_LABEL  = "failure"
+
+# ── Prosimos JSON schema keys used only by this module ────────────────────────
+KEY_RESOURCE_CALENDARS       = "resource_calendars"
+KEY_GATEWAY_BRANCHING_PROBS  = "gateway_branching_probabilities"
+
+# ── XOR split automation: Taguchi parameter defaults ──────────────────────────
+DEFAULT_MANUAL_DURATION_S = 1800.0
+PCT_AUTO_LEVELS    = [25, 50, 75]
+PCT_OK_LEVELS      = [80, 90, 95]
+T_AUTO_FRACTIONS   = [0.05, 0.10, 0.20]
+T_MANUAL_FACTORS   = [0.80, 1.00, 1.20]
+NUM_BOTS_LEVELS    = [1, 2, 3]
+NUM_MANUAL_LEVELS  = [1, 2, 3]
+
+
+# ── XORSplitAutomation: scenario input type ───────────────────────────────────
+
+@dataclass(frozen=True)
+class AutomationScenario:
+    """Concrete inputs for one XORSplitAutomation simulation run.
+
+    Primary fields are set directly. Complements are computed properties so
+    the caller never has to manage them explicitly.
+    """
+    automation_rate:       float       # [0, 1] fraction of cases routed to the bot
+    bot_failure_rate:      float       # [0, 1] fraction of bot attempts that fail
+    bot_execution_time:    float       # mean bot task duration (seconds)
+    manual_execution_time: float       # mean human task duration (seconds)
+    num_bots:              int         # bot resource pool size
+    num_manual_resources:  int         # human resource pool size
+    selected_resource_id:  str | None = None  # resource to resize; None = skip pool resize
+
+    def __post_init__(self) -> None:
+        for name, val in (("automation_rate",  self.automation_rate),
+                          ("bot_failure_rate", self.bot_failure_rate)):
+            if not 0.0 <= val <= 1.0:
+                raise ValueError(f"{name} must be in [0, 1], got {val}")
+        for name, val in (("num_bots", self.num_bots),
+                          ("num_manual_resources", self.num_manual_resources)):
+            if val < 1:
+                raise ValueError(f"{name} must be ≥ 1, got {val}")
+
+    @property
+    def manual_branch_rate(self) -> float:
+        return 1.0 - self.automation_rate
+
+    @property
+    def bot_success_rate(self) -> float:
+        return 1.0 - self.bot_failure_rate
+
+    @classmethod
+    def from_taguchi_values(cls, values: dict,
+                            selected_resource_id: str | None = None) -> "AutomationScenario":
+        """Bridge: construct AutomationScenario from a Taguchi-generated values dict."""
+        def _v(suffix: str, default: float) -> float:
+            for k, v in values.items():
+                if k.endswith("." + suffix):
+                    return float(v)
+            return default
+
+        return cls(
+            automation_rate=_v("pct_auto", 50.0) / 100.0,
+            bot_failure_rate=1.0 - _v("pct_ok", 90.0) / 100.0,
+            bot_execution_time=_v("t_auto", 60.0),
+            manual_execution_time=_v("t_manual", 1800.0),
+            num_bots=int(_v("num_bots", 1.0)),
+            num_manual_resources=int(_v("num_manual_resources", 1.0)),
+            selected_resource_id=selected_resource_id,
+        )
 
 
 # ── Public dataclasses ────────────────────────────────────────────────────────

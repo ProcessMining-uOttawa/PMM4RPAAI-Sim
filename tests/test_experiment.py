@@ -3,7 +3,8 @@ from __future__ import annotations
 import pytest
 
 from core.experiment import build_scenarios, pick_array
-from core.parameters import AutomationScenario, Parameter
+from core.parameters import Parameter
+from core.transformations import AutomationScenario
 
 
 # ── pick_array ────────────────────────────────────────────────────────────────

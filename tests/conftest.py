@@ -3,11 +3,10 @@ from __future__ import annotations
 import json
 import pytest
 
-from core.transformations import XORSplitAutomation
-from core.constants import (
-    KEY_RESOURCE_CALENDARS, KEY_RESOURCE_PROFILES,
-    KEY_TASK_RESOURCE_DISTRIBUTION, KEY_GATEWAY_BRANCHING_PROBS,
+from core.transformations import (
+    XORSplitAutomation, KEY_RESOURCE_CALENDARS, KEY_GATEWAY_BRANCHING_PROBS,
 )
+from core.constants import KEY_RESOURCE_PROFILES, KEY_TASK_RESOURCE_DISTRIBUTION
 
 # ── Minimal synthetic BPMN ────────────────────────────────────────────────────
 #

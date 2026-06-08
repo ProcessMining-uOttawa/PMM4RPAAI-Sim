@@ -7,7 +7,7 @@ import subprocess
 from dataclasses import dataclass
 from pathlib import Path
 
-from .runner import SIMOD_EXE, PROSIMOS_EXE
+from .simulation.runner import SIMOD_EXE, PROSIMOS_EXE
 
 
 SIMOD_VENV_PY = Path("tools/simod-venv/Scripts/python.exe")

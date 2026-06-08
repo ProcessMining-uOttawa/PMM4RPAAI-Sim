@@ -2,10 +2,7 @@
 from __future__ import annotations
 import os
 import subprocess
-import xml.etree.ElementTree as ET
 from pathlib import Path
-
-from .constants import BPMN_NS
 
 
 def _tail_lines(path: Path, n: int) -> str:
@@ -107,24 +104,6 @@ def discover(log_path: Path, run_dir: Path,
             raise RuntimeError(f"No Prosimos params JSON next to {bpmn}")
         params = cands[0]
     return bpmn, params
-
-
-def list_activities(bpmn_path: Path) -> list[str]:
-    """Pull task names out of a BPMN file without loading pm4py."""
-    tree = ET.parse(str(bpmn_path))
-    names = []
-    for tag in ("task", "userTask", "serviceTask", "manualTask",
-                "businessRuleTask", "scriptTask", "sendTask", "receiveTask"):
-        for el in tree.findall(f".//{{{BPMN_NS}}}{tag}"):
-            n = el.get("name")
-            if n:
-                names.append(n)
-    seen, out = set(), []
-    for n in names:
-        if n not in seen:
-            seen.add(n)
-            out.append(n)
-    return out
 
 
 # --- Prosimos ---------------------------------------------------------------
