@@ -34,5 +34,23 @@ def replication_subprocess_log(exp: Path, scenario_id: str, replication: int) ->
     return scenario_dir(exp, scenario_id) / f"rep_{replication:03d}_prosimos.log"
 
 
+def baseline_dir(exp: Path) -> Path:
+    d = exp / "baseline"
+    d.mkdir(parents=True, exist_ok=True)
+    return d
+
+
+def baseline_log(exp: Path, replication: int) -> Path:
+    return baseline_dir(exp) / f"rep_{replication:03d}_log.csv"
+
+
+def baseline_stats(exp: Path, replication: int) -> Path:
+    return baseline_dir(exp) / f"rep_{replication:03d}_stats.csv"
+
+
+def baseline_subprocess_log(exp: Path, replication: int) -> Path:
+    return baseline_dir(exp) / f"rep_{replication:03d}_prosimos.log"
+
+
 def discovery_log(exp: Path) -> Path:
     return exp / "simod.log"

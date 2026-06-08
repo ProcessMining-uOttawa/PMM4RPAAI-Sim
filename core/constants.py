@@ -38,9 +38,18 @@ COL_COST         = "cost"
 COL_CYCLE_H_MEAN = "cycle_h_mean"
 COL_COST_MEAN    = "cost_mean"
 
+# per-replication totals (accumulated across all cases in one run)
+COL_TOTAL_CYCLE_S      = "total_cycle_s"
+COL_TOTAL_COST         = "total_cost"
+COL_TOTAL_CYCLE_S_MEAN = "total_cycle_s_mean"
+COL_TOTAL_COST_MEAN    = "total_cost_mean"
+
 # ── Prosimos stats CSV sections and columns ───────────────────────────────────
-PROSIMOS_SECTION_TASK_STATS = "Individual Task Statistics"
-PROSIMOS_COL_TOTAL_COST     = "Total Cost"
+PROSIMOS_SECTION_TASK_STATS  = "Individual Task Statistics"
+PROSIMOS_COL_TOTAL_COST      = "Total Cost"
+PROSIMOS_SECTION_OVERALL     = "Overall Scenario Statistics"
+PROSIMOS_COL_ACCUMULATED     = "Accumulated Value"
+PROSIMOS_KPI_CYCLE_TIME      = "cycle_time"
 
 # ── Prosimos JSON schema: top-level section keys ──────────────────────────────
 KEY_RESOURCE_CALENDARS         = "resource_calendars"

@@ -21,7 +21,7 @@ BPMN model + Prosimos simulation-parameters JSON
         ▼  user picks: target activity + substitution pattern
 Pattern.parameters(target) → N factors × 3 levels (Taguchi)
         │
-        ▼  pyDOE2 / curated L9, L18 OAs
+        ▼  curated L9, L18 OAs
 list[Scenario]  (one per row of the OA)
         │
         ▼  Pattern.apply(scenario)  — mutates BPMN + JSON
@@ -29,8 +29,8 @@ list[Scenario]  (one per row of the OA)
         ▼  Prosimos  start-simulation  ×  N replications
 Per-replication event-log CSV + stats CSV
         │
-        ▼  pm4py-derived metrics  +  Taguchi S/N + ranking
-Ranking table + main-effects view
+        ▼  pandas-derived metrics  +  Taguchi S/N + ranking
+Ranking table + main-effects view + export (stats CSV, JSON zip, BPMN, group ZIP)
 ```
 
 ## 2. Architecture seams (the parts designed for "it will get more complex")
@@ -65,7 +65,8 @@ Taguchi designer**. Three contracts make that work:
 
 | File | Responsibility |
 |---|---|
-| [app.py](app.py) | Streamlit dashboard (Mockup B): sidebar = experiment state + run config; 4 panels = Activity & pattern · Factor levels · Execution · Ranked scenarios. |
+| [app.py](app.py) | Streamlit dashboard (Mockup B): sidebar = experiment state + run config; 4 panels = Activity & pattern · Factor levels · Execution · Ranked scenarios. Panel 4 includes an export row: stats CSV, scenario JSON zip, BPMN, and group ZIP (all three combined). |
+| [.github/workflows/ci.yml](.github/workflows/ci.yml) | GitHub Actions CI: three parallel jobs — **lint** (ruff), **type-check** (`mypy core/ --ignore-missing-imports`), **test** (pytest). Triggered on push and PR to main. Only `pandas` and the respective tool are installed per job — heavy packages (streamlit, pm4py) are not needed for the test suite. |
 | [core/constants.py](core/constants.py) | Shared constants: XML namespaces, Prosimos JSON keys, pattern defaults (Taguchi level lists), and analysis column names (`COL_CYCLE_H`, `COL_COST`, `COL_CYCLE_H_MEAN`, `COL_COST_MEAN`). |
 | [core/orchestrator.py](core/orchestrator.py) | Run loop: iterates scenarios × replications, calls `runner.simulate`, collects results into a tidy DataFrame. |
 | [core/preflight.py](core/preflight.py) | Detects Python 3.9, Corretto 8 (auto-finds `C:\Program Files\Amazon Corretto\jdk1.8*`), and both venvs. Surfaces per-row fixes in the UI. |
@@ -218,6 +219,14 @@ python -m streamlit run app.py
 Then in the browser: toggle **Demo mode** off, upload
 `samples/IssueTracker.xes`, pick `Fix Bug` as the target, click ▶ Run.
 
+Dev commands (no external tools required):
+
+```powershell
+pytest                                 # run test suite (95 tests, demo mode only)
+ruff check .                           # lint
+mypy core/ --ignore-missing-imports    # type-check (--ignore-missing-imports suppresses pm4py stub warning)
+```
+
 ## 8. What's worth doing next
 
 Known bugs / reliability gaps:
@@ -293,4 +302,7 @@ Feature work:
 → bug-fixes) completed against the IssueTracker synthetic log. Subsequent
 sessions added `num_bots`/`num_manual_resources` as Taguchi factors (L18),
 subprocess log capture, XML namespace centralisation in `constants.py`, and
-dead-code removal (`new_id`, `Parameter.inject`, `store.ACTIVE` clobber).*
+dead-code removal (`new_id`, `Parameter.inject`, `store.ACTIVE` clobber).
+Later sessions added code quality tooling (ruff, mypy), a full test suite
+(95 tests across all core modules), export features (stats CSV, JSON zip,
+BPMN, group ZIP in Panel 4), and GitHub Actions CI.*

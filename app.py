@@ -11,7 +11,10 @@ from pathlib import Path
 from core.transformations import REGISTRY
 from core.experiment import build_scenarios
 from core import analysis, demo, orchestrator, preflight, runner, store
-from core.constants import COL_CYCLE_H, COL_COST, COL_CYCLE_H_MEAN, COL_COST_MEAN
+from core.constants import (
+    COL_CYCLE_H, COL_COST, COL_CYCLE_H_MEAN, COL_COST_MEAN,
+    COL_TOTAL_CYCLE_S_MEAN, COL_TOTAL_COST_MEAN,
+)
 from core.bpmn_utils import (
     find_task_by_name,
     task_mean_duration_s,
@@ -81,6 +84,7 @@ ss.setdefault(
 ss.setdefault("scenario_json_paths", {})  # sid -> Path, one params.json per scenario
 ss.setdefault("array_name", None)
 ss.setdefault("scenarios", [])
+ss.setdefault("baseline_agg", None)
 
 # --- header ------------------------------------------------------------------
 st.markdown(
@@ -207,6 +211,7 @@ with st.sidebar:
                 ss[k] = None if k != "activities" else []
             ss.experiment_bpmn_path = None
             ss.scenario_json_paths = {}
+            ss.baseline_agg = None
             st.rerun()
 
     st.divider()
@@ -396,11 +401,14 @@ with st.container(border=True):
         ss.results = result.results
         ss.experiment_bpmn_path = result.experiment_bpmn_path
         ss.scenario_json_paths = result.scenario_json_paths
+        ss.baseline_agg = result.baseline_agg
         progress.empty()
         st.success(f"Completed {total_runs} simulations.")
 
 # --- Results panel -----------------------------------------------------------
 if ss.results is not None:
+    agg = analysis.aggregate(ss.results)
+
     with st.container(border=True):
         st.markdown("##### 4 · Ranked scenarios")
         if ss.results[COL_COST].isna().any():
@@ -413,7 +421,6 @@ if ss.results is not None:
         if goal_max <= 0:
             st.error("Target must be a positive number.")
             st.stop()
-        agg = analysis.aggregate(ss.results)
         ranked = analysis.rank(agg, goal_metric, goal_max)
         ranked.insert(0, "rank", range(1, len(ranked) + 1))
         st.dataframe(
@@ -487,3 +494,35 @@ if ss.results is not None:
                 mime="application/zip",
                 use_container_width=True,
             )
+
+    baseline_agg = ss.get("baseline_agg")
+    if baseline_agg:
+        import pandas as pd
+        with st.container(border=True):
+            st.markdown("##### 5 · Baseline comparison")
+            st.caption(
+                "Total metrics averaged across replications. "
+                "Δ values are relative to the original process (no automation)."
+            )
+            b_cycle_h = baseline_agg[COL_TOTAL_CYCLE_S_MEAN] / 3600
+            b_cost    = baseline_agg[COL_TOTAL_COST_MEAN]
+            rows_cmp = [{"Scenario": "Baseline (original)",
+                         "Total Cycle Time (h)": round(b_cycle_h, 2),
+                         "Δ Time (h)": 0.0, "Δ Time (%)": 0.0,
+                         "Total Cost ($)": round(b_cost, 2),
+                         "Δ Cost ($)": 0.0, "Δ Cost (%)": 0.0}]
+            for _, row in agg.iterrows():
+                s_cycle_h = row[COL_TOTAL_CYCLE_S_MEAN] / 3600
+                s_cost    = row[COL_TOTAL_COST_MEAN]
+                d_cycle   = s_cycle_h - b_cycle_h
+                d_cost    = s_cost - b_cost
+                rows_cmp.append({
+                    "Scenario":            row["scenario_id"],
+                    "Total Cycle Time (h)": round(s_cycle_h, 2),
+                    "Δ Time (h)":          round(d_cycle, 2),
+                    "Δ Time (%)":          round(d_cycle / b_cycle_h * 100, 1) if b_cycle_h else 0.0,
+                    "Total Cost ($)":      round(s_cost, 2),
+                    "Δ Cost ($)":          round(d_cost, 2),
+                    "Δ Cost (%)":          round(d_cost / b_cost * 100, 1) if b_cost else 0.0,
+                })
+            st.dataframe(pd.DataFrame(rows_cmp), use_container_width=True, hide_index=True)

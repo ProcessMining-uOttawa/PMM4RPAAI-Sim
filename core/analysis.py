@@ -7,11 +7,16 @@ import pandas as pd
 
 from .constants import (
     PROSIMOS_SECTION_TASK_STATS, PROSIMOS_COL_TOTAL_COST,
+    PROSIMOS_SECTION_OVERALL, PROSIMOS_COL_ACCUMULATED, PROSIMOS_KPI_CYCLE_TIME,
     COL_CYCLE_H, COL_COST, COL_CYCLE_H_MEAN, COL_COST_MEAN,
+    COL_TOTAL_CYCLE_S, COL_TOTAL_COST, COL_TOTAL_CYCLE_S_MEAN, COL_TOTAL_COST_MEAN,
 )
 
 
-_NON_FACTOR_COLS = frozenset({"scenario_id", "replication", COL_CYCLE_H, COL_COST})
+_NON_FACTOR_COLS = frozenset({
+    "scenario_id", "replication", COL_CYCLE_H, COL_COST,
+    COL_TOTAL_CYCLE_S, COL_TOTAL_COST,
+})
 
 
 def _parse_section(rows: list, header: str) -> tuple[list[str], list[list[str]]]:
@@ -60,18 +65,61 @@ def per_log_metrics(log_csv: Path, stats_csv: Path | None = None) -> dict:
     return {COL_CYCLE_H: float(cycle_h.median()), COL_COST: cost}
 
 
+def total_metrics(stats_csv: Path) -> dict:
+    """Total accumulated metrics for one Prosimos replication.
+
+    total_cycle_s: Accumulated Value for cycle_time from Overall Scenario Statistics.
+    total_cost: sum of Total Cost across all tasks from Individual Task Statistics.
+
+    Raises ValueError if either metric is missing or unparseable.
+    """
+    with open(stats_csv) as f:
+        rows = list(csv.reader(f))
+
+    overall_hdr, overall_data = _parse_section(rows, PROSIMOS_SECTION_OVERALL)
+    if not overall_hdr or not overall_data:
+        raise ValueError(f"'{PROSIMOS_SECTION_OVERALL}' not found in {stats_csv}")
+    try:
+        acc_idx = overall_hdr.index(PROSIMOS_COL_ACCUMULATED)
+    except ValueError:
+        raise ValueError(f"'{PROSIMOS_COL_ACCUMULATED}' column missing in {stats_csv}")
+    cycle_row = next((r for r in overall_data if r and r[0].strip() == PROSIMOS_KPI_CYCLE_TIME), None)
+    if cycle_row is None:
+        raise ValueError(f"'{PROSIMOS_KPI_CYCLE_TIME}' KPI not found in {stats_csv}")
+    total_cycle_s = float(cycle_row[acc_idx])
+
+    task_hdr, task_data = _parse_section(rows, PROSIMOS_SECTION_TASK_STATS)
+    if not task_hdr or not task_data:
+        raise ValueError(f"'{PROSIMOS_SECTION_TASK_STATS}' not found in {stats_csv}")
+    try:
+        cost_idx = task_hdr.index(PROSIMOS_COL_TOTAL_COST)
+    except ValueError:
+        raise ValueError(f"'{PROSIMOS_COL_TOTAL_COST}' column missing in {stats_csv}")
+    total_cost = 0.0
+    for r in task_data:
+        try:
+            total_cost += float(r[cost_idx])
+        except (ValueError, IndexError):
+            raise ValueError(f"Non-numeric Total Cost in {stats_csv}: {r}")
+
+    return {COL_TOTAL_CYCLE_S: total_cycle_s, COL_TOTAL_COST: total_cost}
+
+
 def aggregate(results: pd.DataFrame) -> pd.DataFrame:
     """results: scenario_id, replication, cycle_h, cost (+ factor cols)."""
     factor_cols = [c for c in results.columns
                    if c not in _NON_FACTOR_COLS]
-    agg = (results.groupby(["scenario_id", *factor_cols], as_index=False)
-                  .agg(**{  # type: ignore[call-overload]
-                      COL_CYCLE_H_MEAN:  (COL_CYCLE_H, "mean"),
-                      "cycle_h_std":     (COL_CYCLE_H, "std"),
-                      COL_COST_MEAN:     (COL_COST,    "mean"),
-                      "cost_std":        (COL_COST,    "std"),
-                  }))
-    return agg
+    agg_spec: dict = {
+        COL_CYCLE_H_MEAN: (COL_CYCLE_H, "mean"),
+        "cycle_h_std":    (COL_CYCLE_H, "std"),
+        COL_COST_MEAN:    (COL_COST,    "mean"),
+        "cost_std":       (COL_COST,    "std"),
+    }
+    if COL_TOTAL_CYCLE_S in results.columns:
+        agg_spec[COL_TOTAL_CYCLE_S_MEAN] = (COL_TOTAL_CYCLE_S, "mean")
+    if COL_TOTAL_COST in results.columns:
+        agg_spec[COL_TOTAL_COST_MEAN] = (COL_TOTAL_COST, "mean")
+    return results.groupby(["scenario_id", *factor_cols], as_index=False).agg(**agg_spec)  # type: ignore[call-overload]
 
 
 def signal_to_noise(values, kind="smaller_is_better") -> float:
