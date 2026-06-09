@@ -7,8 +7,8 @@ import pytest
 from core.transformations import (
     _make_ids,
     BOT_CALENDAR_ID, BOT_PROFILE_ID,
-    KEY_RESOURCE_CALENDARS, KEY_GATEWAY_BRANCHING_PROBS,
 )
+from core.simulation.prosimos_edit import KEY_RESOURCE_CALENDARS, KEY_GATEWAY_BRANCHING_PROBS
 from core.transformations import AutomationScenario
 from core.bpmn.utils import resource_pool_size
 from core.bpmn import BPMN_NS
@@ -157,11 +157,13 @@ class TestApplyParams:
         assert _gbp_probs(data, ids.fallback_merge)[ids.to_human]  == pytest.approx(1.0)
         assert _gbp_probs(data, ids.final_join_gate)[ids.exit_flow] == pytest.approx(1.0)
 
-    def test_bot_duration_set_within_jitter(self, result):
+    def test_bot_duration_set_fixed(self, result):
         data, ids, _ = result
-        lo, hi = _task_dist_bounds(data, ids.bot_id)
-        assert lo == pytest.approx(60.0 * 0.95)
-        assert hi == pytest.approx(60.0 * 1.05)
+        entry = next(e for e in data[KEY_TASK_RESOURCE_DISTRIBUTION]
+                     if e["task_id"] == ids.bot_id)
+        r = entry["resources"][0]
+        assert r["distribution_name"] == "fix"
+        assert r["distribution_params"] == [{"value": 60.0}]
 
     def test_manual_duration_set_within_jitter(self, result):
         data, ids, _ = result

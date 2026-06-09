@@ -9,7 +9,12 @@ from typing import Any
 from pathlib import Path
 
 from .parameters import Parameter
-from .constants import KEY_RESOURCE_PROFILES, KEY_TASK_RESOURCE_DISTRIBUTION
+from .constants import KEY_TASK_RESOURCE_DISTRIBUTION
+from .simulation.prosimos_edit import (
+    set_uniform, set_fixed, set_resource_amount,
+    ensure_calendar, upsert_resource_in_profile,
+    append_task_distribution, add_gateway_probs,
+)
 from .bpmn.edit import (
     find_process, find_task_in_process,
     flows_targeting, flows_from,
@@ -48,10 +53,6 @@ F_BOT_BRANCH_LABEL   = "bot"
 F_HUMAN_BRANCH_LABEL = "human"
 F_BOT_SUCCESS_LABEL  = "success"
 F_BOT_FAILURE_LABEL  = "failure"
-
-# ── Prosimos JSON schema keys used only by this module ────────────────────────
-KEY_RESOURCE_CALENDARS       = "resource_calendars"
-KEY_GATEWAY_BRANCHING_PROBS  = "gateway_branching_probabilities"
 
 # ── XOR split automation: Taguchi parameter defaults ──────────────────────────
 DEFAULT_MANUAL_DURATION_S = 1800.0
@@ -211,24 +212,6 @@ def _make_ids(task_id: str, task_name: str) -> TransformIds:
     )
 
 
-# ── JSON mutation helpers ─────────────────────────────────────────────────────
-
-def _set_uniform(entry: dict, mean_s: float, jitter: float = 0.05) -> None:
-    lo = max(0.0, mean_s * (1 - jitter))
-    hi = mean_s * (1 + jitter)
-    for r in entry["resources"]:
-        r["distribution_name"]   = "uniform"
-        r["distribution_params"] = [{"value": lo}, {"value": hi}]
-
-
-def _set_resource_amount(data: dict, resource_id: str, amount: int) -> None:
-    for profile in data.get(KEY_RESOURCE_PROFILES, []):
-        for resource in profile.get("resource_list", []):
-            if resource.get("id") == resource_id:
-                resource["amount"] = amount
-                return
-
-
 # ── Pattern layout ────────────────────────────────────────────────────────────
 
 def _xor_bypass_layout(root: ET.Element,
@@ -380,25 +363,17 @@ class XORSplitAutomation(Transformation):
             )
 
         # 1. Add 24/7 bot calendar if absent.
-        calendars = data.setdefault(KEY_RESOURCE_CALENDARS, [])
-        if not any(c.get("id") == BOT_CALENDAR_ID for c in calendars):
-            calendars.append({
-                "id":   BOT_CALENDAR_ID,
-                "name": BOT_CALENDAR_NAME,
-                "time_periods": [{
-                    "from": BOT_CALENDAR_FROM, "to": BOT_CALENDAR_TO,
-                    "beginTime": BOT_CALENDAR_BEGIN, "endTime": BOT_CALENDAR_END,
-                }],
-            })
+        ensure_calendar(data, {
+            "id":   BOT_CALENDAR_ID,
+            "name": BOT_CALENDAR_NAME,
+            "time_periods": [{
+                "from": BOT_CALENDAR_FROM, "to": BOT_CALENDAR_TO,
+                "beginTime": BOT_CALENDAR_BEGIN, "endTime": BOT_CALENDAR_END,
+            }],
+        })
 
         # 2. Add bot resource profile if absent; always append this task's resource.
-        profiles = data.setdefault(KEY_RESOURCE_PROFILES, [])
-        bot_profile = next((p for p in profiles if p.get("id") == BOT_PROFILE_ID), None)
-        if bot_profile is None:
-            bot_profile = {"id": BOT_PROFILE_ID, "name": BOT_PROFILE_NAME,
-                           "resource_list": []}
-            profiles.append(bot_profile)
-        bot_profile.setdefault("resource_list", []).append({
+        upsert_resource_in_profile(data, BOT_PROFILE_ID, BOT_PROFILE_NAME, {
             "id":            ids.bot_resource_id,
             "name":          ids.bot_resource_name,
             "cost_per_hour": BOT_COST_PER_HOUR,
@@ -408,7 +383,7 @@ class XORSplitAutomation(Transformation):
         })
 
         # 3. Add bot task distribution entry (duration set per-scenario in apply_params).
-        data[KEY_TASK_RESOURCE_DISTRIBUTION].append({
+        append_task_distribution(data, {
             "task_id":   ids.bot_id,
             "resources": [{
                 "resource_id":         ids.bot_resource_id,
@@ -433,29 +408,24 @@ class XORSplitAutomation(Transformation):
             (e for e in data[KEY_TASK_RESOURCE_DISTRIBUTION] if e["task_id"] == ids.bot_id), None
         )
         if manual_entry:
-            _set_uniform(manual_entry, scenario.manual_execution_time)
+            set_uniform(manual_entry, scenario.manual_execution_time)
         if bot_entry:
-            _set_uniform(bot_entry, scenario.bot_execution_time)
+            set_fixed(bot_entry, scenario.bot_execution_time)
 
-        gbp = data.setdefault(KEY_GATEWAY_BRANCHING_PROBS, [])
-        gbp.append({"gateway_id": ids.automation_gate, "probabilities": [
-            {"path_id": ids.automation_branch, "value": round(scenario.automation_rate, 6)},
-            {"path_id": ids.manual_branch,     "value": round(scenario.manual_branch_rate, 6)},
-        ]})
-        gbp.append({"gateway_id": ids.bot_result_gate, "probabilities": [
-            {"path_id": ids.bot_success, "value": round(scenario.bot_success_rate, 6)},
-            {"path_id": ids.bot_failure, "value": round(scenario.bot_failure_rate, 6)},
-        ]})
-        gbp.append({"gateway_id": ids.fallback_merge, "probabilities": [
-            {"path_id": ids.to_human, "value": 1.0},
-        ]})
-        gbp.append({"gateway_id": ids.final_join_gate, "probabilities": [
-            {"path_id": ids.exit_flow, "value": 1.0},
-        ]})
+        add_gateway_probs(data, ids.automation_gate, {
+            ids.automation_branch: round(scenario.automation_rate, 6),
+            ids.manual_branch:     round(scenario.manual_branch_rate, 6),
+        })
+        add_gateway_probs(data, ids.bot_result_gate, {
+            ids.bot_success: round(scenario.bot_success_rate, 6),
+            ids.bot_failure: round(scenario.bot_failure_rate, 6),
+        })
+        add_gateway_probs(data, ids.fallback_merge,  {ids.to_human:  1.0})
+        add_gateway_probs(data, ids.final_join_gate, {ids.exit_flow: 1.0})
 
-        _set_resource_amount(data, ids.bot_resource_id, scenario.num_bots)
+        set_resource_amount(data, ids.bot_resource_id, scenario.num_bots)
         if manual_entry and manual_entry.get("resources") and scenario.selected_resource_id is not None:
-            _set_resource_amount(data, scenario.selected_resource_id, scenario.num_manual_resources)
+            set_resource_amount(data, scenario.selected_resource_id, scenario.num_manual_resources)
 
         json_out.parent.mkdir(parents=True, exist_ok=True)
         json_out.write_text(json.dumps(data, indent=2))
