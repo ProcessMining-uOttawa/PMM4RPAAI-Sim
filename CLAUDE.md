@@ -319,6 +319,60 @@ Feature work:
 - **Real BPMN preview**: replace the activity dropdown with a clickable
   BPMN canvas (Mockup C had this idea). `bpmn-js` via a Streamlit custom
   component would do it.
+- **Workload as a Taguchi factor** (`core/transformations.py`): add an 8th
+  factor to `XORSplitAutomation.parameters()` representing demand conditions.
+  The Prosimos parameter is `arrival_time_distribution` in the params JSON
+  (key confirmed from a real scenario output). Two design approaches were
+  considered and one was rejected:
+  - **Rejected — vary mean inter-arrival time**: making the mean the factor
+    (e.g. 50%, 100%, 200% of Simod's discovered value) makes `num_cases` and
+    mean IAT redundant degrees of freedom — both independently control how many
+    cases are processed per unit time. The two factors should be orthogonal
+    in a Taguchi design, but with a fixed `num_cases`, changing mean IAT also
+    changes resource utilization, which conflates "demand volume" with
+    "demand pattern." Note: varying simulation wall-clock duration (which
+    follows from changing mean IAT) does NOT itself make metrics incomparable —
+    all four metrics are per-case or sums over N cases, not per wall-clock
+    hour, and calendar effects (working hours) are IAT-independent because the
+    fraction of arrivals hitting off-hours is determined by the calendar shape,
+    not the arrival rate.
+  - **Preferred — vary arrival variance (coefficient of variation)**: keep
+    the Simod-discovered mean fixed; vary the spread across three ordered
+    levels using coefficient of variation (CV = std / mean) as the common
+    scale. Suggested levels: CV=0 (`fix`, deterministic), CV≈0.5 (`norm` or
+    `uniform`), CV=1.0 (`expon`, Poisson). Fixing the mean keeps `num_cases`
+    independent and tests the research question "does automation ROI hold under
+    bursty demand?" without conflating variance with volume. The `kind` for
+    this parameter would be `"categorical"` since levels select distribution
+    shapes, not a numeric value. `apply_params()` would write both
+    `distribution_name` and `distribution_params` into
+    `arrival_time_distribution`.
+  - **Potential implementation (either approach)**: separate the Taguchi factor
+    from the distribution type. The factor levels contain only the numeric value
+    that varies (mean IAT for a utilization approach, or CV for the variance
+    approach). The distribution type is a `frozen=True` Parameter — visible in
+    the UI so the user can change it, held constant across all scenarios, and
+    excluded from the OA. Secondary distribution parameters are derived in
+    `apply_params()` from the factor value and the frozen distribution type:
+
+    | Distribution | Params derived from mean M, CV c | Constraints |
+    |---|---|---|
+    | `fix` | `value = M` | CV always 0; no CV input needed |
+    | `expon` | `mean = M` | CV always 1.0; no CV input needed |
+    | `norm` | `mean = M`, `std = M × c` | Negative samples occur at c ≳ 0.5 |
+    | `uniform` | `min = M(1 − √3c)`, `max = M(1 + √3c)` | Requires c ≤ 1/√3 ≈ 0.577 |
+
+    `expon` and `fix` are self-contained (Coefficient of Variation is implicit
+    in the distribution). `norm` and `uniform` need a secondary CV input shown
+    conditionally in the UI — this is a fixed experiment-wide config stored in
+    session state, not a Taguchi factor.
+
+  **Pending client confirmation** on two points: (1) whether the CV-based
+  interpretation of "workload" matches their intent (alternative: they want
+  volume, in which case `num_cases` and workload should be one degree of
+  freedom — derive `num_cases = floor(fixed_window / mean_IAT)` and drop
+  `num_cases` as a free factor); (2) the concrete CV levels and whether
+  the Simod-discovered mean should be used as-is or adjusted.
 
 ## 9. Don't
 
