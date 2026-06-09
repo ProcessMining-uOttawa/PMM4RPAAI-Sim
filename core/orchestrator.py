@@ -95,7 +95,7 @@ def run_experiment(
             automation_scenario = AutomationScenario.from_taguchi_values(
                 s.values, selected_resource_id=selected_resource_id)
             s_json = transformation.apply_params(
-                bpmn_tr.base_json, bpmn_tr.ids,
+                bpmn_tr.scenario_template, bpmn_tr.ids,
                 automation_scenario,
                 store.scenario_dir(exp_dir, s.id) / "params.json",
             )
