@@ -9,18 +9,20 @@ KEY_RESOURCE_CALENDARS      = "resource_calendars"
 KEY_GATEWAY_BRANCHING_PROBS = "gateway_branching_probabilities"
 
 
+def _write_distribution(entry: dict, name: str, params: list) -> None:
+    for r in entry["resources"]:
+        r["distribution_name"]   = name
+        r["distribution_params"] = params
+
+
 def set_uniform(entry: dict, mean_s: float, jitter: float = 0.05) -> None:
     lo = max(0.0, mean_s * (1 - jitter))
     hi = mean_s * (1 + jitter)
-    for r in entry["resources"]:
-        r["distribution_name"]   = "uniform"
-        r["distribution_params"] = [{"value": lo}, {"value": hi}]
+    _write_distribution(entry, "uniform", [{"value": lo}, {"value": hi}])
 
 
 def set_fixed(entry: dict, mean_s: float) -> None:
-    for r in entry["resources"]:
-        r["distribution_name"]   = "fix"
-        r["distribution_params"] = [{"value": mean_s}]
+    _write_distribution(entry, "fix", [{"value": mean_s}])
 
 
 def set_resource_amount(data: dict, resource_id: str, amount: int) -> None:
