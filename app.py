@@ -5,6 +5,7 @@ import io
 import json
 import xml.etree.ElementTree as ET
 import zipfile
+from typing import NamedTuple
 import streamlit as st
 
 from pathlib import Path
@@ -14,6 +15,7 @@ from core import analysis, demo, orchestrator, preflight
 from core.simulation import runner, store
 from core.constants import (
     COL_CYCLE_H, COL_COST, COL_CYCLE_H_MEAN, COL_COST_MEAN,
+    COL_REWORK_RATE_MEAN,
 )
 from core.bpmn.utils import (
     find_task_by_name,
@@ -66,9 +68,19 @@ def _group_zip(bpmn_path: Path, json_paths: dict, stats_csv: str) -> bytes:
     return buf.getvalue()
 
 
-_GOAL_OPTIONS = {
-    "Cycle time (hours)": (COL_CYCLE_H_MEAN, 40.0),
-    "Cost ($/case)": (COL_COST_MEAN, 25.0),
+class GoalOption(NamedTuple):
+    col: str
+    default: float
+    scale: float = 1.0       # converts user input to the column's stored unit
+    step: float = 1.0        # st.number_input increment
+    allow_zero: bool = False  # whether goal_max = 0 is a valid target
+
+
+_GOAL_OPTIONS: dict[str, GoalOption] = {
+    "Cycle time (hours)": GoalOption(COL_CYCLE_H_MEAN,    default=40.0),
+    "Cost ($/case)":      GoalOption(COL_COST_MEAN,       default=25.0),
+    "Rework rate (%)":    GoalOption(COL_REWORK_RATE_MEAN, default=10.0,
+                                     scale=0.01, step=0.1, allow_zero=True),
 }
 
 # --- session state defaults --------------------------------------------------
@@ -218,9 +230,9 @@ with st.sidebar:
     st.divider()
     st.subheader("Goals")
     goal_label = st.selectbox("Optimise for", _GOAL_OPTIONS)
-    goal_metric, goal_default = _GOAL_OPTIONS[goal_label]
+    opt = _GOAL_OPTIONS[goal_label]
     goal_max = st.number_input(
-        "Target ≤", value=goal_default, step=1.0, key=f"goal_max_{goal_metric}"
+        "Target ≤", value=opt.default, step=opt.step, key=f"goal_max_{opt.col}"
     )
 
     st.divider()
@@ -417,10 +429,10 @@ if ss.results is not None:
                 "Cost goals are marked unmet.",
                 icon="⚠️",
             )
-        if goal_max <= 0:
+        if goal_max < 0 or (not opt.allow_zero and goal_max == 0):
             st.error("Target must be a positive number.")
             st.stop()
-        ranked = analysis.rank(agg, goal_metric, goal_max)
+        ranked = analysis.rank(agg, opt.col, goal_max * opt.scale)
         ranked.insert(0, "rank", range(1, len(ranked) + 1))
         st.dataframe(
             ranked.assign(
@@ -429,6 +441,11 @@ if ss.results is not None:
             use_container_width=True,
             hide_index=True,
         )
+        if opt.allow_zero and goal_max == 0:
+            st.caption(
+                "Score shows raw rework rate (lower is better). "
+                "Ratio-to-target is undefined when the target is zero."
+            )
 
         st.markdown("###### Main effects (smaller is better)")
         tab_cycle, tab_cost = st.tabs(["Cycle time", "Cost"])

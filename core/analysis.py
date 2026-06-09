@@ -121,10 +121,17 @@ def main_effects(results: pd.DataFrame, metric: str,
 
 
 def rank(agg: pd.DataFrame, goal_metric: str, goal_max: float) -> pd.DataFrame:
-    """Adds 'goal_met' and 'score' (lower = better) ranked by a single goal metric."""
-    if goal_max <= 0:
-        raise ValueError(f"goal_max must be positive, got {goal_max}")
+    """Adds 'goal_met' and 'score' (lower = better) ranked by a single goal metric.
+
+    When goal_max > 0, score = metric / goal_max (ratio to target).
+    When goal_max = 0, score = metric directly (raw value; ratio is undefined).
+    """
+    if goal_max < 0:
+        raise ValueError(f"goal_max must be non-negative, got {goal_max}")
     out = agg.copy()
     out["goal_met"] = out[goal_metric].le(goal_max).fillna(False)
-    out["score"] = (out[goal_metric] / goal_max).fillna(0)
+    if goal_max == 0:
+        out["score"] = out[goal_metric].fillna(float("inf"))
+    else:
+        out["score"] = (out[goal_metric] / goal_max).fillna(0)
     return out.sort_values(["goal_met", "score"], ascending=[False, True])

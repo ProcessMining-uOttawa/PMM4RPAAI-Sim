@@ -275,7 +275,7 @@ Design decisions:
 
 Feature work:
 
-- **Rework KPI — display in UI** (`app.py`): `COL_REWORK_COUNT_MEAN` and `COL_REWORK_RATE_MEAN` are now present in the aggregated results DataFrame and `compare_to_baseline()` output, but not yet surfaced in any UI panel. Add an informational rework row to Panel 5 (baseline comparison table) and optionally a rework column to Panel 4 (ranking table).
+- **Rework KPI — display in UI**: rework columns (`Rework Count`, `Δ Rework Count`, `Δ Rework (%)`, `Rework Rate (%)`, `Δ Rate (pp)`) surface automatically in Panel 5 (baseline comparison) and Panel 4 (ranked scenarios) via `st.dataframe()` — no `app.py` changes were needed. The only remaining UI consideration is whether to add explicit column formatting or hide rework columns from Panel 4's default view if they clutter the ranking table.
 - **Cost metric from first principles**: cost is currently read from Prosimos's stats CSV (`Individual Task Statistics` / `Total Cost`). A more reliable alternative is to compute it ourselves: per-replication, sum `resource_seconds × cost_per_hour` from the params JSON and the event log. This would also enable bot cost once `BOT_COST_PER_HOUR` is non-zero. Hook into `simulation.prosimos_csv.per_log_metrics()`.
 - **Plots in Panel 4**: a Plotly main-effects plot (factor × level) above
   the ranking table. The data is already in `analysis.main_effects()`.

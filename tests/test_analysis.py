@@ -197,7 +197,27 @@ class TestRank:
         ranked = rank(agg, COL_CYCLE_H_MEAN, 40.0)
         assert ranked.iloc[0]["score"] == pytest.approx(0.5)
 
-    def test_zero_goal_max_raises(self):
+    def test_negative_goal_max_raises(self):
         agg = pd.DataFrame([{"scenario_id": "S01", COL_CYCLE_H_MEAN: 20.0}])
         with pytest.raises(ValueError):
-            rank(agg, COL_CYCLE_H_MEAN, 0.0)
+            rank(agg, COL_CYCLE_H_MEAN, -1.0)
+
+    def test_zero_goal_max_score_is_raw_metric(self):
+        # goal_max=0: score = raw metric value, lower is better
+        agg = pd.DataFrame([
+            {"scenario_id": "S01", COL_CYCLE_H_MEAN: 0.0},
+            {"scenario_id": "S02", COL_CYCLE_H_MEAN: 0.1},
+        ])
+        ranked = rank(agg, COL_CYCLE_H_MEAN, 0.0)
+        assert ranked.iloc[0]["scenario_id"] == "S01"
+        assert ranked.iloc[0]["score"] == pytest.approx(0.0)
+        assert ranked.iloc[1]["score"] == pytest.approx(0.1)
+
+    def test_zero_goal_max_goal_met_only_when_metric_is_zero(self):
+        agg = pd.DataFrame([
+            {"scenario_id": "S01", COL_CYCLE_H_MEAN: 0.0},
+            {"scenario_id": "S02", COL_CYCLE_H_MEAN: 0.05},
+        ])
+        ranked = rank(agg, COL_CYCLE_H_MEAN, 0.0).set_index("scenario_id")
+        assert ranked.loc["S01", "goal_met"]
+        assert not ranked.loc["S02", "goal_met"]
