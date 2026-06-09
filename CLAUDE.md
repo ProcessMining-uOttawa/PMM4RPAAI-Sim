@@ -67,19 +67,20 @@ Taguchi designer**. Three contracts make that work:
 |---|---|
 | [app.py](app.py) | Streamlit dashboard (Mockup B): sidebar = experiment state + run config; 5 panels = Activity & pattern · Factor levels · Execution · Ranked scenarios · Baseline comparison. Panel 4 includes an export row: stats CSV, scenario JSON zip, BPMN, and group ZIP (all three combined). |
 | [.github/workflows/ci.yml](.github/workflows/ci.yml) | GitHub Actions CI: three parallel jobs — **lint** (ruff), **type-check** (`mypy core/ --ignore-missing-imports`), **test** (pytest). Triggered on push and PR to main. Only `pandas` and the respective tool are installed per job — heavy packages (streamlit, simod, prosimos) are not needed for the test suite. |
-| [core/constants.py](core/constants.py) | Cross-cutting constants only: eight `COL_*` analysis column names and `KEY_RESOURCE_PROFILES` / `KEY_TASK_RESOURCE_DISTRIBUTION` (used in both `bpmn/utils.py` and `transformations.py`). Everything else lives in its home module. |
-| [core/orchestrator.py](core/orchestrator.py) | Run loop: iterates scenarios × replications, calls `simulation.runner.simulate`, collects results into a tidy DataFrame. Also runs the baseline (original, untransformed model) before the scenarios and returns mean total metrics for Panel 5. |
+| [core/constants.py](core/constants.py) | Cross-cutting constants only: twelve `COL_*` analysis column names (`cycle_h`, `cost`, their means, `total_cycle_s`, `total_cost`, their means, `rework_count`, `rework_rate`, their means) and `KEY_RESOURCE_PROFILES` / `KEY_TASK_RESOURCE_DISTRIBUTION` (used in both `bpmn/utils.py` and `transformations.py`). Everything else lives in its home module. |
+| [core/orchestrator.py](core/orchestrator.py) | Run loop: iterates scenarios × replications, calls `simulation.runner.simulate`, collects results into a tidy DataFrame. Also runs the baseline (original, untransformed model) before the scenarios and returns mean total metrics + rework means for Panel 5. |
 | [core/preflight.py](core/preflight.py) | Detects Python 3.9, Corretto 8 (auto-finds `C:\Program Files\Amazon Corretto\jdk1.8*`), and both venvs. Surfaces per-row fixes in the UI. |
-| [core/transformations.py](core/transformations.py) | `Transformation` ABC + `XORSplitAutomation` impl + `REGISTRY` of available patterns. Owns all XORSplitAutomation-specific constants inline (BOT_*, GW*_NAME, F_*, Taguchi level lists). |
+| [core/transformations.py](core/transformations.py) | `Transformation` ABC + `XORSplitAutomation` impl + `REGISTRY` of available patterns. Owns all XORSplitAutomation-specific constants inline (BOT_*, GW*_NAME, F_*, Taguchi level lists). `TransformIds` has computed properties `bot_resource_id`, `bot_resource_name`, and `bot_task_name` (`"Auto " + task_name`). |
 | [core/bpmn/\_\_init\_\_.py](core/bpmn/__init__.py) | BPMN XML namespace constants (`BPMN_NS`, `BPMNDI_NS`, `DC_NS`, `DI_NS`, `BPMN_TASK_TAGS`). |
 | [core/bpmn/edit.py](core/bpmn/edit.py) | Low-level BPMN XML editing: DI shape/edge creation, process element insertion, sequence-flow rewiring. All `xml.etree.ElementTree` surgery lives here. |
 | [core/bpmn/utils.py](core/bpmn/utils.py) | Read-only BPMN/Prosimos helpers: task-by-name lookup, `list_activities()`, `task_mean_duration_s()` for prepopulating Non-Auto-Time, resource helpers (`task_resources`, `shared_resource_ids`, `resource_pool_size`). |
 | [core/simulation/runner.py](core/simulation/runner.py) | Subprocess wrappers: `discover()` (Simod one-shot, XES auto-converted to CSV first via stdlib `xml.etree.ElementTree`) and `simulate()` (Prosimos `start-simulation`). Stdout/stderr captured to log files via `_run_logged()`. |
 | [core/simulation/store.py](core/simulation/store.py) | Experiment directory layout. Each run gets a timestamped folder under `runs/<exp-id>/`; subprocess logs co-located with CSV outputs. |
-| [core/simulation/prosimos_csv.py](core/simulation/prosimos_csv.py) | Prosimos output reader: parses event-log CSV and stats CSV. `replication_metrics()` does a single stats CSV parse to return all four per-replication metrics (`COL_CYCLE_H`, `COL_COST`, `COL_TOTAL_CYCLE_S`, `COL_TOTAL_COST`). PROSIMOS_* format constants are defined inline here. |
+| [core/simulation/prosimos_edit.py](core/simulation/prosimos_edit.py) | Prosimos input-JSON mutation helpers — all schema knowledge lives here. `set_uniform`, `set_fixed`, `set_resource_amount` write distribution and pool values; `ensure_calendar`, `upsert_resource_in_profile`, `append_task_distribution`, `add_gateway_probs` handle structural additions. `KEY_RESOURCE_CALENDARS` and `KEY_GATEWAY_BRANCHING_PROBS` are module-level constants here. Mirrors `bpmn/edit.py` for JSON. |
+| [core/simulation/prosimos_csv.py](core/simulation/prosimos_csv.py) | Prosimos output reader: parses event-log CSV and stats CSV. `replication_metrics()` returns six per-replication metrics: `COL_CYCLE_H`, `COL_COST`, `COL_TOTAL_CYCLE_S`, `COL_TOTAL_COST`, `COL_REWORK_COUNT`, `COL_REWORK_RATE`. `rework_metrics()` is the public file-level wrapper used by `_run_baseline()`. `_rework_metrics()` is the private DataFrame-level helper (used internally and in tests). PROSIMOS_* format constants are defined inline here. |
 | [core/experiment.py](core/experiment.py) | Hard-coded Taguchi L9, L18, and L27 arrays + `pick_array(n_factors)`. Supports up to 13 three-level factors. |
 | [core/parameters.py](core/parameters.py) | `Parameter`, `Scenario`, and `AutomationScenario` dataclasses. `AutomationScenario.from_taguchi_values()` bridges Taguchi output to simulation inputs. |
-| [core/analysis.py](core/analysis.py) | Pure analysis: `aggregate()`, `compare_to_baseline()`, `main_effects()` (Taguchi S/N), `rank()` (single-goal: goals-met flag + ratio-to-target score). No file I/O. |
+| [core/analysis.py](core/analysis.py) | Pure analysis: `aggregate()`, `compare_to_baseline()`, `main_effects()` (Taguchi S/N), `rank()` (single-goal: goals-met flag + ratio-to-target score). `compare_to_baseline()` includes rework columns (`Rework Count`, `Δ Rework Count`, `Δ Rework (%)`, `Rework Rate (%)`, `Δ Rate (pp)`). No file I/O. |
 | [core/demo.py](core/demo.py) | Synthetic simulator behind the Demo-mode toggle — lets you click through the UI with no Simod/Prosimos installed. Resource pool size affects cycle time via sqrt scaling. |
 | [samples/IssueTracker.xes](samples/IssueTracker.xes) | 100k-event synthetic log used for testing. Borrowed from the pm4py-ucm project. |
 | [mockups/](mockups/) | Three early HTML UI mockups (wizard / dashboard / tabbed). Kept as design history. |
@@ -228,7 +229,7 @@ Then in the browser: toggle **Demo mode** off, upload
 Dev commands (no external tools required):
 
 ```powershell
-pytest                                 # run test suite (111 tests, demo mode only)
+pytest                                 # run test suite (125 tests, demo mode only)
 ruff check .                           # lint
 mypy core/ --ignore-missing-imports    # type-check (--ignore-missing-imports suppresses missing stub warnings)
 ```
@@ -259,14 +260,6 @@ Known bugs / reliability gaps:
   most-automated scenarios. The log formula requires positive inputs, so a floor
   (e.g. `max(v, 1e-9)`) or a special-case for zero is needed. Deferred pending
   decision on bot cost model (see "Bot cost hardcoded to zero" above).
-- **Bot task uses uniform distribution instead of fix** (`core/transformations.py`):
-  `apply_params()` calls `_set_uniform()` for both the manual and bot task entries,
-  giving the bot a ±5% jitter around `t_auto`. A bot (deterministic automation script)
-  should use `"fix"` with a single value. Note: `BOT_DISTRIBUTION_NAME = "fix"` in
-  `transformations.py` was the original intent but is dead — `build_base_json` sets it as a
-  placeholder and `apply_params` immediately overwrites it. Fix: add a separate
-  `_set_fixed(entry, mean_s)` helper and use it for the bot entry in `apply_params()`.
-
 Test gaps:
 
 - **`apply_pattern()` multi-flow `NotImplementedError` untested** (`tests/test_transformations.py`): `XORSplitAutomation.apply_pattern()` raises `NotImplementedError` when the target task has more than one incoming or outgoing `sequenceFlow`. The conftest fixture uses a simple single-flow task, so this path is never exercised. A test would need a synthetic BPMN with a gateway feeding directly into the target task.
@@ -277,27 +270,12 @@ Design decisions:
 - **Results panel recomputation**: `analysis.aggregate()` and `analysis.main_effects()` are called unconditionally on every Streamlit rerun while results exist (no caching). At current scale (L27 × ~5 reps = ~135 rows) the groupby is negligible. If replications are scaled up (client cited 30 reps → ~810 rows) and the results panel becomes sluggish, cache `agg` in session state keyed by `id(ss.results)`, or apply `@st.cache_data` to the analysis functions.
 - **Constants placement strategy**: `constants.py` holds only the eight `COL_*` analysis columns and the two `KEY_*` Prosimos JSON keys (`KEY_RESOURCE_PROFILES`, `KEY_TASK_RESOURCE_DISTRIBUTION`) that are consumed by both `bpmn/utils.py` and `simulation/prosimos_edit.py`. Everything else lives in its home module — BPMN namespace constants in `bpmn/__init__.py`, Prosimos CSV format strings in `simulation/prosimos_csv.py`, Prosimos input-JSON key names used only within `prosimos_edit.py` (`KEY_RESOURCE_CALENDARS`, `KEY_GATEWAY_BRANCHING_PROBS`) as module-level constants there, and XORSplitAutomation-specific values (BOT_*, GW*_NAME, F_*, Taguchi defaults) inline in `transformations.py`. The rule: a constant belongs in `constants.py` only if removing it would require two or more otherwise-unrelated modules to import from each other.
 - **`core/` subpackage structure**: `core/` is split into `bpmn/` (BPMN reading and editing) and `simulation/` (Prosimos/Simod subprocess wrappers, store, output parsing). The flat modules (`bpmn_edit.py`, `bpmn_utils.py`, `runner.py`, `store.py`, `prosimos_csv.py`) were merged into these subpackages. `list_activities` moved from `simulation/runner.py` to `bpmn/utils.py` since it reads BPMN XML, not a subprocess concern. `analysis.py`, `transformations.py`, `orchestrator.py`, and the dataclass modules remain at the top level of `core/` because they don't belong cleanly to either subpackage.
-- **`prosimos_edit.py` extraction from `transformations.py`**: `core/simulation/prosimos_edit.py` owns all Prosimos input-JSON schema knowledge, mirroring `bpmn/edit.py` for BPMN XML. A second Transformation pattern will never be added, so the original "wait for a second pattern" argument is moot; the extraction is justified by the existing architectural boundary. Precise split: `prosimos_edit.py` receives `_set_uniform`, `_set_resource_amount`, and named helpers for the calendar/resource-profile/task-distribution/gateway-probability dict shapes currently inline in `build_base_json` and `apply_params`. `transformations.py` keeps the `Transformation` ABC (typed by `orchestrator.py`), `XORSplitAutomation`, all `BOT_*`/`GW*_NAME`/`F_*` constants, and `build_base_json`/`apply_params` as thin orchestrators that delegate JSON surgery to `prosimos_edit`. `_xor_bypass_layout` stays in `transformations.py` — it is BPMN geometry coupled to `TransformIds`, not Prosimos JSON.
+- **`prosimos_edit.py` extraction from `transformations.py`**: `core/simulation/prosimos_edit.py` owns all Prosimos input-JSON schema knowledge, mirroring `bpmn/edit.py` for BPMN XML. A second Transformation pattern will never be added, so the original "wait for a second pattern" argument is moot; the extraction is justified by the existing architectural boundary. Precise split: `prosimos_edit.py` receives `set_uniform`, `set_fixed`, `set_resource_amount`, and named helpers for the calendar/resource-profile/task-distribution/gateway-probability dict shapes currently inline in `build_scenario_template` and `apply_params`. `transformations.py` keeps the `Transformation` ABC (typed by `orchestrator.py`), `XORSplitAutomation`, all `BOT_*`/`GW*_NAME`/`F_*` constants, and `build_scenario_template`/`apply_params` as thin orchestrators that delegate JSON surgery to `prosimos_edit`. `_xor_bypass_layout` stays in `transformations.py` — it is BPMN geometry coupled to `TransformIds`, not Prosimos JSON. Note: helpers in `prosimos_edit.py` have no `_` prefix because they are legitimately public within the package; `_write_distribution` retains `_` as the only truly private helper.
+- **Rework KPI semantics** (`core/simulation/prosimos_csv.py`): two sources are counted process-wide per replication. (1) **Standard rework**: for every (case, activity) pair where the activity appears more than once, count `occurrences − 1`. A case visiting "Fix Bug" three times contributes 2. (2) **Bot-failure rework**: for every case where both `"Auto X"` and `"X"` appear (bot ran and failed, human redid the work), add 1. Neither activity repeats in this path so standard rework would not catch it. The two sources are additive without double-counting because they track different activity-name relationships. `COL_REWORK_RATE` is the fraction of cases with any rework (either source). pm4py was rejected: it provides only a binary per-case per-activity flag and no process-wide rate. `_rework_metrics(df, bot_task_name, original_task_name)` is the private DataFrame-level helper (testable directly); `rework_metrics(log_csv, ...)` is the thin public wrapper used by `_run_baseline()`. A missing `"activity"` column (e.g. synthetic test CSVs) returns `{rework_count: 0, rework_rate: 0}` rather than crashing.
 
 Feature work:
 
-- **Rework KPI** (`core/simulation/prosimos_csv.py`, `core/constants.py`): add process-wide
-  rework as an informational metric (not wired into ranking). Compute two values per
-  replication from the event log CSV: `COL_REWORK_COUNT` (total extra occurrences —
-  sum of `occurrences − 1` across all case/activity pairs where an activity repeats)
-  and `COL_REWORK_RATE` (fraction of cases with at least one rework event). Source is
-  always the log CSV, not the stats CSV — rework requires per-case activity counts.
-  Use pandas directly; pm4py was considered and rejected: it requires renaming
-  `case_id → case:concept:name` and `activity → concept:name`, returns only a
-  per-activity "cases-with-rework" count (not total extra occurrences), and provides
-  no process-wide rate — pandas covers all three needs in one pass with no friction.
-  Hook the two new columns into `replication_metrics()` alongside the existing four.
-  **Pending client confirmation before implementing**: pm4py's rework definition counts
-  the number of *cases* where an activity appears more than once (binary per case per
-  activity). Our `COL_REWORK_COUNT` definition counts total extra occurrences
-  (a case that visits "Fix Bug" three times contributes 2, not 1). These diverge
-  whenever any case repeats an activity more than twice. Confirm which semantics the
-  client expects — the implementation differs depending on the answer.
+- **Rework KPI — display in UI** (`app.py`): `COL_REWORK_COUNT_MEAN` and `COL_REWORK_RATE_MEAN` are now present in the aggregated results DataFrame and `compare_to_baseline()` output, but not yet surfaced in any UI panel. Add an informational rework row to Panel 5 (baseline comparison table) and optionally a rework column to Panel 4 (ranking table).
 - **Cost metric from first principles**: cost is currently read from Prosimos's stats CSV (`Individual Task Statistics` / `Total Cost`). A more reliable alternative is to compute it ourselves: per-replication, sum `resource_seconds × cost_per_hour` from the params JSON and the event log. This would also enable bot cost once `BOT_COST_PER_HOUR` is non-zero. Hook into `simulation.prosimos_csv.per_log_metrics()`.
 - **Plots in Panel 4**: a Plotly main-effects plot (factor × level) above
   the ranking table. The data is already in `analysis.main_effects()`.
@@ -397,4 +375,13 @@ Actions CI, baseline comparison (Panel 5), Prosimos output parsing split into
 `simulation/prosimos_csv.py`, and restructure of `core/` into `bpmn/` and
 `simulation/` subpackages. Further sessions added `num_cases` as a Taguchi
 factor (L27 OA, 27 scenarios), replaced pm4py with stdlib XML for XES parsing,
-and hardened the XES parser against empty logs and missing timestamps (111 tests).*
+and hardened the XES parser against empty logs and missing timestamps (111 tests).
+A refactor session extracted Prosimos JSON mutation helpers into `core/simulation/prosimos_edit.py`
+(mirrors `bpmn/edit.py`), renamed `build_base_json` → `build_scenario_template` to avoid
+ambiguity with the real baseline concept, fixed the bot task distribution bug (`set_fixed`
+instead of `set_uniform` — bots are deterministic), and introduced `_write_distribution`
+to eliminate the DRY violation. A follow-up session implemented the rework KPI: two new
+metrics (`COL_REWORK_COUNT`, `COL_REWORK_RATE`) counting standard repeated-activity rework
+and bot-failure rework (bot ran + human redid the work in the same case), wired through
+`replication_metrics()`, `_run_baseline()`, `aggregate()`, and `compare_to_baseline()`
+(125 tests).*

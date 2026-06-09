@@ -152,6 +152,10 @@ class TransformIds:
     def bot_resource_name(self) -> str:
         return f"{self.task_name} bot"
 
+    @property
+    def bot_task_name(self) -> str:
+        return f"Auto {self.task_name}"
+
 
 @dataclass
 class BpmnTransformResult:
