@@ -7,6 +7,7 @@ import pandas as pd
 
 from ..constants import (
     COL_CYCLE_H, COL_COST, COL_TOTAL_CYCLE_S, COL_TOTAL_COST,
+    COL_REWORK_COUNT, COL_REWORK_RATE,
 )
 
 # ── Prosimos stats CSV: section header names ───────────────────────────────────
@@ -78,6 +79,42 @@ def _totals_from_rows(rows: list, source: Path) -> dict:
     return {COL_TOTAL_CYCLE_S: total_cycle_s, COL_TOTAL_COST: total_cost}
 
 
+def _rework_metrics(df: pd.DataFrame,
+                    bot_task_name: str | None = None,
+                    original_task_name: str | None = None) -> dict:
+    """Process-wide rework from an event log DataFrame.
+
+    Counts two sources:
+    - Standard rework: (occurrences - 1) for any activity appearing more than
+      once in the same case.
+    - Bot-failure rework: +1 per case where both bot_task_name and
+      original_task_name appear (bot ran and failed, human had to redo the work).
+    """
+    if "activity" not in df.columns:
+        return {COL_REWORK_COUNT: 0.0, COL_REWORK_RATE: 0.0}
+    activity_counts = df.groupby(["case_id", "activity"]).size()
+    excess = activity_counts[activity_counts > 1] - 1
+    per_case: pd.Series = excess.groupby(level="case_id").sum()
+
+    if bot_task_name and original_task_name:
+        idx = activity_counts.index
+        cases_with_bot  = set(idx.get_level_values("case_id")[idx.get_level_values("activity") == bot_task_name])
+        cases_with_orig = set(idx.get_level_values("case_id")[idx.get_level_values("activity") == original_task_name])
+        bot_failure_cases = cases_with_bot & cases_with_orig
+        if bot_failure_cases:
+            per_case = per_case.add(
+                pd.Series(1.0, index=list(bot_failure_cases), dtype=float),
+                fill_value=0.0,
+            )
+
+    all_cases = df["case_id"].unique()
+    per_case = per_case.reindex(all_cases, fill_value=0.0)
+    return {
+        COL_REWORK_COUNT: float(per_case.sum()),
+        COL_REWORK_RATE:  float((per_case > 0).mean()),
+    }
+
+
 def per_log_metrics(log_csv: Path, stats_csv: Path | None = None) -> dict:
     """Summary metrics for one Prosimos replication.
 
@@ -104,10 +141,13 @@ def total_metrics(stats_csv: Path) -> dict:
     return _totals_from_rows(rows, stats_csv)
 
 
-def replication_metrics(log_csv: Path, stats_csv: Path) -> dict:
-    """All per-replication metrics in a single stats CSV parse.
+def replication_metrics(log_csv: Path, stats_csv: Path,
+                        bot_task_name: str | None = None,
+                        original_task_name: str | None = None) -> dict:
+    """All per-replication metrics in a single pass.
 
-    Returns COL_CYCLE_H, COL_COST, COL_TOTAL_CYCLE_S, COL_TOTAL_COST.
+    Returns COL_CYCLE_H, COL_COST, COL_TOTAL_CYCLE_S, COL_TOTAL_COST,
+    COL_REWORK_COUNT, COL_REWORK_RATE.
     Raises ValueError if total metrics are missing (delegates to _totals_from_rows).
     """
     df = pd.read_csv(log_csv, parse_dates=["start_time", "end_time"])
@@ -120,4 +160,5 @@ def replication_metrics(log_csv: Path, stats_csv: Path) -> dict:
         COL_CYCLE_H: float(cycle_h.median()),
         COL_COST: _cost_from_rows(rows, len(per_case)),
         **_totals_from_rows(rows, stats_csv),
+        **_rework_metrics(df, bot_task_name, original_task_name),
     }

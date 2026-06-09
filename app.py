@@ -12,9 +12,9 @@ from core.transformations import REGISTRY
 from core.experiment import build_scenarios
 from core import analysis, demo, orchestrator, preflight
 from core.simulation import runner, store
-from core.constants import (
-    COL_CYCLE_H, COL_COST, COL_CYCLE_H_MEAN, COL_COST_MEAN,
-)
+from core.constants import COL_CYCLE_H, COL_COST, COL_REWORK_RATE
+from ui.goals import GOAL_OPTIONS
+from ui.widgets import level_input_kwargs
 from core.bpmn.utils import (
     find_task_by_name,
     list_activities,
@@ -27,25 +27,6 @@ from core.bpmn.utils import (
 st.set_page_config(
     page_title="Automation What-If Simulator", page_icon="⚙", layout="wide"
 )
-
-
-def _level_input_kwargs(kind: str, value) -> dict:
-    """Map Parameter.kind to st.number_input constraints."""
-    if kind == "percentage":
-        return {
-            "value": float(value),
-            "min_value": 0.0,
-            "max_value": 100.0,
-            "step": 1.0,
-            "format": "%.0f",
-        }
-    if kind == "duration_s":
-        return {"value": float(value), "min_value": 0.0, "step": 1.0, "format": "%.1f"}
-    if kind == "categorical":
-        return {"value": int(value), "min_value": 1, "step": 1}
-    if kind == "cost":
-        return {"value": float(value), "min_value": 0.0, "step": 0.01, "format": "%.2f"}
-    return {"value": float(value)}
 
 
 def _json_zip(json_paths: dict) -> bytes:
@@ -65,11 +46,6 @@ def _group_zip(bpmn_path: Path, json_paths: dict, stats_csv: str) -> bytes:
             z.writestr(f"scenarios/{sid}_params.json", p.read_text())
     return buf.getvalue()
 
-
-_GOAL_OPTIONS = {
-    "Cycle time (hours)": (COL_CYCLE_H_MEAN, 40.0),
-    "Cost ($/case)": (COL_COST_MEAN, 25.0),
-}
 
 # --- session state defaults --------------------------------------------------
 ss = st.session_state
@@ -217,10 +193,10 @@ with st.sidebar:
 
     st.divider()
     st.subheader("Goals")
-    goal_label = st.selectbox("Optimise for", _GOAL_OPTIONS)
-    goal_metric, goal_default = _GOAL_OPTIONS[goal_label]
+    goal_label = st.selectbox("Optimise for", GOAL_OPTIONS)
+    opt = GOAL_OPTIONS[goal_label]
     goal_max = st.number_input(
-        "Target ≤", value=goal_default, step=1.0, key=f"goal_max_{goal_metric}"
+        "Target ≤", value=opt.default, step=opt.step, key=f"goal_max_{opt.col}"
     )
 
     st.divider()
@@ -332,7 +308,7 @@ with col2:
             if p.frozen:
                 row[1].number_input(
                     f"{p.id}_frozen",
-                    **_level_input_kwargs(p.kind, p.levels[0]),
+                    **level_input_kwargs(p.kind, p.levels[0]),
                     label_visibility="collapsed",
                     key=f"{p.id}_frozen",
                     disabled=True,
@@ -344,7 +320,7 @@ with col2:
                     new.append(
                         row[i + 1].number_input(
                             f"{p.id}_{i}",
-                            **_level_input_kwargs(p.kind, p.levels[i]),
+                            **level_input_kwargs(p.kind, p.levels[i]),
                             label_visibility="collapsed",
                             key=f"{p.id}_{i}",
                         )
@@ -417,10 +393,10 @@ if ss.results is not None:
                 "Cost goals are marked unmet.",
                 icon="⚠️",
             )
-        if goal_max <= 0:
+        if goal_max < 0 or (not opt.allow_zero and goal_max == 0):
             st.error("Target must be a positive number.")
             st.stop()
-        ranked = analysis.rank(agg, goal_metric, goal_max)
+        ranked = analysis.rank(agg, opt.col, goal_max * opt.scale)
         ranked.insert(0, "rank", range(1, len(ranked) + 1))
         st.dataframe(
             ranked.assign(
@@ -429,15 +405,28 @@ if ss.results is not None:
             use_container_width=True,
             hide_index=True,
         )
+        if opt.allow_zero and goal_max == 0:
+            st.caption(
+                "Score shows raw rework rate (lower is better). "
+                "Ratio-to-target is undefined when the target is zero."
+            )
 
         st.markdown("###### Main effects (smaller is better)")
-        tab_cycle, tab_cost = st.tabs(["Cycle time", "Cost"])
+        tab_cycle, tab_cost, tab_rework = st.tabs(["Cycle time", "Cost", "Rework rate"])
         with tab_cycle:
             me = analysis.main_effects(ss.results, COL_CYCLE_H)
             st.dataframe(me, use_container_width=True, hide_index=True)
         with tab_cost:
             me = analysis.main_effects(ss.results, COL_COST)
             st.dataframe(me, use_container_width=True, hide_index=True)
+        with tab_rework:
+            me = analysis.main_effects(ss.results, COL_REWORK_RATE)
+            st.dataframe(me, use_container_width=True, hide_index=True)
+            if me["sn"].isna().any():
+                st.caption(
+                    "S/N is NaN for factor levels where all replications have zero "
+                    "rework rate — the log formula requires positive values."
+                )
 
         bpmn_path = ss.get("experiment_bpmn_path")
         bpmn_exists = bpmn_path and Path(bpmn_path).exists()

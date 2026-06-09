@@ -11,6 +11,7 @@ from .simulation import prosimos_csv, runner, store
 from .constants import (
     COL_CYCLE_H, COL_COST, COL_TOTAL_CYCLE_S, COL_TOTAL_COST,
     COL_TOTAL_CYCLE_S_MEAN, COL_TOTAL_COST_MEAN,
+    COL_REWORK_COUNT, COL_REWORK_RATE, COL_REWORK_COUNT_MEAN, COL_REWORK_RATE_MEAN,
 )
 from .parameters import Scenario
 from .transformations import AutomationScenario, Transformation
@@ -28,25 +29,26 @@ def _run_baseline(bpmn_path: Path, json_path: Path, n_reps: int,
                   cases_levels: list[int], exp_dir: Path) -> dict[int, dict]:
     """Run the original untransformed model for each unique cases level.
 
-    Returns {n_cases: {COL_TOTAL_CYCLE_S_MEAN: ..., COL_TOTAL_COST_MEAN: ...}} so
-    each scenario can be compared to a baseline at the same case count.
+    Returns {n_cases: {COL_TOTAL_CYCLE_S_MEAN, COL_TOTAL_COST_MEAN,
+    COL_REWORK_COUNT_MEAN, COL_REWORK_RATE_MEAN}} so each scenario can be
+    compared to a baseline at the same case count.
     """
     result: dict[int, dict] = {}
     for n_cases in cases_levels:
-        totals_cycle: list[float] = []
-        totals_cost: list[float] = []
+        rep_metrics: list[dict] = []
         for rep in range(n_reps):
             out_log  = store.baseline_log(exp_dir, rep, n_cases)
             out_stat = store.baseline_stats(exp_dir, rep, n_cases)
             proc_log = store.baseline_subprocess_log(exp_dir, rep, n_cases)
             runner.simulate(bpmn_path, json_path, n_cases, out_log,
                             stat_out=out_stat, proc_log=proc_log)
-            m = prosimos_csv.total_metrics(out_stat)
-            totals_cycle.append(m[COL_TOTAL_CYCLE_S])
-            totals_cost.append(m[COL_TOTAL_COST])
+            rep_metrics.append(prosimos_csv.replication_metrics(out_log, out_stat))
+        means = pd.DataFrame(rep_metrics).mean()
         result[n_cases] = {
-            COL_TOTAL_CYCLE_S_MEAN: sum(totals_cycle) / len(totals_cycle),
-            COL_TOTAL_COST_MEAN:    sum(totals_cost)  / len(totals_cost),
+            COL_TOTAL_CYCLE_S_MEAN: means[COL_TOTAL_CYCLE_S],
+            COL_TOTAL_COST_MEAN:    means[COL_TOTAL_COST],
+            COL_REWORK_COUNT_MEAN:  means[COL_REWORK_COUNT],
+            COL_REWORK_RATE_MEAN:   means[COL_REWORK_RATE],
         }
     return result
 
@@ -105,6 +107,7 @@ def run_experiment(
                 r = demo.fake_simulate(s, rep)
                 cycle_h, cost = r.cycle_h, r.cost
                 total_cycle_s, total_cost = float("nan"), float("nan")
+                rework_count, rework_rate = float("nan"), float("nan")
             else:
                 assert bpmn_tr is not None
                 assert s_json is not None
@@ -115,17 +118,24 @@ def run_experiment(
                 runner.simulate(bpmn_tr.bpmn_path, s_json,
                                 automation_scenario.num_cases, out_log,
                                 stat_out=out_stat, proc_log=proc_log)
-                m = prosimos_csv.replication_metrics(out_log, out_stat)
+                m = prosimos_csv.replication_metrics(
+                    out_log, out_stat,
+                    bot_task_name=bpmn_tr.ids.bot_task_name,
+                    original_task_name=bpmn_tr.ids.task_name,
+                )
                 cycle_h, cost = m[COL_CYCLE_H], m[COL_COST]
                 total_cycle_s, total_cost = m[COL_TOTAL_CYCLE_S], m[COL_TOTAL_COST]
+                rework_count, rework_rate = m[COL_REWORK_COUNT], m[COL_REWORK_RATE]
 
             rows.append({
-                "scenario_id":   s.id,
-                "replication":   rep,
-                COL_CYCLE_H:     cycle_h,
-                COL_COST:        cost,
+                "scenario_id":     s.id,
+                "replication":     rep,
+                COL_CYCLE_H:       cycle_h,
+                COL_COST:          cost,
                 COL_TOTAL_CYCLE_S: total_cycle_s,
                 COL_TOTAL_COST:    total_cost,
+                COL_REWORK_COUNT:  rework_count,
+                COL_REWORK_RATE:   rework_rate,
                 **s.values,
             })
             done += 1

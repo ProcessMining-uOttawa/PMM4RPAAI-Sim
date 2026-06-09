@@ -13,7 +13,10 @@ from core.simulation.prosimos_csv import (
     PROSIMOS_SECTION_TASK_STATS, PROSIMOS_COL_TOTAL_COST,
     PROSIMOS_SECTION_OVERALL, PROSIMOS_COL_ACCUMULATED, PROSIMOS_KPI_CYCLE_TIME,
 )
-from core.constants import COL_CYCLE_H, COL_COST, COL_TOTAL_CYCLE_S, COL_TOTAL_COST
+from core.constants import (
+    COL_CYCLE_H, COL_COST, COL_TOTAL_CYCLE_S, COL_TOTAL_COST,
+    COL_REWORK_COUNT, COL_REWORK_RATE,
+)
 
 
 # ── Helpers ───────────────────────────────────────────────────────────────────
@@ -171,7 +174,7 @@ class TestTotalMetrics:
 
 class TestReplicationMetrics:
 
-    def test_returns_all_four_keys(self, tmp_path):
+    def test_returns_all_keys(self, tmp_path):
         log = tmp_path / "log.csv"
         stats = tmp_path / "stats.csv"
         _write_log(log, [("c1", "2025-01-01T08:00:00", "2025-01-01T10:00:00")])
@@ -179,6 +182,7 @@ class TestReplicationMetrics:
         m = replication_metrics(log, stats)
         assert COL_CYCLE_H in m and COL_COST in m
         assert COL_TOTAL_CYCLE_S in m and COL_TOTAL_COST in m
+        assert COL_REWORK_COUNT in m and COL_REWORK_RATE in m
 
     def test_matches_separate_calls(self, tmp_path):
         log = tmp_path / "log.csv"
