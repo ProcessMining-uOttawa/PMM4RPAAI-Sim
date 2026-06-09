@@ -29,25 +29,6 @@ st.set_page_config(
 )
 
 
-def level_input_kwargs(kind: str, value) -> dict:
-    """Map Parameter.kind to st.number_input constraints."""
-    if kind == "percentage":
-        return {
-            "value": float(value),
-            "min_value": 0.0,
-            "max_value": 100.0,
-            "step": 1.0,
-            "format": "%.0f",
-        }
-    if kind == "duration_s":
-        return {"value": float(value), "min_value": 0.0, "step": 1.0, "format": "%.1f"}
-    if kind == "categorical":
-        return {"value": int(value), "min_value": 1, "step": 1}
-    if kind == "cost":
-        return {"value": float(value), "min_value": 0.0, "step": 0.01, "format": "%.2f"}
-    return {"value": float(value)}
-
-
 def _json_zip(json_paths: dict) -> bytes:
     buf = io.BytesIO()
     with zipfile.ZipFile(buf, "w", zipfile.ZIP_DEFLATED) as z:

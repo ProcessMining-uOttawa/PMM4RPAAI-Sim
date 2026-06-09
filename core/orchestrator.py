@@ -35,27 +35,20 @@ def _run_baseline(bpmn_path: Path, json_path: Path, n_reps: int,
     """
     result: dict[int, dict] = {}
     for n_cases in cases_levels:
-        totals_cycle:        list[float] = []
-        totals_cost:         list[float] = []
-        totals_rework_count: list[float] = []
-        totals_rework_rate:  list[float] = []
+        rep_metrics: list[dict] = []
         for rep in range(n_reps):
             out_log  = store.baseline_log(exp_dir, rep, n_cases)
             out_stat = store.baseline_stats(exp_dir, rep, n_cases)
             proc_log = store.baseline_subprocess_log(exp_dir, rep, n_cases)
             runner.simulate(bpmn_path, json_path, n_cases, out_log,
                             stat_out=out_stat, proc_log=proc_log)
-            m = prosimos_csv.total_metrics(out_stat)
-            totals_cycle.append(m[COL_TOTAL_CYCLE_S])
-            totals_cost.append(m[COL_TOTAL_COST])
-            rw = prosimos_csv.rework_metrics(out_log)
-            totals_rework_count.append(rw[COL_REWORK_COUNT])
-            totals_rework_rate.append(rw[COL_REWORK_RATE])
+            rep_metrics.append(prosimos_csv.replication_metrics(out_log, out_stat))
+        means = pd.DataFrame(rep_metrics).mean()
         result[n_cases] = {
-            COL_TOTAL_CYCLE_S_MEAN: sum(totals_cycle)        / len(totals_cycle),
-            COL_TOTAL_COST_MEAN:    sum(totals_cost)          / len(totals_cost),
-            COL_REWORK_COUNT_MEAN:  sum(totals_rework_count)  / len(totals_rework_count),
-            COL_REWORK_RATE_MEAN:   sum(totals_rework_rate)   / len(totals_rework_rate),
+            COL_TOTAL_CYCLE_S_MEAN: means[COL_TOTAL_CYCLE_S],
+            COL_TOTAL_COST_MEAN:    means[COL_TOTAL_COST],
+            COL_REWORK_COUNT_MEAN:  means[COL_REWORK_COUNT],
+            COL_REWORK_RATE_MEAN:   means[COL_REWORK_RATE],
         }
     return result
 

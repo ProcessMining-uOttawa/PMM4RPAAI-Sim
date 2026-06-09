@@ -94,18 +94,18 @@ def _rework_metrics(df: pd.DataFrame,
         return {COL_REWORK_COUNT: 0.0, COL_REWORK_RATE: 0.0}
     activity_counts = df.groupby(["case_id", "activity"]).size()
     excess = activity_counts[activity_counts > 1] - 1
-    per_case: pd.Series = (
-        excess.groupby(level="case_id").sum()
-        if not excess.empty
-        else pd.Series(dtype=float)
-    )
+    per_case: pd.Series = excess.groupby(level="case_id").sum()
 
     if bot_task_name and original_task_name:
-        acts_per_case = df.groupby("case_id")["activity"].apply(set)
-        bot_failure = acts_per_case.apply(
-            lambda acts: bot_task_name in acts and original_task_name in acts
-        ).astype(float)
-        per_case = per_case.add(bot_failure, fill_value=0.0)
+        idx = activity_counts.index
+        cases_with_bot  = set(idx.get_level_values("case_id")[idx.get_level_values("activity") == bot_task_name])
+        cases_with_orig = set(idx.get_level_values("case_id")[idx.get_level_values("activity") == original_task_name])
+        bot_failure_cases = cases_with_bot & cases_with_orig
+        if bot_failure_cases:
+            per_case = per_case.add(
+                pd.Series(1.0, index=list(bot_failure_cases), dtype=float),
+                fill_value=0.0,
+            )
 
     all_cases = df["case_id"].unique()
     per_case = per_case.reindex(all_cases, fill_value=0.0)
@@ -113,14 +113,6 @@ def _rework_metrics(df: pd.DataFrame,
         COL_REWORK_COUNT: float(per_case.sum()),
         COL_REWORK_RATE:  float((per_case > 0).mean()),
     }
-
-
-def rework_metrics(log_csv: Path,
-                   bot_task_name: str | None = None,
-                   original_task_name: str | None = None) -> dict:
-    """Rework metrics for one replication. Thin file-reading wrapper over _rework_metrics."""
-    df = pd.read_csv(log_csv)
-    return _rework_metrics(df, bot_task_name, original_task_name)
 
 
 def per_log_metrics(log_csv: Path, stats_csv: Path | None = None) -> dict:
