@@ -5,7 +5,6 @@ import io
 import json
 import xml.etree.ElementTree as ET
 import zipfile
-from typing import NamedTuple
 import streamlit as st
 
 from pathlib import Path
@@ -13,10 +12,9 @@ from core.transformations import REGISTRY
 from core.experiment import build_scenarios
 from core import analysis, demo, orchestrator, preflight
 from core.simulation import runner, store
-from core.constants import (
-    COL_CYCLE_H, COL_COST, COL_CYCLE_H_MEAN, COL_COST_MEAN,
-    COL_REWORK_RATE_MEAN,
-)
+from core.constants import COL_CYCLE_H, COL_COST, COL_REWORK_RATE
+from ui.goals import GOAL_OPTIONS
+from ui.widgets import level_input_kwargs
 from core.bpmn.utils import (
     find_task_by_name,
     list_activities,
@@ -31,7 +29,7 @@ st.set_page_config(
 )
 
 
-def _level_input_kwargs(kind: str, value) -> dict:
+def level_input_kwargs(kind: str, value) -> dict:
     """Map Parameter.kind to st.number_input constraints."""
     if kind == "percentage":
         return {
@@ -67,21 +65,6 @@ def _group_zip(bpmn_path: Path, json_paths: dict, stats_csv: str) -> bytes:
             z.writestr(f"scenarios/{sid}_params.json", p.read_text())
     return buf.getvalue()
 
-
-class GoalOption(NamedTuple):
-    col: str
-    default: float
-    scale: float = 1.0       # converts user input to the column's stored unit
-    step: float = 1.0        # st.number_input increment
-    allow_zero: bool = False  # whether goal_max = 0 is a valid target
-
-
-_GOAL_OPTIONS: dict[str, GoalOption] = {
-    "Cycle time (hours)": GoalOption(COL_CYCLE_H_MEAN,    default=40.0),
-    "Cost ($/case)":      GoalOption(COL_COST_MEAN,       default=25.0),
-    "Rework rate (%)":    GoalOption(COL_REWORK_RATE_MEAN, default=10.0,
-                                     scale=0.01, step=0.1, allow_zero=True),
-}
 
 # --- session state defaults --------------------------------------------------
 ss = st.session_state
@@ -229,8 +212,8 @@ with st.sidebar:
 
     st.divider()
     st.subheader("Goals")
-    goal_label = st.selectbox("Optimise for", _GOAL_OPTIONS)
-    opt = _GOAL_OPTIONS[goal_label]
+    goal_label = st.selectbox("Optimise for", GOAL_OPTIONS)
+    opt = GOAL_OPTIONS[goal_label]
     goal_max = st.number_input(
         "Target ≤", value=opt.default, step=opt.step, key=f"goal_max_{opt.col}"
     )
@@ -344,7 +327,7 @@ with col2:
             if p.frozen:
                 row[1].number_input(
                     f"{p.id}_frozen",
-                    **_level_input_kwargs(p.kind, p.levels[0]),
+                    **level_input_kwargs(p.kind, p.levels[0]),
                     label_visibility="collapsed",
                     key=f"{p.id}_frozen",
                     disabled=True,
@@ -356,7 +339,7 @@ with col2:
                     new.append(
                         row[i + 1].number_input(
                             f"{p.id}_{i}",
-                            **_level_input_kwargs(p.kind, p.levels[i]),
+                            **level_input_kwargs(p.kind, p.levels[i]),
                             label_visibility="collapsed",
                             key=f"{p.id}_{i}",
                         )
@@ -448,13 +431,21 @@ if ss.results is not None:
             )
 
         st.markdown("###### Main effects (smaller is better)")
-        tab_cycle, tab_cost = st.tabs(["Cycle time", "Cost"])
+        tab_cycle, tab_cost, tab_rework = st.tabs(["Cycle time", "Cost", "Rework rate"])
         with tab_cycle:
             me = analysis.main_effects(ss.results, COL_CYCLE_H)
             st.dataframe(me, use_container_width=True, hide_index=True)
         with tab_cost:
             me = analysis.main_effects(ss.results, COL_COST)
             st.dataframe(me, use_container_width=True, hide_index=True)
+        with tab_rework:
+            me = analysis.main_effects(ss.results, COL_REWORK_RATE)
+            st.dataframe(me, use_container_width=True, hide_index=True)
+            if me["sn"].isna().any():
+                st.caption(
+                    "S/N is NaN for factor levels where all replications have zero "
+                    "rework rate — the log formula requires positive values."
+                )
 
         bpmn_path = ss.get("experiment_bpmn_path")
         bpmn_exists = bpmn_path and Path(bpmn_path).exists()
