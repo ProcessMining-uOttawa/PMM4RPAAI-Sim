@@ -156,9 +156,9 @@ class TransformIds:
 @dataclass
 class BpmnTransformResult:
     """Returned by prepare_experiment(). Shared across all scenarios in one experiment."""
-    bpmn_path: Path
-    base_json: dict   # template — deep-copied and extended per scenario
-    ids: TransformIds
+    bpmn_path:         Path
+    scenario_template: dict   # deep-copied and extended per scenario by apply_params
+    ids:               TransformIds
 
 
 class Transformation(ABC):
@@ -177,9 +177,9 @@ class Transformation(ABC):
     def prepare_experiment(self, bpmn_in: Path, json_in: Path, target_activity: str,
                            out_dir: Path) -> BpmnTransformResult:
         """Coordinate the two-step experiment setup. Called once per experiment."""
-        bpmn_out, ids = self.apply_pattern(bpmn_in, target_activity, out_dir)
-        base_json      = self.build_base_json(json_in, ids)
-        return BpmnTransformResult(bpmn_path=bpmn_out, base_json=base_json, ids=ids)
+        bpmn_out, ids      = self.apply_pattern(bpmn_in, target_activity, out_dir)
+        scenario_template  = self.build_scenario_template(json_in, ids)
+        return BpmnTransformResult(bpmn_path=bpmn_out, scenario_template=scenario_template, ids=ids)
 
     @abstractmethod
     def apply_pattern(self, bpmn_in: Path, target_activity: str,
@@ -187,13 +187,13 @@ class Transformation(ABC):
         """Add pattern elements to the BPMN and write to out_dir."""
 
     @abstractmethod
-    def build_base_json(self, json_in: Path, ids: TransformIds) -> dict:
-        """Load the Prosimos JSON and inject pattern-specific base infrastructure."""
+    def build_scenario_template(self, json_in: Path, ids: TransformIds) -> dict:
+        """Load the Prosimos JSON and inject pattern-specific shared infrastructure."""
 
     @abstractmethod
-    def apply_params(self, base_json: dict, ids: TransformIds,
+    def apply_params(self, scenario_template: dict, ids: TransformIds,
                      scenario: Any, json_out: Path) -> Path:
-        """Parameter injection: set probabilities + durations. Called once per scenario.
+        """Deep-copy scenario_template and inject scenario-specific values. Called once per scenario.
         The concrete type of `scenario` is pattern-specific."""
 
 
@@ -351,8 +351,8 @@ class XORSplitAutomation(Transformation):
         tree.write(str(bpmn_out), xml_declaration=True, encoding="utf-8")
         return bpmn_out, ids
 
-    # --- build_base_json -----------------------------------------------------
-    def build_base_json(self, json_in: Path, ids: TransformIds) -> dict:
+    # --- build_scenario_template ---------------------------------------------
+    def build_scenario_template(self, json_in: Path, ids: TransformIds) -> dict:
         """Load the Prosimos JSON and inject bot resource infrastructure.
         Durations and gateway probabilities are scenario-specific — added in apply_params."""
         data = json.loads(Path(json_in).read_text())
@@ -395,11 +395,11 @@ class XORSplitAutomation(Transformation):
         return data
 
     # --- apply_params --------------------------------------------------------
-    def apply_params(self, base_json: dict, ids: TransformIds,
+    def apply_params(self, scenario_template: dict, ids: TransformIds,
                      scenario: AutomationScenario, json_out: Path) -> Path:
-        """Inject scenario-specific values into a deep copy of base_json.
-        Called once per scenario; never mutates base_json."""
-        data = copy.deepcopy(base_json)
+        """Inject scenario-specific values into a deep copy of scenario_template.
+        Called once per scenario; never mutates scenario_template."""
+        data = copy.deepcopy(scenario_template)
 
         manual_entry = next(
             (e for e in data[KEY_TASK_RESOURCE_DISTRIBUTION] if e["task_id"] == ids.task_id), None

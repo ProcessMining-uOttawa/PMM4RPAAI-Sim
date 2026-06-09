@@ -75,38 +75,38 @@ class TestApplyPattern:
 class TestBuildBaseJson:
 
     @pytest.fixture
-    def base_json(self, pattern, params_file, applied):
+    def scenario_template(self, pattern, params_file, applied):
         _, ids = applied
-        return pattern.build_base_json(params_file, ids)
+        return pattern.build_scenario_template(params_file, ids)
 
-    def test_bot_calendar_added(self, base_json):
-        cal_ids = {c["id"] for c in base_json[KEY_RESOURCE_CALENDARS]}
+    def test_bot_calendar_added(self, scenario_template):
+        cal_ids = {c["id"] for c in scenario_template[KEY_RESOURCE_CALENDARS]}
         assert BOT_CALENDAR_ID in cal_ids
 
-    def test_bot_profile_added(self, base_json):
-        profile_ids = {p["id"] for p in base_json[KEY_RESOURCE_PROFILES]}
+    def test_bot_profile_added(self, scenario_template):
+        profile_ids = {p["id"] for p in scenario_template[KEY_RESOURCE_PROFILES]}
         assert BOT_PROFILE_ID in profile_ids
 
-    def test_bot_resource_in_profile(self, base_json, applied):
+    def test_bot_resource_in_profile(self, scenario_template, applied):
         _, ids = applied
-        bot_profile = next(p for p in base_json[KEY_RESOURCE_PROFILES]
+        bot_profile = next(p for p in scenario_template[KEY_RESOURCE_PROFILES]
                            if p["id"] == BOT_PROFILE_ID)
         resource_ids = {r["id"] for r in bot_profile["resource_list"]}
         assert ids.bot_resource_id in resource_ids
 
-    def test_bot_task_distribution_added(self, base_json, applied):
+    def test_bot_task_distribution_added(self, scenario_template, applied):
         _, ids = applied
-        task_ids = {e["task_id"] for e in base_json[KEY_TASK_RESOURCE_DISTRIBUTION]}
+        task_ids = {e["task_id"] for e in scenario_template[KEY_TASK_RESOURCE_DISTRIBUTION]}
         assert ids.bot_id in task_ids
 
-    def test_original_task_preserved(self, base_json):
-        task_ids = {e["task_id"] for e in base_json[KEY_TASK_RESOURCE_DISTRIBUTION]}
+    def test_original_task_preserved(self, scenario_template):
+        task_ids = {e["task_id"] for e in scenario_template[KEY_TASK_RESOURCE_DISTRIBUTION]}
         assert "task_1" in task_ids
 
     def test_missing_task_in_params_raises(self, pattern, params_file):
         ids = _make_ids("nonexistent_id", "Fake Task")
         with pytest.raises(RuntimeError, match="No task_resource_distribution entry"):
-            pattern.build_base_json(params_file, ids)
+            pattern.build_scenario_template(params_file, ids)
 
 
 # ── TestApplyParams ───────────────────────────────────────────────────────────
@@ -127,12 +127,12 @@ class TestApplyParams:
 
     @pytest.fixture
     def result(self, pattern, params_file, applied, tmp_path):
-        """Returns (output_data, ids, base_json) for _SCENARIO."""
+        """Returns (output_data, ids, scenario_template) for _SCENARIO."""
         _, ids = applied
-        base_json = pattern.build_base_json(params_file, ids)
+        scenario_template = pattern.build_scenario_template(params_file, ids)
         json_out = tmp_path / "scenario" / "params.json"
-        pattern.apply_params(base_json, ids, _SCENARIO, json_out)
-        return json.loads(json_out.read_text()), ids, base_json
+        pattern.apply_params(scenario_template, ids, _SCENARIO, json_out)
+        return json.loads(json_out.read_text()), ids, scenario_template
 
     def test_output_file_written(self, result, tmp_path):
         _, _, _ = result
@@ -181,13 +181,13 @@ class TestApplyParams:
         amount = resource_pool_size(data, "res_human_1")
         assert amount == 3
 
-    def test_base_json_not_mutated(self, result):
-        _, _, base_json = result
-        assert len(base_json[KEY_GATEWAY_BRANCHING_PROBS]) == 0
+    def test_scenario_template_not_mutated(self, result):
+        _, _, scenario_template = result
+        assert len(scenario_template[KEY_GATEWAY_BRANCHING_PROBS]) == 0
 
     def test_selected_resource_none_skips_pool_resize(self, pattern, params_file, applied, tmp_path):
         _, ids = applied
-        base_json = pattern.build_base_json(params_file, ids)
+        scenario_template = pattern.build_scenario_template(params_file, ids)
         scenario = AutomationScenario(
             automation_rate=0.5, bot_failure_rate=0.1,
             bot_execution_time=60.0, manual_execution_time=1800.0,
@@ -195,7 +195,7 @@ class TestApplyParams:
             selected_resource_id=None,
         )
         json_out = tmp_path / "scenario_none" / "params.json"
-        pattern.apply_params(base_json, ids, scenario, json_out)
+        pattern.apply_params(scenario_template, ids, scenario, json_out)
         data = json.loads(json_out.read_text())
         # amount was 1 in the fixture; should be unchanged since selected_resource_id is None
         assert resource_pool_size(data, "res_human_1") == 1
