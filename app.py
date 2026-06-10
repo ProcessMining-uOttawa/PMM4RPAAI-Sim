@@ -358,7 +358,8 @@ with st.container(border=True):
             )
 
         if demo_mode:
-            result = demo.run_experiment(scenarios, n_reps, _on_progress, bot_cost_per_hour)
+            result = demo.run_experiment(scenarios, n_reps, _on_progress,
+                                         bot_cost_per_hour=bot_cost_per_hour)
         else:
             exp_dir = store.new_experiment(ss.log_name or "run")
             result = orchestrator.run_experiment(
