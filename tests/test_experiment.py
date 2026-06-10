@@ -129,7 +129,7 @@ class TestFromTaguchiValues:
 class TestDemoMonotonicity:
 
     def test_larger_resource_pool_reduces_cycle_time(self):
-        from core.demo import fake_simulate
+        from core.demo import _fake_simulate as fake_simulate
         from core.parameters import Scenario
 
         def _mean_cycle(num_bots: int, num_man: int, n_reps: int = 20) -> float:

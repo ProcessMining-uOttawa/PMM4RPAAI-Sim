@@ -356,23 +356,21 @@ with st.container(border=True):
                 done / total, text=f"Scenario {sid} · rep {rep + 1}/{n_reps}"
             )
 
-        exp_dir = (
-            store.new_experiment("demo")
-            if demo_mode
-            else store.new_experiment(ss.log_name or "run")
-        )
-        result = orchestrator.run_experiment(
-            transformation=transformation,
-            bpmn_path=ss.bpmn_path,
-            json_path=ss.json_path,
-            target=target,
-            scenarios=scenarios,
-            n_reps=n_reps,
-            exp_dir=exp_dir,
-            demo_mode=demo_mode,
-            on_progress=_on_progress,
-            selected_resource_id=selected_resource_id,
-        )
+        if demo_mode:
+            result = demo.run_experiment(scenarios, n_reps, _on_progress)
+        else:
+            exp_dir = store.new_experiment(ss.log_name or "run")
+            result = orchestrator.run_experiment(
+                transformation=transformation,
+                bpmn_path=ss.bpmn_path,
+                json_path=ss.json_path,
+                target=target,
+                scenarios=scenarios,
+                n_reps=n_reps,
+                exp_dir=exp_dir,
+                on_progress=_on_progress,
+                selected_resource_id=selected_resource_id,
+            )
         ss.results = result.results
         ss.experiment_bpmn_path = result.experiment_bpmn_path
         ss.scenario_json_paths = result.scenario_json_paths
