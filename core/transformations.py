@@ -27,8 +27,7 @@ BOT_PROFILE_ID   = "BOT_PROFILE"
 BOT_PROFILE_NAME = "Bot Resources"
 
 # ── Bot resource defaults ─────────────────────────────────────────────────────
-BOT_COST_PER_HOUR = "0"
-BOT_AMOUNT        = 1
+BOT_AMOUNT = 1
 
 # ── Bot calendar ──────────────────────────────────────────────────────────────
 BOT_CALENDAR_ID    = "BOT_CALENDAR"
@@ -179,10 +178,11 @@ class Transformation(ABC):
         `frozen_pool_size` freezes the manual pool factor at that value when set."""
 
     def prepare_experiment(self, bpmn_in: Path, json_in: Path, target_activity: str,
-                           out_dir: Path) -> BpmnTransformResult:
+                           out_dir: Path,
+                           bot_cost_per_hour: float = 0.0) -> BpmnTransformResult:
         """Coordinate the two-step experiment setup. Called once per experiment."""
         bpmn_out, ids      = self.apply_pattern(bpmn_in, target_activity, out_dir)
-        scenario_template  = self.build_scenario_template(json_in, ids)
+        scenario_template  = self.build_scenario_template(json_in, ids, bot_cost_per_hour)
         return BpmnTransformResult(bpmn_path=bpmn_out, scenario_template=scenario_template, ids=ids)
 
     @abstractmethod
@@ -191,7 +191,8 @@ class Transformation(ABC):
         """Add pattern elements to the BPMN and write to out_dir."""
 
     @abstractmethod
-    def build_scenario_template(self, json_in: Path, ids: TransformIds) -> dict:
+    def build_scenario_template(self, json_in: Path, ids: TransformIds,
+                                bot_cost_per_hour: float = 0.0) -> dict:
         """Load the Prosimos JSON and inject pattern-specific shared infrastructure."""
 
     @abstractmethod
@@ -356,7 +357,8 @@ class XORSplitAutomation(Transformation):
         return bpmn_out, ids
 
     # --- build_scenario_template ---------------------------------------------
-    def build_scenario_template(self, json_in: Path, ids: TransformIds) -> dict:
+    def build_scenario_template(self, json_in: Path, ids: TransformIds,
+                                bot_cost_per_hour: float = 0.0) -> dict:
         """Load the Prosimos JSON and inject bot resource infrastructure.
         Durations and gateway probabilities are scenario-specific — added in apply_params."""
         data = json.loads(Path(json_in).read_text())
@@ -380,7 +382,7 @@ class XORSplitAutomation(Transformation):
         upsert_resource_in_profile(data, BOT_PROFILE_ID, BOT_PROFILE_NAME, {
             "id":            ids.bot_resource_id,
             "name":          ids.bot_resource_name,
-            "cost_per_hour": BOT_COST_PER_HOUR,
+            "cost_per_hour": str(bot_cost_per_hour),
             "amount":        BOT_AMOUNT,
             "calendar":      BOT_CALENDAR_ID,
             "assignedTasks": [ids.bot_id],

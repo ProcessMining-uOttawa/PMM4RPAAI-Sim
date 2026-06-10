@@ -153,6 +153,13 @@ class TestBuildBaseJson:
         task_ids = {e["task_id"] for e in scenario_template[KEY_TASK_RESOURCE_DISTRIBUTION]}
         assert "task_1" in task_ids
 
+    def test_bot_cost_written_to_profile(self, pattern, params_file, applied):
+        _, ids = applied
+        template = pattern.build_scenario_template(params_file, ids, bot_cost_per_hour=15.0)
+        bot_profile = next(p for p in template[KEY_RESOURCE_PROFILES] if p["id"] == BOT_PROFILE_ID)
+        bot_resource = next(r for r in bot_profile["resource_list"] if r["id"] == ids.bot_resource_id)
+        assert bot_resource["cost_per_hour"] == "15.0"
+
     def test_missing_task_in_params_raises(self, pattern, params_file):
         ids = _make_ids("nonexistent_id", "Fake Task")
         with pytest.raises(RuntimeError, match="No task_resource_distribution entry"):
