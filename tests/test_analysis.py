@@ -14,7 +14,7 @@ from core.analysis import (
 )
 from core.constants import (
     COL_CYCLE_H, COL_COST, COL_CYCLE_H_MEAN, COL_COST_MEAN,
-    COL_TOTAL_CYCLE_S_MEAN, COL_TOTAL_COST_MEAN,
+    COL_TOTAL_CYCLE_S, COL_TOTAL_COST, COL_TOTAL_CYCLE_S_MEAN, COL_TOTAL_COST_MEAN,
     COL_REWORK_COUNT, COL_REWORK_RATE, COL_REWORK_COUNT_MEAN, COL_REWORK_RATE_MEAN,
 )
 
@@ -23,10 +23,10 @@ from core.constants import (
 
 def _results_df() -> pd.DataFrame:
     return pd.DataFrame([
-        {"scenario_id": "S01", "replication": 0, COL_CYCLE_H: 10.0, COL_COST:  5.0, "f_a": "low",  COL_REWORK_COUNT: 2.0, COL_REWORK_RATE: 0.10},
-        {"scenario_id": "S01", "replication": 1, COL_CYCLE_H: 12.0, COL_COST:  7.0, "f_a": "low",  COL_REWORK_COUNT: 4.0, COL_REWORK_RATE: 0.20},
-        {"scenario_id": "S02", "replication": 0, COL_CYCLE_H: 20.0, COL_COST: 10.0, "f_a": "high", COL_REWORK_COUNT: 0.0, COL_REWORK_RATE: 0.00},
-        {"scenario_id": "S02", "replication": 1, COL_CYCLE_H: 22.0, COL_COST: 12.0, "f_a": "high", COL_REWORK_COUNT: 2.0, COL_REWORK_RATE: 0.10},
+        {"scenario_id": "S01", "replication": 0, COL_CYCLE_H: 10.0, COL_COST:  5.0, "f_a": "low",  COL_TOTAL_CYCLE_S: 36000.0, COL_TOTAL_COST:  500.0, COL_REWORK_COUNT: 2.0, COL_REWORK_RATE: 0.10},
+        {"scenario_id": "S01", "replication": 1, COL_CYCLE_H: 12.0, COL_COST:  7.0, "f_a": "low",  COL_TOTAL_CYCLE_S: 43200.0, COL_TOTAL_COST:  700.0, COL_REWORK_COUNT: 4.0, COL_REWORK_RATE: 0.20},
+        {"scenario_id": "S02", "replication": 0, COL_CYCLE_H: 20.0, COL_COST: 10.0, "f_a": "high", COL_TOTAL_CYCLE_S: 72000.0, COL_TOTAL_COST: 1000.0, COL_REWORK_COUNT: 0.0, COL_REWORK_RATE: 0.00},
+        {"scenario_id": "S02", "replication": 1, COL_CYCLE_H: 22.0, COL_COST: 12.0, "f_a": "high", COL_TOTAL_CYCLE_S: 79200.0, COL_TOTAL_COST: 1200.0, COL_REWORK_COUNT: 2.0, COL_REWORK_RATE: 0.10},
     ])
 
 
@@ -85,8 +85,10 @@ class TestAggregate:
 
     def test_nan_cost_propagates(self):
         df = pd.DataFrame([{
-            "scenario_id": "S01", "replication": 0,
-            COL_CYCLE_H: 10.0, COL_COST: float("nan"), "f_a": "low",
+            "scenario_id": "S01", "replication": 0, "f_a": "low",
+            COL_CYCLE_H: 10.0, COL_COST: float("nan"),
+            COL_TOTAL_CYCLE_S: 36000.0, COL_TOTAL_COST: 500.0,
+            COL_REWORK_COUNT: 2.0, COL_REWORK_RATE: 0.05,
         }])
         agg = aggregate(df)
         assert math.isnan(agg[COL_COST_MEAN].iloc[0])
@@ -148,12 +150,18 @@ class TestCompareToBaseline:
 
     def test_multiple_levels_produce_multiple_baseline_rows(self):
         agg = pd.DataFrame([
-            {"scenario_id": "S01", "Act.num_cases": 100,  COL_TOTAL_CYCLE_S_MEAN: 3600.0, COL_TOTAL_COST_MEAN: 100.0},
-            {"scenario_id": "S02", "Act.num_cases": 1000, COL_TOTAL_CYCLE_S_MEAN: 3600.0, COL_TOTAL_COST_MEAN: 100.0},
+            {"scenario_id": "S01", "Act.num_cases": 100,
+             COL_TOTAL_CYCLE_S_MEAN: 3600.0, COL_TOTAL_COST_MEAN: 100.0,
+             COL_REWORK_COUNT_MEAN: 4.0, COL_REWORK_RATE_MEAN: 0.08},
+            {"scenario_id": "S02", "Act.num_cases": 1000,
+             COL_TOTAL_CYCLE_S_MEAN: 3600.0, COL_TOTAL_COST_MEAN: 100.0,
+             COL_REWORK_COUNT_MEAN: 4.0, COL_REWORK_RATE_MEAN: 0.08},
         ])
         baseline = {
-            100:  {COL_TOTAL_CYCLE_S_MEAN: 3600.0,  COL_TOTAL_COST_MEAN: 100.0},
-            1000: {COL_TOTAL_CYCLE_S_MEAN: 36000.0, COL_TOTAL_COST_MEAN: 1000.0},
+            100:  {COL_TOTAL_CYCLE_S_MEAN: 3600.0,  COL_TOTAL_COST_MEAN: 100.0,
+                   COL_REWORK_COUNT_MEAN: 4.0, COL_REWORK_RATE_MEAN: 0.08},
+            1000: {COL_TOTAL_CYCLE_S_MEAN: 36000.0, COL_TOTAL_COST_MEAN: 1000.0,
+                   COL_REWORK_COUNT_MEAN: 40.0, COL_REWORK_RATE_MEAN: 0.08},
         }
         df = compare_to_baseline(agg, baseline)
         baseline_rows = df[df["Scenario"].str.startswith("Baseline")]
