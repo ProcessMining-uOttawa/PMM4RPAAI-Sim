@@ -15,6 +15,56 @@ from core.bpmn import BPMN_NS
 from core.constants import KEY_RESOURCE_PROFILES, KEY_TASK_RESOURCE_DISTRIBUTION
 
 
+# ── Multi-flow BPMN fixtures (no DI section needed — error raised before DI work) ─
+
+MULTI_INCOMING_BPMN = """\
+<?xml version="1.0" encoding="utf-8"?>
+<bpmn:definitions xmlns:bpmn="http://www.omg.org/spec/BPMN/20100524/MODEL" id="def_1">
+  <bpmn:process id="proc_1" isExecutable="true">
+    <bpmn:startEvent id="start_1"/>
+    <bpmn:startEvent id="start_2"/>
+    <bpmn:task id="task_1" name="Test Task"/>
+    <bpmn:endEvent id="end_1"/>
+    <bpmn:sequenceFlow id="flow_in1" sourceRef="start_1" targetRef="task_1"/>
+    <bpmn:sequenceFlow id="flow_in2" sourceRef="start_2" targetRef="task_1"/>
+    <bpmn:sequenceFlow id="flow_out" sourceRef="task_1"  targetRef="end_1"/>
+  </bpmn:process>
+</bpmn:definitions>
+"""
+
+MULTI_OUTGOING_BPMN = """\
+<?xml version="1.0" encoding="utf-8"?>
+<bpmn:definitions xmlns:bpmn="http://www.omg.org/spec/BPMN/20100524/MODEL" id="def_1">
+  <bpmn:process id="proc_1" isExecutable="true">
+    <bpmn:startEvent id="start_1"/>
+    <bpmn:task id="task_1" name="Test Task"/>
+    <bpmn:endEvent id="end_1"/>
+    <bpmn:endEvent id="end_2"/>
+    <bpmn:sequenceFlow id="flow_in"   sourceRef="start_1" targetRef="task_1"/>
+    <bpmn:sequenceFlow id="flow_out1" sourceRef="task_1"  targetRef="end_1"/>
+    <bpmn:sequenceFlow id="flow_out2" sourceRef="task_1"  targetRef="end_2"/>
+  </bpmn:process>
+</bpmn:definitions>
+"""
+
+
+# ── TestMultiFlowNotImplemented ───────────────────────────────────────────────
+
+class TestMultiFlowNotImplemented:
+
+    def test_multi_incoming_raises(self, pattern, tmp_path):
+        bpmn = tmp_path / "multi_in.bpmn"
+        bpmn.write_text(MULTI_INCOMING_BPMN, encoding="utf-8")
+        with pytest.raises(NotImplementedError, match="expected 1 incoming"):
+            pattern.apply_pattern(bpmn, "Test Task", tmp_path / "out")
+
+    def test_multi_outgoing_raises(self, pattern, tmp_path):
+        bpmn = tmp_path / "multi_out.bpmn"
+        bpmn.write_text(MULTI_OUTGOING_BPMN, encoding="utf-8")
+        with pytest.raises(NotImplementedError, match="expected 1 incoming"):
+            pattern.apply_pattern(bpmn, "Test Task", tmp_path / "out")
+
+
 # ── TestApplyPattern ──────────────────────────────────────────────────────────
 
 class TestApplyPattern:
