@@ -71,3 +71,9 @@ class TestDemoRunExperiment:
         assert (df[COL_REWORK_COUNT] >= 0).all()
         assert (df[COL_REWORK_RATE] >= 0).all()
         assert (df[COL_REWORK_RATE] <= 1.0).all()
+
+    def test_nonzero_bot_cost_increases_cost(self):
+        scenarios = _scenarios()
+        free   = demo.run_experiment(scenarios, n_reps=1, bot_cost_per_hour=0.0)
+        costly = demo.run_experiment(scenarios, n_reps=1, bot_cost_per_hour=500.0)
+        assert costly.results[COL_COST].mean() > free.results[COL_COST].mean()

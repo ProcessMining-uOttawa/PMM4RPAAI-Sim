@@ -240,11 +240,6 @@ mypy core/ --ignore-missing-imports    # type-check (--ignore-missing-imports su
 
 Known bugs / reliability gaps:
 
-- **Bot cost is hardcoded to zero** (`core/transformations.py`): `BOT_COST_PER_HOUR = "0"`
-  means the bot resource never contributes to the cost metric — only human labour
-  does. In practice, automation has real costs (licensing, infrastructure, etc.).
-  Needs a concrete cost model from the PhD client before implementing; likely
-  surfaces as a new Taguchi factor or a fixed input in the UI.
 - **Tasks with no resources assigned** (`core/bpmn/utils.py`): `task_resources()`
   returns `[]` if the target task has no entry in `task_resource_distribution`.
   Technically impossible when using Simod-generated models, but not explicitly
@@ -255,19 +250,16 @@ Known bugs / reliability gaps:
   **complete**, so the output log should never contain truncated cases. If that
   assumption ever breaks, incomplete cases would have artificially short cycle times
   and pull the median down silently.
-- **`signal_to_noise` drops zero costs and zero rework** (`core/analysis.py`): the
-  filter `v > 0` in `signal_to_noise` excludes zero values because the log formula
-  is undefined at zero. This conflates two categorically different situations: (a)
-  zero cost from `BOT_COST_PER_HOUR = "0"` — a data anomaly where the metric is
-  untrustworthy; and (b) zero rework rate — a legitimate best-case outcome where
-  automation eliminated all rework entirely. In case (b), S/N goes blank for the
-  best-performing factor levels, the exact place where the Taguchi table is most
-  informative. The display-layer caption in `app.py` (`me["sn"].isna().any()`)
-  acknowledges this but does not fix it. The right fix is a `floor` parameter on
-  `signal_to_noise` (e.g. `floor: float = 0.0`) so callers can pass `floor=1e-9`
-  when the metric legitimately reaches zero. Deferred: zero-cost case depends on
-  the bot cost model decision (see "Bot cost hardcoded to zero" above); zero-rework
-  case can be fixed independently once the `floor` parameter is added.
+- **`signal_to_noise` drops zero rework** (`core/analysis.py`): the filter `v > 0`
+  in `signal_to_noise` excludes zero values because the log formula is undefined at
+  zero. For zero rework rate — a legitimate best-case outcome where automation
+  eliminated all rework entirely — S/N goes blank for the best-performing factor
+  levels, the exact place where the Taguchi table is most informative. The
+  display-layer caption in `app.py` (`me["sn"].isna().any()`) acknowledges this but
+  does not fix it. The right fix is a `floor` parameter on `signal_to_noise`
+  (e.g. `floor: float = 0.0`) so callers can pass `floor=1e-9` when the metric
+  legitimately reaches zero. Note: zero cost is now a valid user choice
+  (bot_cost_per_hour defaults to 0.0), not a data anomaly.
 Design decisions:
 
 - **Single-goal ranking**: `rank()` optimises for one metric at a time (cycle time, cost, or rework rate), selected via a sidebar dropdown. The original two-goal design used a combined normalised score, but the scales differ enough (hours vs $/case) that cost dominated silently. Tradeoff: you lose the ability to surface scenarios that satisfy *both* goals simultaneously — if that matters, consider adding a secondary "also meets" flag column without letting it affect the score.

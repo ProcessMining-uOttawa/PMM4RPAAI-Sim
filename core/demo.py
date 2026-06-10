@@ -41,7 +41,8 @@ def fake_discovery() -> list[str]:
     return list(DEMO_ACTIVITIES)
 
 
-def _fake_simulate(scenario: Scenario, replication: int) -> _SimResult:
+def _fake_simulate(scenario: Scenario, replication: int,
+                   bot_cost_per_hour: float = 0.0) -> _SimResult:
     """Synthetic but monotonic: more automation → faster, cheaper, with noise."""
     rng = random.Random(hash((scenario.id, replication)) & 0xffffffff)
 
@@ -61,7 +62,11 @@ def _fake_simulate(scenario: Scenario, replication: int) -> _SimResult:
     effective_resources = (pct_auto/100) * num_bots + (1 - pct_auto/100) * num_man
     resource_scale = 1.0 / effective_resources**0.5
     cycle = BASELINE_CYCLE_H * (mean_task_s / t_man) * resource_scale * rng.uniform(0.9, 1.1)
-    cost  = BASELINE_COST * (1 - 0.6*pct_auto/100) * rng.uniform(0.9, 1.1)
+    # Expected fraction of cases still handled by a human: direct manual path + bot failures.
+    expected_human_fraction = (1 - pct_auto/100) + (pct_auto/100) * (1 - pct_ok/100)
+    human_cost = BASELINE_COST * expected_human_fraction * rng.uniform(0.9, 1.1)
+    bot_cost_per_case = (pct_auto/100) * (t_auto / 3600) * bot_cost_per_hour
+    cost = human_cost + bot_cost_per_case
     rework_rate = min(
         (pct_auto/100 * (1 - pct_ok/100) + BASELINE_REWORK_RATE * (1 - pct_auto/100))
         * rng.uniform(0.9, 1.1),
@@ -82,6 +87,7 @@ def run_experiment(
     scenarios: list[Scenario],
     n_reps: int,
     on_progress: Callable[[int, int, str, int], None] | None = None,
+    bot_cost_per_hour: float = 0.0,
 ) -> ExperimentResult:
     """Synthetic stand-in for orchestrator.run_experiment — no Simod/Prosimos needed."""
     total = len(scenarios) * n_reps
@@ -90,7 +96,7 @@ def run_experiment(
 
     for s in scenarios:
         for rep in range(n_reps):
-            r = _fake_simulate(s, rep)
+            r = _fake_simulate(s, rep, bot_cost_per_hour)
             rows.append({
                 "scenario_id":     s.id,
                 "replication":     rep,

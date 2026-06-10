@@ -62,6 +62,7 @@ def run_experiment(
     exp_dir: Path,
     on_progress: Callable[[int, int, str, int], None] | None = None,
     selected_resource_id: str | None = None,
+    bot_cost_per_hour: float = 0.0,
 ) -> ExperimentResult:
     """Run all scenario replications and return aggregated results.
 
@@ -73,7 +74,8 @@ def run_experiment(
     rows: list[dict] = []
     scenario_json_paths: dict[str, Path] = {}
 
-    bpmn_tr = transformation.prepare_experiment(bpmn_path, json_path, target, exp_dir)
+    bpmn_tr = transformation.prepare_experiment(bpmn_path, json_path, target, exp_dir,
+                                                bot_cost_per_hour=bot_cost_per_hour)
     experiment_bpmn_path = bpmn_tr.bpmn_path
     cases_levels = sorted({
         AutomationScenario.from_taguchi_values(s.values).num_cases

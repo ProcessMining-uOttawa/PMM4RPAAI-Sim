@@ -202,6 +202,7 @@ with st.sidebar:
     st.divider()
     st.subheader("Run config")
     n_reps = st.number_input("Replications (N)", 1, 100, 5)
+    bot_cost_per_hour = st.number_input("Bot cost ($/hr)", min_value=0.0, value=0.0, step=1.0)
 
 # --- gate: need a log first --------------------------------------------------
 if not ss.activities:
@@ -357,7 +358,8 @@ with st.container(border=True):
             )
 
         if demo_mode:
-            result = demo.run_experiment(scenarios, n_reps, _on_progress)
+            result = demo.run_experiment(scenarios, n_reps, _on_progress,
+                                         bot_cost_per_hour=bot_cost_per_hour)
         else:
             exp_dir = store.new_experiment(ss.log_name or "run")
             result = orchestrator.run_experiment(
@@ -370,6 +372,7 @@ with st.container(border=True):
                 exp_dir=exp_dir,
                 on_progress=_on_progress,
                 selected_resource_id=selected_resource_id,
+                bot_cost_per_hour=bot_cost_per_hour,
             )
         ss.results = result.results
         ss.experiment_bpmn_path = result.experiment_bpmn_path
