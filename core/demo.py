@@ -15,12 +15,12 @@ from .orchestrator import ExperimentResult
 
 
 DEMO_ACTIVITIES = [
-    ("Receive application", 6),
-    ("Validate claim", 42),
-    ("Check credit", 18),
-    ("Approve loan", 120),
-    ("Notify customer", 3),
-    ("Archive", 1),
+    "Receive application",
+    "Validate claim",
+    "Check credit",
+    "Approve loan",
+    "Notify customer",
+    "Archive",
 ]
 BASELINE_CYCLE_H = 31.2
 BASELINE_COST = 48.0
@@ -29,8 +29,6 @@ BASELINE_REWORK_RATE = 0.05
 
 @dataclass
 class _SimResult:
-    scenario_id: str
-    replication: int
     cycle_h: float
     cost: float
     total_cycle_s: float
@@ -40,7 +38,7 @@ class _SimResult:
 
 
 def fake_discovery() -> list[str]:
-    return [name for name, _ in DEMO_ACTIVITIES]
+    return list(DEMO_ACTIVITIES)
 
 
 def _fake_simulate(scenario: Scenario, replication: int) -> _SimResult:
@@ -71,8 +69,6 @@ def _fake_simulate(scenario: Scenario, replication: int) -> _SimResult:
     )
 
     return _SimResult(
-        scenario_id=scenario.id,
-        replication=replication,
         cycle_h=round(cycle, 2),
         cost=round(cost, 2),
         total_cycle_s=round(cycle * 3600 * n_cases, 2),
@@ -96,8 +92,8 @@ def run_experiment(
         for rep in range(n_reps):
             r = _fake_simulate(s, rep)
             rows.append({
-                "scenario_id":     r.scenario_id,
-                "replication":     r.replication,
+                "scenario_id":     s.id,
+                "replication":     rep,
                 COL_CYCLE_H:       r.cycle_h,
                 COL_COST:          r.cost,
                 COL_TOTAL_CYCLE_S: r.total_cycle_s,
