@@ -136,8 +136,10 @@ class TestDemoMonotonicity:
             s = Scenario(
                 "S01",
                 {
-                    "Act.pct_auto": 50, "Act.t_auto": 30, "Act.t_manual": 300,
+                    "Act.pct_auto": 50, "Act.pct_ok": 90,
+                    "Act.t_auto": 30, "Act.t_manual": 300,
                     "Act.num_bots": num_bots, "Act.num_manual_resources": num_man,
+                    "Act.num_cases": 500,
                 },
                 "t_id", "Act",
             )

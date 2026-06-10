@@ -47,24 +47,22 @@ def _fake_simulate(scenario: Scenario, replication: int) -> _SimResult:
     """Synthetic but monotonic: more automation → faster, cheaper, with noise."""
     rng = random.Random(hash((scenario.id, replication)) & 0xffffffff)
 
-    def _v(suffix, default):
-        return next((v for k, v in scenario.values.items() if k.endswith("." + suffix)), default)
+    pfx      = scenario.target_activity + "."
+    pct_auto = scenario.values[pfx + "pct_auto"]
+    pct_ok   = scenario.values[pfx + "pct_ok"]
+    t_auto   = scenario.values[pfx + "t_auto"]
+    t_man    = scenario.values[pfx + "t_manual"]
+    num_bots = int(scenario.values[pfx + "num_bots"])
+    num_man  = int(scenario.values[pfx + "num_manual_resources"])
+    n_cases  = int(scenario.values[pfx + "num_cases"])
 
-    pct      = _v("pct_auto", 50)
-    pct_ok   = _v("pct_ok", 90)
-    t_auto   = _v("t_auto",   30)
-    t_man    = _v("t_manual", 300)
-    num_bots = int(_v("num_bots", 1))
-    num_man  = int(_v("num_manual_resources", 1))
-    n_cases  = int(_v("num_cases", 500))
-
-    mean_task_s    = (pct/100)*t_auto + (1 - pct/100)*t_man
-    bot_share      = pct / 100
+    mean_task_s    = (pct_auto/100)*t_auto + (1 - pct_auto/100)*t_man
+    bot_share      = pct_auto / 100
     resource_scale = 1.0 / (bot_share * num_bots**0.5 + (1 - bot_share) * num_man**0.5)
     cycle = BASELINE_CYCLE_H * (mean_task_s / 300) * resource_scale * rng.uniform(0.9, 1.1)
-    cost  = BASELINE_COST * (1 - 0.6*pct/100) * rng.uniform(0.9, 1.1)
+    cost  = BASELINE_COST * (1 - 0.6*pct_auto/100) * rng.uniform(0.9, 1.1)
     rework_rate = min(
-        (pct/100 * (1 - pct_ok/100) + BASELINE_REWORK_RATE * (1 - pct/100))
+        (pct_auto/100 * (1 - pct_ok/100) + BASELINE_REWORK_RATE * (1 - pct_auto/100))
         * rng.uniform(0.9, 1.1),
         1.0,
     )
