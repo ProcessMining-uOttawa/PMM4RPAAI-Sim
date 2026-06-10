@@ -449,14 +449,14 @@ if ss.results is not None:
         st.markdown("###### Export")
         stats_csv = ranked.to_csv(index=False)
         col_bpmn, col_json, col_stats, col_all = st.columns(4)
-        if json_paths:
-            col_json.download_button(
-                "⬇ Scenarios (JSON zip)",
-                _json_zip(json_paths),
-                file_name="scenarios.zip",
-                mime="application/zip",
-                use_container_width=True,
-            )
+        col_json.download_button(
+            "⬇ Scenarios (JSON zip)",
+            data=_json_zip(json_paths) if json_paths else b"",
+            file_name="scenarios.zip",
+            mime="application/zip",
+            use_container_width=True,
+            disabled=not json_paths,
+        )
         col_stats.download_button(
             "⬇ Statistics (CSV)",
             stats_csv,
@@ -464,22 +464,22 @@ if ss.results is not None:
             mime="text/csv",
             use_container_width=True,
         )
-        if bpmn_exists:
-            col_bpmn.download_button(
-                "⬇ BPMN",
-                Path(bpmn_path).read_bytes(),
-                file_name="model.bpmn",
-                mime="application/xml",
-                use_container_width=True,
-            )
-        if bpmn_exists and json_paths:
-            col_all.download_button(
-                "⬇ All (ZIP)",
-                _group_zip(Path(bpmn_path), json_paths, stats_csv),
-                file_name="export.zip",
-                mime="application/zip",
-                use_container_width=True,
-            )
+        col_bpmn.download_button(
+            "⬇ BPMN",
+            data=Path(bpmn_path).read_bytes() if bpmn_exists else b"",
+            file_name="model.bpmn",
+            mime="application/xml",
+            use_container_width=True,
+            disabled=not bpmn_exists,
+        )
+        col_all.download_button(
+            "⬇ All (ZIP)",
+            data=_group_zip(Path(bpmn_path), json_paths, stats_csv) if (bpmn_exists and json_paths) else b"",
+            file_name="export.zip",
+            mime="application/zip",
+            use_container_width=True,
+            disabled=not (bpmn_exists and json_paths),
+        )
 
     baseline_agg = ss.get("baseline_agg")
     if baseline_agg:
