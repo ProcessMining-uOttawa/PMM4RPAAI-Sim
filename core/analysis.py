@@ -1,6 +1,7 @@
 """Simulation result analysis: aggregation, Taguchi S/N, ranking, and baseline comparison."""
 from __future__ import annotations
 import math
+from typing import Callable, NamedTuple
 
 import pandas as pd
 
@@ -17,23 +18,36 @@ _NON_FACTOR_COLS = frozenset({
 })
 
 
+class _MetricSpec(NamedTuple):
+    col:         str
+    label:       str
+    fn:          Callable[[float], float]  # raw value → display unit
+    delta_label: str
+    pct_label:   str | None  # None = no relative-% column (rework rate uses pp instead)
+    dp:          int = 2     # decimal places for displayed value and absolute delta
+
+
+_METRICS: list[_MetricSpec] = [
+    _MetricSpec(COL_TOTAL_CYCLE_S_MEAN, "Total Cycle Time (h)", lambda v: v / 3600, "Δ Time (h)",     "Δ Time (%)"),
+    _MetricSpec(COL_TOTAL_COST_MEAN,    "Total Cost ($)",        lambda v: v,        "Δ Cost ($)",     "Δ Cost (%)"),
+    _MetricSpec(COL_REWORK_COUNT_MEAN,  "Rework Count",          lambda v: v,        "Δ Rework Count", "Δ Rework (%)"),
+    _MetricSpec(COL_REWORK_RATE_MEAN,   "Rework Rate (%)",       lambda v: v * 100,  "Δ Rate (pp)",    None,          1),
+]
+
+
 def aggregate(results: pd.DataFrame) -> pd.DataFrame:
-    """results: scenario_id, replication, cycle_h, cost (+ factor cols)."""
+    """results: scenario_id, replication, + all six metric cols (+ factor cols)."""
     factor_cols = [c for c in results.columns if c not in _NON_FACTOR_COLS]
     agg_spec: dict = {
-        COL_CYCLE_H_MEAN: (COL_CYCLE_H, "mean"),
-        "cycle_h_std":    (COL_CYCLE_H, "std"),
-        COL_COST_MEAN:    (COL_COST,    "mean"),
-        "cost_std":       (COL_COST,    "std"),
+        COL_CYCLE_H_MEAN:       (COL_CYCLE_H,       "mean"),
+        "cycle_h_std":          (COL_CYCLE_H,       "std"),
+        COL_COST_MEAN:          (COL_COST,          "mean"),
+        "cost_std":             (COL_COST,          "std"),
+        COL_TOTAL_CYCLE_S_MEAN: (COL_TOTAL_CYCLE_S, "mean"),
+        COL_TOTAL_COST_MEAN:    (COL_TOTAL_COST,    "mean"),
+        COL_REWORK_COUNT_MEAN:  (COL_REWORK_COUNT,  "mean"),
+        COL_REWORK_RATE_MEAN:   (COL_REWORK_RATE,   "mean"),
     }
-    if COL_TOTAL_CYCLE_S in results.columns:
-        agg_spec[COL_TOTAL_CYCLE_S_MEAN] = (COL_TOTAL_CYCLE_S, "mean")
-    if COL_TOTAL_COST in results.columns:
-        agg_spec[COL_TOTAL_COST_MEAN] = (COL_TOTAL_COST, "mean")
-    if COL_REWORK_COUNT in results.columns:
-        agg_spec[COL_REWORK_COUNT_MEAN] = (COL_REWORK_COUNT, "mean")
-    if COL_REWORK_RATE in results.columns:
-        agg_spec[COL_REWORK_RATE_MEAN] = (COL_REWORK_RATE, "mean")
     return results.groupby(["scenario_id", *factor_cols], as_index=False).agg(**agg_spec)  # type: ignore[call-overload]
 
 
@@ -52,45 +66,25 @@ def compare_to_baseline(agg: pd.DataFrame, baseline_agg: dict[int, dict]) -> pd.
     rows: list[dict] = []
     for n_cases in sorted(baseline_agg):
         b = baseline_agg[n_cases]
-        b_cycle_h      = b[COL_TOTAL_CYCLE_S_MEAN] / 3600
-        b_cost         = b[COL_TOTAL_COST_MEAN]
-        b_rework_count = b.get(COL_REWORK_COUNT_MEAN, float("nan"))
-        b_rework_rate  = b.get(COL_REWORK_RATE_MEAN,  float("nan"))
-        rows.append({"Scenario": f"Baseline ({n_cases} cases)",
-                     "Cases": n_cases,
-                     "Total Cycle Time (h)": round(b_cycle_h, 2),
-                     "Δ Time (h)": 0.0, "Δ Time (%)": 0.0,
-                     "Total Cost ($)": round(b_cost, 2),
-                     "Δ Cost ($)": 0.0, "Δ Cost (%)": 0.0,
-                     "Rework Count": round(b_rework_count, 2),
-                     "Δ Rework Count": 0.0, "Δ Rework (%)": 0.0,
-                     "Rework Rate (%)": round(b_rework_rate * 100, 1),
-                     "Δ Rate (pp)": 0.0})
+        b_vals = {m.col: m.fn(b[m.col]) for m in _METRICS}
+        baseline_row: dict = {"Scenario": f"Baseline ({n_cases} cases)", "Cases": n_cases}
+        for m in _METRICS:
+            baseline_row[m.label]       = round(b_vals[m.col], m.dp)
+            baseline_row[m.delta_label] = 0.0
+            if m.pct_label:
+                baseline_row[m.pct_label] = 0.0
+        rows.append(baseline_row)
         group = agg if num_cases_col is None else agg[agg[num_cases_col] == n_cases]
         for _, row in group.iterrows():
-            s_cycle_h      = row[COL_TOTAL_CYCLE_S_MEAN] / 3600
-            s_cost         = row[COL_TOTAL_COST_MEAN]
-            s_rework_count = row.get(COL_REWORK_COUNT_MEAN, float("nan"))
-            s_rework_rate  = row.get(COL_REWORK_RATE_MEAN,  float("nan"))
-            d_cycle        = s_cycle_h - b_cycle_h
-            d_cost         = s_cost - b_cost
-            d_rework_count = s_rework_count - b_rework_count
-            d_rework_rate  = s_rework_rate  - b_rework_rate
-            rows.append({
-                "Scenario":             row["scenario_id"],
-                "Cases":                n_cases,
-                "Total Cycle Time (h)": round(s_cycle_h, 2),
-                "Δ Time (h)":           round(d_cycle, 2),
-                "Δ Time (%)":           _pct_delta(d_cycle, b_cycle_h),
-                "Total Cost ($)":       round(s_cost, 2),
-                "Δ Cost ($)":           round(d_cost, 2),
-                "Δ Cost (%)":           _pct_delta(d_cost, b_cost),
-                "Rework Count":         round(s_rework_count, 2),
-                "Δ Rework Count":       round(d_rework_count, 2),
-                "Δ Rework (%)":         _pct_delta(d_rework_count, b_rework_count),
-                "Rework Rate (%)":      round(s_rework_rate * 100, 1),
-                "Δ Rate (pp)":          round(d_rework_rate * 100, 1),
-            })
+            s_vals = {m.col: m.fn(row[m.col]) for m in _METRICS}
+            scenario_row: dict = {"Scenario": row["scenario_id"], "Cases": n_cases}
+            for m in _METRICS:
+                delta = s_vals[m.col] - b_vals[m.col]
+                scenario_row[m.label]       = round(s_vals[m.col], m.dp)
+                scenario_row[m.delta_label] = round(delta, m.dp)
+                if m.pct_label:
+                    scenario_row[m.pct_label] = _pct_delta(delta, b_vals[m.col])
+            rows.append(scenario_row)
     return pd.DataFrame(rows)
 
 
