@@ -356,23 +356,21 @@ with st.container(border=True):
                 done / total, text=f"Scenario {sid} · rep {rep + 1}/{n_reps}"
             )
 
-        exp_dir = (
-            store.new_experiment("demo")
-            if demo_mode
-            else store.new_experiment(ss.log_name or "run")
-        )
-        result = orchestrator.run_experiment(
-            transformation=transformation,
-            bpmn_path=ss.bpmn_path,
-            json_path=ss.json_path,
-            target=target,
-            scenarios=scenarios,
-            n_reps=n_reps,
-            exp_dir=exp_dir,
-            demo_mode=demo_mode,
-            on_progress=_on_progress,
-            selected_resource_id=selected_resource_id,
-        )
+        if demo_mode:
+            result = demo.run_experiment(scenarios, n_reps, _on_progress)
+        else:
+            exp_dir = store.new_experiment(ss.log_name or "run")
+            result = orchestrator.run_experiment(
+                transformation=transformation,
+                bpmn_path=ss.bpmn_path,
+                json_path=ss.json_path,
+                target=target,
+                scenarios=scenarios,
+                n_reps=n_reps,
+                exp_dir=exp_dir,
+                on_progress=_on_progress,
+                selected_resource_id=selected_resource_id,
+            )
         ss.results = result.results
         ss.experiment_bpmn_path = result.experiment_bpmn_path
         ss.scenario_json_paths = result.scenario_json_paths
@@ -451,14 +449,14 @@ if ss.results is not None:
         st.markdown("###### Export")
         stats_csv = ranked.to_csv(index=False)
         col_bpmn, col_json, col_stats, col_all = st.columns(4)
-        if json_paths:
-            col_json.download_button(
-                "⬇ Scenarios (JSON zip)",
-                _json_zip(json_paths),
-                file_name="scenarios.zip",
-                mime="application/zip",
-                use_container_width=True,
-            )
+        col_json.download_button(
+            "⬇ Scenarios (JSON zip)",
+            data=_json_zip(json_paths) if json_paths else b"",
+            file_name="scenarios.zip",
+            mime="application/zip",
+            use_container_width=True,
+            disabled=not json_paths,
+        )
         col_stats.download_button(
             "⬇ Statistics (CSV)",
             stats_csv,
@@ -466,22 +464,22 @@ if ss.results is not None:
             mime="text/csv",
             use_container_width=True,
         )
-        if bpmn_exists:
-            col_bpmn.download_button(
-                "⬇ BPMN",
-                Path(bpmn_path).read_bytes(),
-                file_name="model.bpmn",
-                mime="application/xml",
-                use_container_width=True,
-            )
-        if bpmn_exists and json_paths:
-            col_all.download_button(
-                "⬇ All (ZIP)",
-                _group_zip(Path(bpmn_path), json_paths, stats_csv),
-                file_name="export.zip",
-                mime="application/zip",
-                use_container_width=True,
-            )
+        col_bpmn.download_button(
+            "⬇ BPMN",
+            data=Path(bpmn_path).read_bytes() if bpmn_exists else b"",
+            file_name="model.bpmn",
+            mime="application/xml",
+            use_container_width=True,
+            disabled=not bpmn_exists,
+        )
+        col_all.download_button(
+            "⬇ All (ZIP)",
+            data=_group_zip(Path(bpmn_path), json_paths, stats_csv) if (bpmn_exists and json_paths) else b"",
+            file_name="export.zip",
+            mime="application/zip",
+            use_container_width=True,
+            disabled=not (bpmn_exists and json_paths),
+        )
 
     baseline_agg = ss.get("baseline_agg")
     if baseline_agg:
