@@ -57,9 +57,12 @@ def _fake_simulate(scenario: Scenario, replication: int) -> _SimResult:
     n_cases  = int(scenario.values[pfx + "num_cases"])
 
     mean_task_s    = (pct_auto/100)*t_auto + (1 - pct_auto/100)*t_man
-    bot_share      = pct_auto / 100
-    resource_scale = 1.0 / (bot_share * num_bots**0.5 + (1 - bot_share) * num_man**0.5)
-    cycle = BASELINE_CYCLE_H * (mean_task_s / 300) * resource_scale * rng.uniform(0.9, 1.1)
+    # Synthetic stand-in for Prosimos's resource scheduling: more resources reduce
+    # cycle time with diminishing returns (sqrt). No counterpart in the real pipeline —
+    # the actual effect emerges from event-log timestamps produced by the simulator.
+    effective_resources = (pct_auto/100) * num_bots + (1 - pct_auto/100) * num_man
+    resource_scale = 1.0 / effective_resources**0.5
+    cycle = BASELINE_CYCLE_H * (mean_task_s / t_man) * resource_scale * rng.uniform(0.9, 1.1)
     cost  = BASELINE_COST * (1 - 0.6*pct_auto/100) * rng.uniform(0.9, 1.1)
     rework_rate = min(
         (pct_auto/100 * (1 - pct_ok/100) + BASELINE_REWORK_RATE * (1 - pct_auto/100))
