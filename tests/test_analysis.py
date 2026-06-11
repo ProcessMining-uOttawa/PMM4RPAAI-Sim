@@ -23,10 +23,10 @@ from core.constants import (
 
 def _results_df() -> pd.DataFrame:
     return pd.DataFrame([
-        {"scenario_id": "S01", "replication": 0, COL_CYCLE_H: 10.0, COL_COST:  5.0, "f_a": "low",  COL_TOTAL_CYCLE_S: 36000.0, COL_TOTAL_COST:  500.0, COL_REWORK_COUNT: 2.0, COL_REWORK_RATE: 0.10},
-        {"scenario_id": "S01", "replication": 1, COL_CYCLE_H: 12.0, COL_COST:  7.0, "f_a": "low",  COL_TOTAL_CYCLE_S: 43200.0, COL_TOTAL_COST:  700.0, COL_REWORK_COUNT: 4.0, COL_REWORK_RATE: 0.20},
-        {"scenario_id": "S02", "replication": 0, COL_CYCLE_H: 20.0, COL_COST: 10.0, "f_a": "high", COL_TOTAL_CYCLE_S: 72000.0, COL_TOTAL_COST: 1000.0, COL_REWORK_COUNT: 0.0, COL_REWORK_RATE: 0.00},
-        {"scenario_id": "S02", "replication": 1, COL_CYCLE_H: 22.0, COL_COST: 12.0, "f_a": "high", COL_TOTAL_CYCLE_S: 79200.0, COL_TOTAL_COST: 1200.0, COL_REWORK_COUNT: 2.0, COL_REWORK_RATE: 0.10},
+        {"scenario_id": "S01", "replication": 0, COL_CYCLE_H: 10.0, COL_COST:  5.0, "f_a": "low",  COL_TOTAL_CYCLE_S: 36000.0, COL_TOTAL_COST:  500.0, COL_REWORK_COUNT: 2.0, COL_REWORK_RATE: 10.0},
+        {"scenario_id": "S01", "replication": 1, COL_CYCLE_H: 12.0, COL_COST:  7.0, "f_a": "low",  COL_TOTAL_CYCLE_S: 43200.0, COL_TOTAL_COST:  700.0, COL_REWORK_COUNT: 4.0, COL_REWORK_RATE: 20.0},
+        {"scenario_id": "S02", "replication": 0, COL_CYCLE_H: 20.0, COL_COST: 10.0, "f_a": "high", COL_TOTAL_CYCLE_S: 72000.0, COL_TOTAL_COST: 1000.0, COL_REWORK_COUNT: 0.0, COL_REWORK_RATE:  0.0},
+        {"scenario_id": "S02", "replication": 1, COL_CYCLE_H: 22.0, COL_COST: 12.0, "f_a": "high", COL_TOTAL_CYCLE_S: 79200.0, COL_TOTAL_COST: 1200.0, COL_REWORK_COUNT: 2.0, COL_REWORK_RATE: 10.0},
     ])
 
 
@@ -81,14 +81,14 @@ class TestAggregate:
         agg = aggregate(_results_df())
         row = agg[agg["scenario_id"] == "S01"].iloc[0]
         assert row[COL_REWORK_COUNT_MEAN] == pytest.approx(3.0)   # (2 + 4) / 2
-        assert row[COL_REWORK_RATE_MEAN]  == pytest.approx(0.15)  # (0.10 + 0.20) / 2
+        assert row[COL_REWORK_RATE_MEAN]  == pytest.approx(15.0)  # (10.0 + 20.0) / 2
 
     def test_nan_cost_propagates(self):
         df = pd.DataFrame([{
             "scenario_id": "S01", "replication": 0, "f_a": "low",
             COL_CYCLE_H: 10.0, COL_COST: float("nan"),
             COL_TOTAL_CYCLE_S: 36000.0, COL_TOTAL_COST: 500.0,
-            COL_REWORK_COUNT: 2.0, COL_REWORK_RATE: 0.05,
+            COL_REWORK_COUNT: 2.0, COL_REWORK_RATE: 5.0,
         }])
         agg = aggregate(df)
         assert math.isnan(agg[COL_COST_MEAN].iloc[0])
@@ -102,15 +102,15 @@ class TestCompareToBaseline:
         return pd.DataFrame([
             {"scenario_id": "S01", "num_cases": 100,
              COL_TOTAL_CYCLE_S_MEAN: 7200.0, COL_TOTAL_COST_MEAN: 200.0,
-             COL_REWORK_COUNT_MEAN: 5.0, COL_REWORK_RATE_MEAN: 0.10},
+             COL_REWORK_COUNT_MEAN: 5.0, COL_REWORK_RATE_MEAN: 10.0},
             {"scenario_id": "S02", "num_cases": 100,
              COL_TOTAL_CYCLE_S_MEAN: 3600.0, COL_TOTAL_COST_MEAN: 80.0,
-             COL_REWORK_COUNT_MEAN: 2.0, COL_REWORK_RATE_MEAN: 0.04},
+             COL_REWORK_COUNT_MEAN: 2.0, COL_REWORK_RATE_MEAN: 4.0},
         ])
 
     def _baseline(self):
         return {100: {COL_TOTAL_CYCLE_S_MEAN: 3600.0, COL_TOTAL_COST_MEAN: 100.0,
-                      COL_REWORK_COUNT_MEAN: 4.0, COL_REWORK_RATE_MEAN: 0.08}}
+                      COL_REWORK_COUNT_MEAN: 4.0, COL_REWORK_RATE_MEAN: 8.0}}
 
     def test_baseline_row_is_first(self):
         df = compare_to_baseline(self._agg(), self._baseline())
@@ -152,16 +152,16 @@ class TestCompareToBaseline:
         agg = pd.DataFrame([
             {"scenario_id": "S01", "num_cases": 100,
              COL_TOTAL_CYCLE_S_MEAN: 3600.0, COL_TOTAL_COST_MEAN: 100.0,
-             COL_REWORK_COUNT_MEAN: 4.0, COL_REWORK_RATE_MEAN: 0.08},
+             COL_REWORK_COUNT_MEAN: 4.0, COL_REWORK_RATE_MEAN: 8.0},
             {"scenario_id": "S02", "num_cases": 1000,
              COL_TOTAL_CYCLE_S_MEAN: 3600.0, COL_TOTAL_COST_MEAN: 100.0,
-             COL_REWORK_COUNT_MEAN: 4.0, COL_REWORK_RATE_MEAN: 0.08},
+             COL_REWORK_COUNT_MEAN: 4.0, COL_REWORK_RATE_MEAN: 8.0},
         ])
         baseline = {
             100:  {COL_TOTAL_CYCLE_S_MEAN: 3600.0,  COL_TOTAL_COST_MEAN: 100.0,
-                   COL_REWORK_COUNT_MEAN: 4.0, COL_REWORK_RATE_MEAN: 0.08},
+                   COL_REWORK_COUNT_MEAN: 4.0, COL_REWORK_RATE_MEAN: 8.0},
             1000: {COL_TOTAL_CYCLE_S_MEAN: 36000.0, COL_TOTAL_COST_MEAN: 1000.0,
-                   COL_REWORK_COUNT_MEAN: 40.0, COL_REWORK_RATE_MEAN: 0.08},
+                   COL_REWORK_COUNT_MEAN: 40.0, COL_REWORK_RATE_MEAN: 8.0},
         }
         df = compare_to_baseline(agg, baseline)
         baseline_rows = df[df["Scenario"].str.startswith("Baseline")]
@@ -190,7 +190,7 @@ class TestMainEffects:
     def test_rework_rate_metric(self):
         me = main_effects(_results_df(), COL_REWORK_RATE)
         low_mean = me[me["level"] == "low"]["mean"].iloc[0]
-        assert low_mean == pytest.approx(0.15)  # (0.10 + 0.20) / 2
+        assert low_mean == pytest.approx(15.0)  # (10.0 + 20.0) / 2
 
 
 # ── rank ──────────────────────────────────────────────────────────────────────
@@ -264,10 +264,10 @@ class TestRank:
 
     def test_rework_rate_goal(self):
         agg = pd.DataFrame([
-            {"scenario_id": "S01", COL_REWORK_RATE_MEAN: 0.04},
+            {"scenario_id": "S01", COL_REWORK_RATE_MEAN: 4.0},
             {"scenario_id": "S02", COL_REWORK_RATE_MEAN: 0.0},  # zero rework — legitimate best case
         ])
-        ranked = rank(agg, COL_REWORK_RATE_MEAN, 0.05)
+        ranked = rank(agg, COL_REWORK_RATE_MEAN, 5.0)
         by_sid = ranked.set_index("scenario_id")
         assert by_sid.loc["S01", "goal_met"]
         assert by_sid.loc["S02", "goal_met"]

@@ -1,7 +1,6 @@
 """Simulation result analysis: aggregation, Taguchi S/N, ranking, and baseline comparison."""
 from __future__ import annotations
 import math
-from typing import Callable, NamedTuple
 
 import pandas as pd
 
@@ -10,6 +9,7 @@ from .constants import (
     COL_TOTAL_CYCLE_S, COL_TOTAL_COST, COL_TOTAL_CYCLE_S_MEAN, COL_TOTAL_COST_MEAN,
     COL_REWORK_COUNT, COL_REWORK_RATE, COL_REWORK_COUNT_MEAN, COL_REWORK_RATE_MEAN,
 )
+from .metrics import MetricRegistry
 from .transformations import F_NUM_CASES
 
 
@@ -17,23 +17,6 @@ _NON_FACTOR_COLS = frozenset({
     "scenario_id", "replication", COL_CYCLE_H, COL_COST,
     COL_TOTAL_CYCLE_S, COL_TOTAL_COST, COL_REWORK_COUNT, COL_REWORK_RATE,
 })
-
-
-class _MetricSpec(NamedTuple):
-    col:         str
-    label:       str
-    fn:          Callable[[float], float]  # raw value → display unit
-    delta_label: str
-    pct_label:   str | None  # None = no relative-% column (rework rate uses pp instead)
-    dp:          int = 2     # decimal places for displayed value and absolute delta
-
-
-_METRICS: list[_MetricSpec] = [
-    _MetricSpec(COL_TOTAL_CYCLE_S_MEAN, "Total Cycle Time (h)", lambda v: v / 3600, "Δ Time (h)",     "Δ Time (%)"),
-    _MetricSpec(COL_TOTAL_COST_MEAN,    "Total Cost ($)",        lambda v: v,        "Δ Cost ($)",     "Δ Cost (%)"),
-    _MetricSpec(COL_REWORK_COUNT_MEAN,  "Rework Count",          lambda v: v,        "Δ Rework Count", "Δ Rework (%)"),
-    _MetricSpec(COL_REWORK_RATE_MEAN,   "Rework Rate (%)",       lambda v: v * 100,  "Δ Rate (pp)",    None,          1),
-]
 
 
 def aggregate(results: pd.DataFrame) -> pd.DataFrame:
@@ -59,32 +42,34 @@ def _pct_delta(delta: float, baseline: float) -> float:
 def compare_to_baseline(agg: pd.DataFrame, baseline_agg: dict[int, dict]) -> pd.DataFrame:
     """Build a display DataFrame comparing each scenario's totals to its matching baseline.
 
-    baseline_agg maps {n_cases: {COL_TOTAL_CYCLE_S_MEAN, COL_TOTAL_COST_MEAN,
-    COL_REWORK_COUNT_MEAN, COL_REWORK_RATE_MEAN}}.
+    baseline_agg maps {n_cases: {col: value}} for each aggregate MetricSpec column.
     Scenarios are grouped by their cases level; each group is preceded by its baseline row.
     """
+    specs = [m.aggregate for m in MetricRegistry.all() if m.aggregate is not None]
     num_cases_col = next((c for c in agg.columns if c == F_NUM_CASES), None)
     rows: list[dict] = []
     for n_cases in sorted(baseline_agg):
         b = baseline_agg[n_cases]
-        b_vals = {m.col: m.fn(b[m.col]) for m in _METRICS}
+        b_vals = {s.column: s.display_fn(b[s.column]) for s in specs}
         baseline_row: dict = {"Scenario": f"Baseline ({n_cases} cases)", "Cases": n_cases}
-        for m in _METRICS:
-            baseline_row[m.label]       = round(b_vals[m.col], m.dp)
-            baseline_row[m.delta_label] = 0.0
-            if m.pct_label:
-                baseline_row[m.pct_label] = 0.0
+        for s in specs:
+            baseline_row[s.display_name] = round(b_vals[s.column], s.decimal_places)
+            if s.delta_name is not None:
+                baseline_row[s.delta_name] = 0.0
+            if s.pct_change_name is not None:
+                baseline_row[s.pct_change_name] = 0.0
         rows.append(baseline_row)
         group = agg if num_cases_col is None else agg[agg[num_cases_col] == n_cases]
         for _, row in group.iterrows():
-            s_vals = {m.col: m.fn(row[m.col]) for m in _METRICS}
+            s_vals = {s.column: s.display_fn(row[s.column]) for s in specs}
             scenario_row: dict = {"Scenario": row["scenario_id"], "Cases": n_cases}
-            for m in _METRICS:
-                delta = s_vals[m.col] - b_vals[m.col]
-                scenario_row[m.label]       = round(s_vals[m.col], m.dp)
-                scenario_row[m.delta_label] = round(delta, m.dp)
-                if m.pct_label:
-                    scenario_row[m.pct_label] = _pct_delta(delta, b_vals[m.col])
+            for s in specs:
+                delta = s_vals[s.column] - b_vals[s.column]
+                scenario_row[s.display_name] = round(s_vals[s.column], s.decimal_places)
+                if s.delta_name is not None:
+                    scenario_row[s.delta_name] = round(delta, s.decimal_places)
+                if s.pct_change_name is not None:
+                    scenario_row[s.pct_change_name] = _pct_delta(delta, b_vals[s.column])
             rows.append(scenario_row)
     return pd.DataFrame(rows)
 

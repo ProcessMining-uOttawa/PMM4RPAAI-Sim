@@ -1,0 +1,146 @@
+"""Metric definitions — single source of truth for display names, units, and ranking config."""
+from __future__ import annotations
+
+from dataclasses import dataclass
+from enum import Enum
+from typing import Callable, NamedTuple
+
+from .constants import (
+    COL_CYCLE_H_MEAN, COL_COST_MEAN, COL_REWORK_RATE_MEAN,
+    COL_TOTAL_CYCLE_S_MEAN, COL_TOTAL_COST_MEAN, COL_REWORK_COUNT_MEAN,
+)
+
+
+class MetricDirection(str, Enum):
+    SMALLER_IS_BETTER = "smaller_is_better"
+    LARGER_IS_BETTER  = "larger_is_better"
+
+
+def _id(v: float) -> float:
+    return v
+
+
+def _s_to_h(v: float) -> float:
+    return v / 3600
+
+
+class MetricSpec(NamedTuple):
+    column: str
+    display_name: str
+    decimal_places: int
+    direction: MetricDirection = MetricDirection.SMALLER_IS_BETTER
+    display_fn: Callable[[float], float] = _id
+    delta_name: str | None = None
+    pct_change_name: str | None = None
+
+
+@dataclass(frozen=True)
+class PerCaseMetric:
+    mean: MetricSpec
+    std: MetricSpec | None = None  # hidden by default; registered for future toggle
+
+
+@dataclass(frozen=True)
+class Metric:
+    per_case: PerCaseMetric | None
+    aggregate: MetricSpec | None
+    rankable: bool
+
+
+class MetricRegistry:
+    CYCLE_TIME: Metric = Metric(
+        per_case=PerCaseMetric(
+            mean=MetricSpec(
+                column=COL_CYCLE_H_MEAN,
+                display_name="Cycle Time (h/case)",
+                decimal_places=2,
+            ),
+            std=MetricSpec(
+                column="cycle_h_std",
+                display_name="Cycle Time Std Dev (h)",
+                decimal_places=2,
+            ),
+        ),
+        aggregate=MetricSpec(
+            column=COL_TOTAL_CYCLE_S_MEAN,
+            display_name="Total Cycle Time (h)",
+            decimal_places=2,
+            display_fn=_s_to_h,
+            delta_name="Δ Time (h)",
+            pct_change_name="Δ Time (%)",
+        ),
+        rankable=True,
+    )
+
+    COST: Metric = Metric(
+        per_case=PerCaseMetric(
+            mean=MetricSpec(
+                column=COL_COST_MEAN,
+                display_name="Cost ($/case)",
+                decimal_places=2,
+            ),
+            std=MetricSpec(
+                column="cost_std",
+                display_name="Cost Std Dev ($)",
+                decimal_places=2,
+            ),
+        ),
+        aggregate=MetricSpec(
+            column=COL_TOTAL_COST_MEAN,
+            display_name="Total Cost ($)",
+            decimal_places=2,
+            delta_name="Δ Cost ($)",
+            pct_change_name="Δ Cost (%)",
+        ),
+        rankable=True,
+    )
+
+    REWORK_COUNT: Metric = Metric(
+        per_case=None,
+        aggregate=MetricSpec(
+            column=COL_REWORK_COUNT_MEAN,
+            display_name="Rework Count",
+            decimal_places=2,
+            delta_name="Δ Rework Count",
+            pct_change_name="Δ Rework (%)",
+        ),
+        rankable=False,
+    )
+
+    REWORK_RATE: Metric = Metric(
+        per_case=PerCaseMetric(
+            mean=MetricSpec(
+                column=COL_REWORK_RATE_MEAN,
+                display_name="Rework Rate (%)",
+                decimal_places=1,
+            ),
+            std=None,
+        ),
+        aggregate=MetricSpec(
+            column=COL_REWORK_RATE_MEAN,
+            display_name="Rework Rate (%)",
+            decimal_places=1,
+            delta_name="Δ Rate (pp)",
+        ),
+        rankable=True,
+    )
+
+    @classmethod
+    def all(cls) -> list[Metric]:
+        return [cls.CYCLE_TIME, cls.COST, cls.REWORK_COUNT, cls.REWORK_RATE]
+
+    @classmethod
+    def rankable(cls) -> list[Metric]:
+        return [m for m in cls.all() if m.rankable]
+
+    @classmethod
+    def by_column(cls, col: str) -> MetricSpec | None:
+        for m in cls.all():
+            if m.per_case:
+                if m.per_case.mean.column == col:
+                    return m.per_case.mean
+                if m.per_case.std and m.per_case.std.column == col:
+                    return m.per_case.std
+            if m.aggregate and m.aggregate.column == col:
+                return m.aggregate
+        return None

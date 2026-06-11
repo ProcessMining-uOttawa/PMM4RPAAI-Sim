@@ -13,6 +13,7 @@ from core.experiment import build_scenarios
 from core import analysis, demo, orchestrator, preflight
 from core.simulation import runner, store
 from core.constants import COL_CYCLE_H, COL_COST, COL_REWORK_RATE
+from core.metrics import MetricRegistry
 from ui.goals import GOAL_OPTIONS
 from ui.plots import factor_label_map, main_effects_chart
 from ui.widgets import level_input_kwargs
@@ -194,10 +195,15 @@ with st.sidebar:
 
     st.divider()
     st.subheader("Goals")
-    goal_label = st.selectbox("Optimise for", GOAL_OPTIONS)
-    opt = GOAL_OPTIONS[goal_label]
+    goal_metric = st.selectbox(
+        "Optimise for",
+        list(GOAL_OPTIONS.keys()),
+        format_func=lambda m: m.per_case.mean.display_name,
+    )
+    opt = GOAL_OPTIONS[goal_metric]
+    goal_col = goal_metric.per_case.mean.column
     goal_max = st.number_input(
-        "Target ≤", value=opt.default, step=opt.step, key=f"goal_max_{opt.col}"
+        "Target ≤", value=opt.default, step=opt.step, key=f"goal_max_{goal_col}"
     )
 
     st.divider()
@@ -398,8 +404,19 @@ if ss.results is not None:
         if goal_max < 0 or (not opt.allow_zero and goal_max == 0):
             st.error("Target must be a positive number.")
             st.stop()
-        ranked = analysis.rank(agg, opt.col, goal_max * opt.scale)
+        ranked = analysis.rank(agg, goal_col, goal_max)
         ranked.insert(0, "rank", range(1, len(ranked) + 1))
+        _kpi_rename = {}
+        for _m in MetricRegistry.all():
+            if _m.per_case:
+                _kpi_rename[_m.per_case.mean.column] = _m.per_case.mean.display_name
+            if _m.aggregate:
+                _kpi_rename[_m.aggregate.column] = _m.aggregate.display_name
+        _std_cols = [
+            _m.per_case.std.column
+            for _m in MetricRegistry.all()
+            if _m.per_case and _m.per_case.std
+        ]
         st.dataframe(
             ranked.assign(
                 goals=ranked["goal_met"].map({True: "✓ met", False: "✗"})
@@ -427,7 +444,7 @@ if ss.results is not None:
                             use_container_width=True)
         with tab_rework:
             me = analysis.main_effects(ss.results, COL_REWORK_RATE)
-            st.plotly_chart(main_effects_chart(me, label_map, "Rework rate"),
+            st.plotly_chart(main_effects_chart(me, label_map, "Rework rate (%)"),
                             use_container_width=True)
             if me["sn"].isna().any():
                 st.caption(

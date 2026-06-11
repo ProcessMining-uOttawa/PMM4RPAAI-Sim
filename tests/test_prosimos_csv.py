@@ -41,7 +41,7 @@ class TestReworkMetrics:
         # 1 of 2 cases has rework
         df = _df(("C1", ORIG), ("C1", ORIG), ("C2", ORIG))
         r = _rework_metrics(df)
-        assert r[COL_REWORK_RATE] == pytest.approx(0.5)
+        assert r[COL_REWORK_RATE] == pytest.approx(50.0)
 
     def test_standard_rework_three_repeats(self):
         # activity appears 3 times → 2 extra occurrences
@@ -66,7 +66,7 @@ class TestReworkMetrics:
     def test_bot_failure_rate(self):
         df = _df(("C1", BOT), ("C1", ORIG), ("C2", BOT))
         r = _rework_metrics(df, bot_task_name=BOT, original_task_name=ORIG)
-        assert r[COL_REWORK_RATE] == pytest.approx(0.5)  # 1 of 2 cases
+        assert r[COL_REWORK_RATE] == pytest.approx(50.0)  # 1 of 2 cases
 
     def test_bot_success_no_rework(self):
         # bot succeeded; original task never ran
@@ -92,7 +92,7 @@ class TestReworkMetrics:
     def test_combined_rate_all_cases(self):
         df = _df(("C1", BOT), ("C1", ORIG), ("C1", ORIG))
         r = _rework_metrics(df, bot_task_name=BOT, original_task_name=ORIG)
-        assert r[COL_REWORK_RATE] == 1.0
+        assert r[COL_REWORK_RATE] == 100.0
 
     # ── bot params ignored when not provided ─────────────────────────────────
 
@@ -114,4 +114,4 @@ class TestReworkMetrics:
         )
         r = _rework_metrics(df, bot_task_name=BOT, original_task_name=ORIG)
         assert r[COL_REWORK_COUNT] == 2.0
-        assert r[COL_REWORK_RATE]  == pytest.approx(2 / 3)
+        assert r[COL_REWORK_RATE]  == pytest.approx(200 / 3)
