@@ -48,10 +48,10 @@ GW3_NAME = "Human needed"
 GW4_NAME = "Exit"
 
 # ── Sequence flow display labels ──────────────────────────────────────────────
-F_BOT_BRANCH_LABEL   = "bot"
-F_HUMAN_BRANCH_LABEL = "human"
-F_BOT_SUCCESS_LABEL  = "success"
-F_BOT_FAILURE_LABEL  = "failure"
+BOT_BRANCH_LABEL   = "bot"
+HUMAN_BRANCH_LABEL = "human"
+BOT_SUCCESS_LABEL  = "success"
+BOT_FAILURE_LABEL  = "failure"
 
 # ── Taguchi factor IDs ────────────────────────────────────────────────────────
 F_PCT_AUTO             = "pct_auto"
@@ -272,7 +272,7 @@ class XORSplitAutomation(Transformation):
     label = "XOR split: automated / manual with OK-fallback"
 
     # --- parameters ----------------------------------------------------------
-    def parameters(self, target_activity: str,
+    def parameters(self, _target_activity: str,
                    current_duration_s: float | None = None,
                    selected_resource_id: str | None = None,
                    frozen_pool_size: int | None = None) -> list[Parameter]:
@@ -347,11 +347,11 @@ class XORSplitAutomation(Transformation):
         update_flow_target(root, process, out_flow_id, ids.final_join_gate)
 
         # 3. Wire the seven internal flows
-        add_flow_el(root, process, ids.automation_branch, ids.automation_gate, ids.bot_id,          name=F_BOT_BRANCH_LABEL)
-        add_flow_el(root, process, ids.manual_branch,     ids.automation_gate, ids.fallback_merge,  name=F_HUMAN_BRANCH_LABEL)
+        add_flow_el(root, process, ids.automation_branch, ids.automation_gate, ids.bot_id,          name=BOT_BRANCH_LABEL)
+        add_flow_el(root, process, ids.manual_branch,     ids.automation_gate, ids.fallback_merge,  name=HUMAN_BRANCH_LABEL)
         add_flow_el(root, process, ids.bot_output,        ids.bot_id,          ids.bot_result_gate)
-        add_flow_el(root, process, ids.bot_success,       ids.bot_result_gate, ids.final_join_gate, name=F_BOT_SUCCESS_LABEL)
-        add_flow_el(root, process, ids.bot_failure,       ids.bot_result_gate, ids.fallback_merge,  name=F_BOT_FAILURE_LABEL)
+        add_flow_el(root, process, ids.bot_success,       ids.bot_result_gate, ids.final_join_gate, name=BOT_SUCCESS_LABEL)
+        add_flow_el(root, process, ids.bot_failure,       ids.bot_result_gate, ids.fallback_merge,  name=BOT_FAILURE_LABEL)
         add_flow_el(root, process, ids.to_human,          ids.fallback_merge,  T_id)
         add_flow_el(root, process, ids.exit_flow,         ids.final_join_gate, original_next_id)
 
