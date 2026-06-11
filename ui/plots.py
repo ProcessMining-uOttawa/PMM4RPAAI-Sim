@@ -58,6 +58,6 @@ def main_effects_chart(
         margin={"t": 40, "b": 20, "l": 40, "r": 20},
         showlegend=False,
     )
-    fig.update_xaxes(matches=None)
+    fig.update_xaxes(matches=None, showticklabels=True)
     fig.update_yaxes(matches=None, showticklabels=True)
     return fig
