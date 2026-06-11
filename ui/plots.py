@@ -41,6 +41,9 @@ def main_effects_chart(
     """
     df = me.copy()
     df["factor"] = df["factor"].map(label_map).fillna(df["factor"])
+    # Sort by numeric level before string conversion so categorical axis order
+    # follows actual values, not the user's level-1/2/3 assignment order.
+    df = df.sort_values(["factor", "level"])
     df["level"] = df["level"].apply(_level_str)
 
     fig = px.line(
@@ -60,6 +63,13 @@ def main_effects_chart(
         margin={"t": 40, "b": 20, "l": 40, "r": 20},
         showlegend=False,
     )
-    fig.update_xaxes(matches=None, showticklabels=True, title_text="Level")
+    fig.update_xaxes(
+        matches=None,
+        type="category",
+        categoryorder="trace",
+        showticklabels=True,
+        title_text="Level",
+        range=[-0.5, 2.5],
+    )
     fig.update_yaxes(matches=None, showticklabels=True)
     return fig
