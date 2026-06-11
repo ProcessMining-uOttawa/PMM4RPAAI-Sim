@@ -7,6 +7,10 @@ from typing import Callable
 import pandas as pd
 
 from .parameters import Scenario
+from .transformations import (
+    F_PCT_AUTO, F_PCT_OK, F_T_AUTO, F_T_MANUAL,
+    F_NUM_BOTS, F_NUM_MANUAL_RESOURCES, F_NUM_CASES,
+)
 from .constants import (
     COL_CYCLE_H, COL_COST, COL_TOTAL_CYCLE_S, COL_TOTAL_COST,
     COL_REWORK_COUNT, COL_REWORK_RATE,
@@ -46,14 +50,13 @@ def _fake_simulate(scenario: Scenario, replication: int,
     """Synthetic but monotonic: more automation → faster, cheaper, with noise."""
     rng = random.Random(hash((scenario.id, replication)) & 0xffffffff)
 
-    pfx      = scenario.target_activity + "."
-    pct_auto = scenario.values[pfx + "pct_auto"]
-    pct_ok   = scenario.values[pfx + "pct_ok"]
-    t_auto   = scenario.values[pfx + "t_auto"]
-    t_man    = scenario.values[pfx + "t_manual"]
-    num_bots = int(scenario.values[pfx + "num_bots"])
-    num_man  = int(scenario.values[pfx + "num_manual_resources"])
-    n_cases  = int(scenario.values[pfx + "num_cases"])
+    pct_auto = scenario.values[F_PCT_AUTO]
+    pct_ok   = scenario.values[F_PCT_OK]
+    t_auto   = scenario.values[F_T_AUTO]
+    t_man    = scenario.values[F_T_MANUAL]
+    num_bots = int(scenario.values[F_NUM_BOTS])
+    num_man  = int(scenario.values[F_NUM_MANUAL_RESOURCES])
+    n_cases  = int(scenario.values[F_NUM_CASES])
 
     mean_task_s    = (pct_auto/100)*t_auto + (1 - pct_auto/100)*t_man
     # Synthetic stand-in for Prosimos's resource scheduling: more resources reduce

@@ -10,11 +10,7 @@ from core.parameters import Parameter
 
 
 def factor_label_map(params: list[Parameter]) -> dict[str, str]:
-    """Map raw main_effects() factor IDs to human-readable Parameter labels.
-
-    Parameter.id already carries the full column key used by main_effects()
-    (e.g. "Fix Bug.pct_auto"). Returns {"Fix Bug.pct_auto": "Automation rate (%)", ...}.
-    """
+    """Map raw main_effects() factor IDs to human-readable Parameter labels."""
     return {p.id: p.label for p in params}
 
 

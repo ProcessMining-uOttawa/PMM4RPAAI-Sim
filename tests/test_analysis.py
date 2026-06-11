@@ -100,10 +100,10 @@ class TestCompareToBaseline:
 
     def _agg(self):
         return pd.DataFrame([
-            {"scenario_id": "S01", "Act.num_cases": 100,
+            {"scenario_id": "S01", "num_cases": 100,
              COL_TOTAL_CYCLE_S_MEAN: 7200.0, COL_TOTAL_COST_MEAN: 200.0,
              COL_REWORK_COUNT_MEAN: 5.0, COL_REWORK_RATE_MEAN: 0.10},
-            {"scenario_id": "S02", "Act.num_cases": 100,
+            {"scenario_id": "S02", "num_cases": 100,
              COL_TOTAL_CYCLE_S_MEAN: 3600.0, COL_TOTAL_COST_MEAN: 80.0,
              COL_REWORK_COUNT_MEAN: 2.0, COL_REWORK_RATE_MEAN: 0.04},
         ])
@@ -150,10 +150,10 @@ class TestCompareToBaseline:
 
     def test_multiple_levels_produce_multiple_baseline_rows(self):
         agg = pd.DataFrame([
-            {"scenario_id": "S01", "Act.num_cases": 100,
+            {"scenario_id": "S01", "num_cases": 100,
              COL_TOTAL_CYCLE_S_MEAN: 3600.0, COL_TOTAL_COST_MEAN: 100.0,
              COL_REWORK_COUNT_MEAN: 4.0, COL_REWORK_RATE_MEAN: 0.08},
-            {"scenario_id": "S02", "Act.num_cases": 1000,
+            {"scenario_id": "S02", "num_cases": 1000,
              COL_TOTAL_CYCLE_S_MEAN: 3600.0, COL_TOTAL_COST_MEAN: 100.0,
              COL_REWORK_COUNT_MEAN: 4.0, COL_REWORK_RATE_MEAN: 0.08},
         ])

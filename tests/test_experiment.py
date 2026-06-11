@@ -85,13 +85,13 @@ class TestBuildScenarios:
 class TestFromTaguchiValues:
 
     _FULL = {
-        "Act.pct_auto":            75.0,
-        "Act.pct_ok":              90.0,
-        "Act.t_auto":              60.0,
-        "Act.t_manual":          1800.0,
-        "Act.num_bots":               2,
-        "Act.num_manual_resources":   3,
-        "Act.num_cases":            500,
+        "pct_auto":            75.0,
+        "pct_ok":              90.0,
+        "t_auto":              60.0,
+        "t_manual":          1800.0,
+        "num_bots":               2,
+        "num_manual_resources":   3,
+        "num_cases":            500,
     }
 
     def test_full_values_mapped_correctly(self):
@@ -114,7 +114,7 @@ class TestFromTaguchiValues:
 
     def test_num_bots_and_num_manual_keys_used(self):
         s = AutomationScenario.from_taguchi_values(
-            {"Act.num_bots": 3, "Act.num_manual_resources": 5}
+            {"num_bots": 3, "num_manual_resources": 5}
         )
         assert s.num_bots == 3
         assert s.num_manual_resources == 5
@@ -136,10 +136,10 @@ class TestDemoMonotonicity:
             s = Scenario(
                 "S01",
                 {
-                    "Act.pct_auto": 50, "Act.pct_ok": 90,
-                    "Act.t_auto": 30, "Act.t_manual": 300,
-                    "Act.num_bots": num_bots, "Act.num_manual_resources": num_man,
-                    "Act.num_cases": 500,
+                    "pct_auto": 50, "pct_ok": 90,
+                    "t_auto": 30, "t_manual": 300,
+                    "num_bots": num_bots, "num_manual_resources": num_man,
+                    "num_cases": 500,
                 },
                 "t_id", "Act",
             )

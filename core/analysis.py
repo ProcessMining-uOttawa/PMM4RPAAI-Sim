@@ -10,6 +10,7 @@ from .constants import (
     COL_TOTAL_CYCLE_S, COL_TOTAL_COST, COL_TOTAL_CYCLE_S_MEAN, COL_TOTAL_COST_MEAN,
     COL_REWORK_COUNT, COL_REWORK_RATE, COL_REWORK_COUNT_MEAN, COL_REWORK_RATE_MEAN,
 )
+from .transformations import F_NUM_CASES
 
 
 _NON_FACTOR_COLS = frozenset({
@@ -62,7 +63,7 @@ def compare_to_baseline(agg: pd.DataFrame, baseline_agg: dict[int, dict]) -> pd.
     COL_REWORK_COUNT_MEAN, COL_REWORK_RATE_MEAN}}.
     Scenarios are grouped by their cases level; each group is preceded by its baseline row.
     """
-    num_cases_col = next((c for c in agg.columns if c.endswith(".num_cases")), None)
+    num_cases_col = next((c for c in agg.columns if c == F_NUM_CASES), None)
     rows: list[dict] = []
     for n_cases in sorted(baseline_agg):
         b = baseline_agg[n_cases]
