@@ -406,22 +406,24 @@ if ss.results is not None:
             st.stop()
         ranked = analysis.rank(agg, goal_col, goal_max)
         ranked.insert(0, "rank", range(1, len(ranked) + 1))
-        _kpi_rename = {}
+        _kpi_rename = {"scenario_id": "Scenario"}
+        _std_cols = []
+        _agg_transforms: dict[str, object] = {}
         for _m in MetricRegistry.all():
             if _m.per_case:
                 _kpi_rename[_m.per_case.mean.column] = _m.per_case.mean.display_name
+                if _m.per_case.std:
+                    _std_cols.append(_m.per_case.std.column)
             if _m.aggregate:
                 _kpi_rename[_m.aggregate.column] = _m.aggregate.display_name
-        _std_cols = [
-            _m.per_case.std.column
-            for _m in MetricRegistry.all()
-            if _m.per_case and _m.per_case.std
-        ]
+                _agg_transforms[_m.aggregate.column] = _m.aggregate.display_fn
         st.dataframe(
             ranked.assign(
-                goals=ranked["goal_met"].map({True: "✓ met", False: "✗"})
-            ).drop(columns=["goal_met", "score"])
-             .rename(columns={p.id: p.label for p in params}),
+                goals=ranked["goal_met"].map({True: "✓ met", False: "✗"}),
+                **{col: ranked[col].map(fn)  # type: ignore[arg-type]
+                   for col, fn in _agg_transforms.items() if col in ranked.columns},
+            ).drop(columns=["goal_met", "score"] + _std_cols, errors="ignore")
+             .rename(columns={**_kpi_rename, **{p.id: p.label for p in params}}),
             use_container_width=True,
             hide_index=True,
         )
@@ -433,24 +435,28 @@ if ss.results is not None:
 
         st.markdown("###### Main effects (smaller is better)")
         label_map = factor_label_map(params)
-        tab_cycle, tab_cost, tab_rework = st.tabs(["Cycle time", "Cost", "Rework rate"])
-        with tab_cycle:
-            me = analysis.main_effects(ss.results, COL_CYCLE_H)
-            st.plotly_chart(main_effects_chart(me, label_map, "Cycle time (h)"),
-                            use_container_width=True)
-        with tab_cost:
-            me = analysis.main_effects(ss.results, COL_COST)
-            st.plotly_chart(main_effects_chart(me, label_map, "Cost ($/case)"),
-                            use_container_width=True)
-        with tab_rework:
-            me = analysis.main_effects(ss.results, COL_REWORK_RATE)
-            st.plotly_chart(main_effects_chart(me, label_map, "Rework rate (%)"),
-                            use_container_width=True)
-            if me["sn"].isna().any():
-                st.caption(
-                    "S/N is NaN for factor levels where all replications have zero "
-                    "rework rate — the log formula requires positive values."
+        _me_metrics = [
+            (MetricRegistry.CYCLE_TIME, COL_CYCLE_H),
+            (MetricRegistry.COST,       COL_COST),
+            (MetricRegistry.REWORK_RATE, COL_REWORK_RATE),
+        ]
+        tab_cycle, tab_cost, tab_rework = st.tabs(
+            [m.per_case.mean.display_name for m, _ in _me_metrics]
+        )
+        for _tab, (_metric, _col) in zip(
+            [tab_cycle, tab_cost, tab_rework], _me_metrics
+        ):
+            with _tab:
+                me = analysis.main_effects(ss.results, _col)
+                st.plotly_chart(
+                    main_effects_chart(me, label_map, _metric.per_case.mean.display_name),
+                    use_container_width=True,
                 )
+                if _metric is MetricRegistry.REWORK_RATE and me["sn"].isna().any():
+                    st.caption(
+                        "S/N is NaN for factor levels where all replications have zero "
+                        "rework rate — the log formula requires positive values."
+                    )
 
         bpmn_path = ss.get("experiment_bpmn_path")
         bpmn_exists = bpmn_path and Path(bpmn_path).exists()
