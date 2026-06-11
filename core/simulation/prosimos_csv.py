@@ -111,7 +111,7 @@ def _rework_metrics(df: pd.DataFrame,
     per_case = per_case.reindex(all_cases, fill_value=0.0)
     return {
         COL_REWORK_COUNT: float(per_case.sum()),
-        COL_REWORK_RATE:  float((per_case > 0).mean()),
+        COL_REWORK_RATE:  float((per_case > 0).mean()) * 100.0,
     }
 
 

@@ -70,7 +70,7 @@ class TestDemoRunExperiment:
             assert (df[col] > 0).all(), f"{col} should be positive"
         assert (df[COL_REWORK_COUNT] >= 0).all()
         assert (df[COL_REWORK_RATE] >= 0).all()
-        assert (df[COL_REWORK_RATE] <= 1.0).all()
+        assert (df[COL_REWORK_RATE] <= 100.0).all()
 
     def test_nonzero_bot_cost_increases_cost(self):
         scenarios = _scenarios()

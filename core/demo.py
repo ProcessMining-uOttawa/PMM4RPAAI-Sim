@@ -28,7 +28,7 @@ DEMO_ACTIVITIES = [
 ]
 BASELINE_CYCLE_H = 31.2
 BASELINE_COST = 48.0
-BASELINE_REWORK_RATE = 0.05
+BASELINE_REWORK_RATE = 5.0  # percentage (0–100), matches COL_REWORK_RATE storage unit
 
 
 @dataclass
@@ -71,9 +71,9 @@ def _fake_simulate(scenario: Scenario, replication: int,
     bot_cost_per_case = (pct_auto/100) * (t_auto / 3600) * bot_cost_per_hour
     cost = human_cost + bot_cost_per_case
     rework_rate = min(
-        (pct_auto/100 * (1 - pct_ok/100) + BASELINE_REWORK_RATE * (1 - pct_auto/100))
-        * rng.uniform(0.9, 1.1),
-        1.0,
+        (pct_auto/100 * (1 - pct_ok/100) + BASELINE_REWORK_RATE/100 * (1 - pct_auto/100))
+        * 100.0 * rng.uniform(0.9, 1.1),
+        100.0,
     )
 
     return _SimResult(
@@ -81,8 +81,8 @@ def _fake_simulate(scenario: Scenario, replication: int,
         cost=round(cost, 2),
         total_cycle_s=round(cycle * 3600 * n_cases, 2),
         total_cost=round(cost * n_cases, 2),
-        rework_count=round(rework_rate * n_cases, 2),
-        rework_rate=round(rework_rate, 4),
+        rework_count=round(rework_rate / 100 * n_cases, 2),
+        rework_rate=round(rework_rate, 2),
     )
 
 
