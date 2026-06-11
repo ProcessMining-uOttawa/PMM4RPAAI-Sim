@@ -14,6 +14,7 @@ from core import analysis, demo, orchestrator, preflight
 from core.simulation import runner, store
 from core.constants import COL_CYCLE_H, COL_COST, COL_REWORK_RATE
 from ui.goals import GOAL_OPTIONS
+from ui.plots import factor_label_map, main_effects_chart
 from ui.widgets import level_input_kwargs
 from core.bpmn.utils import (
     find_task_by_name,
@@ -413,16 +414,20 @@ if ss.results is not None:
             )
 
         st.markdown("###### Main effects (smaller is better)")
+        label_map = factor_label_map(params)
         tab_cycle, tab_cost, tab_rework = st.tabs(["Cycle time", "Cost", "Rework rate"])
         with tab_cycle:
             me = analysis.main_effects(ss.results, COL_CYCLE_H)
-            st.dataframe(me, use_container_width=True, hide_index=True)
+            st.plotly_chart(main_effects_chart(me, label_map, "Cycle time (h)"),
+                            use_container_width=True)
         with tab_cost:
             me = analysis.main_effects(ss.results, COL_COST)
-            st.dataframe(me, use_container_width=True, hide_index=True)
+            st.plotly_chart(main_effects_chart(me, label_map, "Cost ($/case)"),
+                            use_container_width=True)
         with tab_rework:
             me = analysis.main_effects(ss.results, COL_REWORK_RATE)
-            st.dataframe(me, use_container_width=True, hide_index=True)
+            st.plotly_chart(main_effects_chart(me, label_map, "Rework rate"),
+                            use_container_width=True)
             if me["sn"].isna().any():
                 st.caption(
                     "S/N is NaN for factor levels where all replications have zero "
