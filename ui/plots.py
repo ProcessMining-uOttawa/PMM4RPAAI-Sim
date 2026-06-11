@@ -1,4 +1,5 @@
 """Plotly chart helpers for Panel 4 main-effects display."""
+
 from __future__ import annotations
 
 import pandas as pd
@@ -48,6 +49,7 @@ def main_effects_chart(
         y="mean",
         facet_col="factor",
         facet_col_wrap=4,
+        facet_row_spacing=0.2,
         markers=True,
         labels={"mean": metric_label, "level": "Level"},
     )
@@ -58,6 +60,6 @@ def main_effects_chart(
         margin={"t": 40, "b": 20, "l": 40, "r": 20},
         showlegend=False,
     )
-    fig.update_xaxes(matches=None, showticklabels=True)
+    fig.update_xaxes(matches=None, showticklabels=True, title_text="Level")
     fig.update_yaxes(matches=None, showticklabels=True)
     return fig
