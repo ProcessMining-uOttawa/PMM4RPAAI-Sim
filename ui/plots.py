@@ -46,18 +46,19 @@ def main_effects_chart(
     df = df.sort_values(["factor", "level"])
     df["level"] = df["level"].apply(_level_str)
 
+    wrap = 4
     fig = px.line(
         df,
         x="level",
         y="mean",
         facet_col="factor",
-        facet_col_wrap=4,
+        facet_col_wrap=wrap,
         facet_row_spacing=0.2,
         markers=True,
         labels={"mean": metric_label, "level": "Level"},
     )
     fig.for_each_annotation(lambda a: a.update(text=a.text.split("=")[-1]))
-    n_rows = (df["factor"].nunique() + 3) // 4
+    n_rows = (df["factor"].nunique() + wrap - 1) // wrap
     fig.update_layout(
         height=n_rows * 280,
         margin={"t": 40, "b": 20, "l": 40, "r": 20},
@@ -71,5 +72,5 @@ def main_effects_chart(
         title_text="Level",
         range=[-0.5, 2.5],
     )
-    fig.update_yaxes(matches=None, showticklabels=True)
+    fig.update_yaxes(matches=None)
     return fig
