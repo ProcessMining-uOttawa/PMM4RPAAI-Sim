@@ -420,12 +420,8 @@ if ss.results is not None:
         st.dataframe(
             ranked.assign(
                 goals=ranked["goal_met"].map({True: "✓ met", False: "✗"})
-            ).drop(columns=["goal_met", "score", *_std_cols], errors="ignore")
-             .rename(columns={
-                 "scenario_id": "Scenario",
-                 **{p.id: p.label for p in params},
-                 **_kpi_rename,
-             }),
+            ).drop(columns=["goal_met", "score"])
+             .rename(columns={p.id: p.label for p in params}),
             use_container_width=True,
             hide_index=True,
         )
