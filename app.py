@@ -406,22 +406,20 @@ if ss.results is not None:
             st.stop()
         ranked = analysis.rank(agg, goal_col, goal_max)
         ranked.insert(0, "rank", range(1, len(ranked) + 1))
-        _kpi_rename = {}
+        _kpi_rename = {"scenario_id": "Scenario"}
+        _std_cols = []
         for _m in MetricRegistry.all():
             if _m.per_case:
                 _kpi_rename[_m.per_case.mean.column] = _m.per_case.mean.display_name
+                if _m.per_case.std:
+                    _std_cols.append(_m.per_case.std.column)
             if _m.aggregate:
                 _kpi_rename[_m.aggregate.column] = _m.aggregate.display_name
-        _std_cols = [
-            _m.per_case.std.column
-            for _m in MetricRegistry.all()
-            if _m.per_case and _m.per_case.std
-        ]
         st.dataframe(
             ranked.assign(
                 goals=ranked["goal_met"].map({True: "✓ met", False: "✗"})
-            ).drop(columns=["goal_met", "score"])
-             .rename(columns={p.id: p.label for p in params}),
+            ).drop(columns=["goal_met", "score"] + _std_cols, errors="ignore")
+             .rename(columns={**_kpi_rename, **{p.id: p.label for p in params}}),
             use_container_width=True,
             hide_index=True,
         )
