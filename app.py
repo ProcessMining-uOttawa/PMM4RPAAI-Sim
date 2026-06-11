@@ -403,7 +403,8 @@ if ss.results is not None:
         st.dataframe(
             ranked.assign(
                 goals=ranked["goal_met"].map({True: "✓ met", False: "✗"})
-            ).drop(columns=["goal_met", "score"]),
+            ).drop(columns=["goal_met", "score"])
+             .rename(columns={p.id: p.label for p in params}),
             use_container_width=True,
             hide_index=True,
         )
