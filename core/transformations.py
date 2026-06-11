@@ -53,6 +53,15 @@ F_HUMAN_BRANCH_LABEL = "human"
 F_BOT_SUCCESS_LABEL  = "success"
 F_BOT_FAILURE_LABEL  = "failure"
 
+# ── Taguchi factor IDs ────────────────────────────────────────────────────────
+F_PCT_AUTO             = "pct_auto"
+F_PCT_OK               = "pct_ok"
+F_T_AUTO               = "t_auto"
+F_T_MANUAL             = "t_manual"
+F_NUM_BOTS             = "num_bots"
+F_NUM_MANUAL_RESOURCES = "num_manual_resources"
+F_NUM_CASES            = "num_cases"
+
 # ── XOR split automation: Taguchi parameter defaults ──────────────────────────
 DEFAULT_MANUAL_DURATION_S = 1800.0
 PCT_AUTO_LEVELS    = [25, 50, 75]
@@ -105,20 +114,14 @@ class AutomationScenario:
     def from_taguchi_values(cls, values: dict,
                             selected_resource_id: str | None = None) -> "AutomationScenario":
         """Bridge: construct AutomationScenario from a Taguchi-generated values dict."""
-        def _v(suffix: str, default: float) -> float:
-            for k, v in values.items():
-                if k.endswith("." + suffix):
-                    return float(v)
-            return default
-
         return cls(
-            automation_rate=_v("pct_auto", 50.0) / 100.0,
-            bot_failure_rate=1.0 - _v("pct_ok", 90.0) / 100.0,
-            bot_execution_time=_v("t_auto", 60.0),
-            manual_execution_time=_v("t_manual", 1800.0),
-            num_bots=int(_v("num_bots", 1.0)),
-            num_manual_resources=int(_v("num_manual_resources", 1.0)),
-            num_cases=int(_v("num_cases", 100.0)),
+            automation_rate=float(values.get(F_PCT_AUTO, 50.0)) / 100.0,
+            bot_failure_rate=1.0 - float(values.get(F_PCT_OK, 90.0)) / 100.0,
+            bot_execution_time=float(values.get(F_T_AUTO, 60.0)),
+            manual_execution_time=float(values.get(F_T_MANUAL, 1800.0)),
+            num_bots=int(float(values.get(F_NUM_BOTS, 1.0))),
+            num_manual_resources=int(float(values.get(F_NUM_MANUAL_RESOURCES, 1.0))),
+            num_cases=int(float(values.get(F_NUM_CASES, 100.0))),
             selected_resource_id=selected_resource_id,
         )
 
@@ -274,25 +277,24 @@ class XORSplitAutomation(Transformation):
                    selected_resource_id: str | None = None,
                    frozen_pool_size: int | None = None) -> list[Parameter]:
         t = float(current_duration_s) if current_duration_s else DEFAULT_MANUAL_DURATION_S
-        a = target_activity
         pool_frozen = frozen_pool_size is not None
         pool_levels = [frozen_pool_size] * 3 if pool_frozen else list(NUM_MANUAL_LEVELS)
         return [
-            Parameter(f"{a}.pct_auto", f"{a}: % automated (Auto)",
+            Parameter(F_PCT_AUTO,             "% automated (Auto)",
                       levels=list(PCT_AUTO_LEVELS), kind="percentage"),
-            Parameter(f"{a}.pct_ok",   f"{a}: % auto-success (OK)",
+            Parameter(F_PCT_OK,               "% auto-success (OK)",
                       levels=list(PCT_OK_LEVELS), kind="percentage"),
-            Parameter(f"{a}.t_auto",   f"{a}: Auto-Time mean (s)",
+            Parameter(F_T_AUTO,               "Auto-Time mean (s)",
                       levels=[round(t * f, 1) for f in T_AUTO_FRACTIONS],
                       kind="duration_s"),
-            Parameter(f"{a}.t_manual", f"{a}: Non-auto-Time mean (s) [from Simod]",
+            Parameter(F_T_MANUAL,             "Non-auto-Time mean (s) [from Simod]",
                       levels=[round(t * f, 1) for f in T_MANUAL_FACTORS],
                       kind="duration_s"),
-            Parameter(f"{a}.num_bots", "Bot pool size",
+            Parameter(F_NUM_BOTS,             "Bot pool size",
                       levels=list(NUM_BOTS_LEVELS), kind="categorical"),
-            Parameter(f"{a}.num_manual_resources", "Human pool size",
+            Parameter(F_NUM_MANUAL_RESOURCES, "Human pool size",
                       levels=pool_levels, kind="categorical", frozen=pool_frozen),
-            Parameter(f"{a}.num_cases", "Cases per replication",
+            Parameter(F_NUM_CASES,            "Cases per replication",
                       levels=list(NUM_CASES_LEVELS), kind="categorical"),
         ]
 
