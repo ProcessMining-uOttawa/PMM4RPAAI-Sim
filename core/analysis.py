@@ -10,7 +10,7 @@ from .constants import (
     COL_REWORK_COUNT, COL_REWORK_RATE, COL_REWORK_COUNT_MEAN, COL_REWORK_RATE_MEAN,
 )
 from .metrics import MetricRegistry
-from .transformations import F_NUM_CASES
+from .constants import F_NUM_CASES
 
 
 _NON_FACTOR_COLS = frozenset({

@@ -25,3 +25,12 @@ COL_REWORK_RATE_MEAN  = "rework_rate_mean"
 # ── Prosimos JSON schema: top-level section keys ──────────────────────────────
 KEY_RESOURCE_PROFILES = "resource_profiles"
 KEY_TASK_RESOURCE_DISTRIBUTION = "task_resource_distribution"
+
+# ── Taguchi factor IDs (bare column names used in Scenario.values dicts) ──────
+F_PCT_AUTO             = "pct_auto"
+F_PCT_OK               = "pct_ok"
+F_T_AUTO               = "t_auto"
+F_T_MANUAL             = "t_manual"
+F_NUM_BOTS             = "num_bots"
+F_NUM_MANUAL_RESOURCES = "num_manual_resources"
+F_NUM_CASES            = "num_cases"

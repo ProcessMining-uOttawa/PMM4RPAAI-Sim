@@ -8,7 +8,11 @@ from dataclasses import dataclass
 from pathlib import Path
 
 from .parameters import Parameter, ScenarioParams
-from .constants import KEY_TASK_RESOURCE_DISTRIBUTION
+from .constants import (
+    KEY_TASK_RESOURCE_DISTRIBUTION,
+    F_PCT_AUTO, F_PCT_OK, F_T_AUTO, F_T_MANUAL,
+    F_NUM_BOTS, F_NUM_MANUAL_RESOURCES, F_NUM_CASES,
+)
 from .simulation.prosimos_edit import (
     set_uniform, set_fixed, set_resource_amount,
     ensure_calendar, upsert_resource_in_profile,
@@ -51,15 +55,6 @@ BOT_BRANCH_LABEL   = "bot"
 HUMAN_BRANCH_LABEL = "human"
 BOT_SUCCESS_LABEL  = "success"
 BOT_FAILURE_LABEL  = "failure"
-
-# ── Taguchi factor IDs ────────────────────────────────────────────────────────
-F_PCT_AUTO             = "pct_auto"
-F_PCT_OK               = "pct_ok"
-F_T_AUTO               = "t_auto"
-F_T_MANUAL             = "t_manual"
-F_NUM_BOTS             = "num_bots"
-F_NUM_MANUAL_RESOURCES = "num_manual_resources"
-F_NUM_CASES            = "num_cases"
 
 # ── XOR split automation: Taguchi parameter defaults ──────────────────────────
 DEFAULT_MANUAL_DURATION_S = 1800.0

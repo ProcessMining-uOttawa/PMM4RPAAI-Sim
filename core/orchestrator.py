@@ -20,6 +20,7 @@ from .constants import (
     COL_REWORK_RATE,
     COL_REWORK_COUNT_MEAN,
     COL_REWORK_RATE_MEAN,
+    F_NUM_CASES,
 )
 from .parameters import Scenario
 from .transformations import AutomationParams, Transformation
@@ -54,9 +55,7 @@ def run_experiment(
         bpmn_path, json_path, target, exp_dir, bot_cost_per_hour=bot_cost_per_hour
     )
     experiment_bpmn_path = bpmn_tr.bpmn_path
-    cases_levels = sorted(
-        {AutomationParams.from_taguchi_values(s.values).num_cases for s in scenarios}
-    )
+    cases_levels = sorted({int(s.values[F_NUM_CASES]) for s in scenarios})
 
     # Pre-generate all scenario JSONs sequentially — XML/JSON mutation is not
     # thread-safe and must complete before workers read the output files.
