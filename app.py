@@ -1,10 +1,8 @@
 """Streamlit dashboard — Mockup B layout."""
 
 from __future__ import annotations
-import io
 import json
 import xml.etree.ElementTree as ET
-import zipfile
 import streamlit as st
 
 from pathlib import Path
@@ -27,24 +25,6 @@ from core.bpmn.utils import (
 st.set_page_config(
     page_title="Automation What-If Simulator", page_icon="⚙", layout="wide"
 )
-
-
-def _json_zip(json_paths: dict) -> bytes:
-    buf = io.BytesIO()
-    with zipfile.ZipFile(buf, "w", zipfile.ZIP_DEFLATED) as z:
-        for sid, p in sorted(json_paths.items()):
-            z.writestr(f"scenarios/{sid}_params.json", p.read_text())
-    return buf.getvalue()
-
-
-def _group_zip(bpmn_path: Path, json_paths: dict, stats_csv: str) -> bytes:
-    buf = io.BytesIO()
-    with zipfile.ZipFile(buf, "w", zipfile.ZIP_DEFLATED) as z:
-        z.write(str(bpmn_path), arcname="model.bpmn")
-        z.writestr("statistics.csv", stats_csv)
-        for sid, p in sorted(json_paths.items()):
-            z.writestr(f"scenarios/{sid}_params.json", p.read_text())
-    return buf.getvalue()
 
 
 # --- session state defaults --------------------------------------------------
@@ -476,7 +456,7 @@ if ss.results is not None:
         col_bpmn, col_json, col_stats, col_all = st.columns(4)
         col_json.download_button(
             "⬇ Scenarios (JSON zip)",
-            data=_json_zip(json_paths) if json_paths else b"",
+            data=store.json_zip(json_paths),
             file_name="scenarios.zip",
             mime="application/zip",
             use_container_width=True,
@@ -499,7 +479,7 @@ if ss.results is not None:
         )
         col_all.download_button(
             "⬇ All (ZIP)",
-            data=_group_zip(Path(bpmn_path), json_paths, stats_csv) if (bpmn_exists and json_paths) else b"",
+            data=store.group_zip(Path(bpmn_path), json_paths, stats_csv) if (bpmn_exists and json_paths) else b"",
             file_name="export.zip",
             mime="application/zip",
             use_container_width=True,

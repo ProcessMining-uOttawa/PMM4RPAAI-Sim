@@ -1,8 +1,10 @@
 """On-disk experiment store. Each experiment is a folder; status via files."""
 from __future__ import annotations
+import io
 import json
 import time
 import uuid
+import zipfile
 from pathlib import Path
 
 ROOT = Path("runs")
@@ -64,3 +66,27 @@ def baseline_stats(exp: Path, replication: int, n_cases: int) -> Path:
 
 def baseline_subprocess_log(exp: Path, replication: int, n_cases: int) -> Path:
     return _rep_path(baseline_dir(exp, n_cases), replication, "prosimos.log")
+
+
+# ── Export packaging ──────────────────────────────────────────────────────────
+
+def json_zip(json_paths: dict[str, Path]) -> bytes:
+    """Pack scenario params.json files into a ZIP archive. Returns b"" if empty."""
+    if not json_paths:
+        return b""
+    buf = io.BytesIO()
+    with zipfile.ZipFile(buf, "w", zipfile.ZIP_DEFLATED) as z:
+        for sid, p in sorted(json_paths.items()):
+            z.writestr(f"scenarios/{sid}_params.json", p.read_text())
+    return buf.getvalue()
+
+
+def group_zip(bpmn_path: Path, json_paths: dict[str, Path], stats_csv: str) -> bytes:
+    """Pack BPMN, scenario params, and statistics CSV into a single ZIP archive."""
+    buf = io.BytesIO()
+    with zipfile.ZipFile(buf, "w", zipfile.ZIP_DEFLATED) as z:
+        z.write(str(bpmn_path), arcname="model.bpmn")
+        z.writestr("statistics.csv", stats_csv)
+        for sid, p in sorted(json_paths.items()):
+            z.writestr(f"scenarios/{sid}_params.json", p.read_text())
+    return buf.getvalue()
