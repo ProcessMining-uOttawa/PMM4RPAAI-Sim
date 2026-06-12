@@ -7,7 +7,7 @@ from typing import Callable
 import pandas as pd
 
 from .parameters import Scenario
-from .transformations import (
+from .constants import (
     F_PCT_AUTO, F_PCT_OK, F_T_AUTO, F_T_MANUAL,
     F_NUM_BOTS, F_NUM_MANUAL_RESOURCES, F_NUM_CASES,
 )

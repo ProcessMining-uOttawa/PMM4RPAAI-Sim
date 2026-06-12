@@ -7,12 +7,16 @@ import pytest
 from core.transformations import (
     _make_ids,
     BOT_CALENDAR_ID, BOT_PROFILE_ID,
+    AutomationParams, BpmnTransformResult,
 )
 from core.simulation.prosimos_edit import KEY_RESOURCE_CALENDARS, KEY_GATEWAY_BRANCHING_PROBS
-from core.transformations import AutomationParams
 from core.bpmn.utils import resource_pool_size
 from core.bpmn import BPMN_NS
-from core.constants import KEY_RESOURCE_PROFILES, KEY_TASK_RESOURCE_DISTRIBUTION
+from core.constants import (
+    KEY_RESOURCE_PROFILES, KEY_TASK_RESOURCE_DISTRIBUTION,
+    F_PCT_AUTO, F_PCT_OK, F_T_AUTO, F_T_MANUAL,
+    F_NUM_BOTS, F_NUM_MANUAL_RESOURCES, F_NUM_CASES,
+)
 
 
 # ── Multi-flow BPMN fixtures (no DI section needed — error raised before DI work) ─
@@ -316,6 +320,51 @@ class TestAutomationParamsValidation:
     def test_num_cases_negative_raises(self):
         with pytest.raises(ValueError, match="num_cases"):
             self._make(num_cases=-1)
+
+
+# ── TestParamsFromValues ──────────────────────────────────────────────────────
+
+_VALUES = {
+    F_PCT_AUTO: 50, F_PCT_OK: 90, F_T_AUTO: 60.0, F_T_MANUAL: 1800.0,
+    F_NUM_BOTS: 2, F_NUM_MANUAL_RESOURCES: 3, F_NUM_CASES: 500,
+}
+
+
+class TestParamsFromValues:
+
+    @pytest.fixture
+    def bpmn_result(self, pattern, bpmn_file, params_file, tmp_path):
+        bpmn_out, ids = pattern.apply_pattern(bpmn_file, "Test Task", tmp_path / "out")
+        template = pattern.build_scenario_template(params_file, ids)
+        return BpmnTransformResult(
+            bpmn_path=bpmn_out, scenario_template=template, ids=ids,
+            selected_resource_id="res_human_1",
+        )
+
+    def test_returns_automation_params(self, pattern, bpmn_result):
+        params = pattern.params_from_values(_VALUES, bpmn_result)
+        assert isinstance(params, AutomationParams)
+
+    def test_values_mapped_correctly(self, pattern, bpmn_result):
+        params = pattern.params_from_values(_VALUES, bpmn_result)
+        assert params.automation_rate == pytest.approx(0.50)
+        assert params.bot_failure_rate == pytest.approx(0.10)
+        assert params.bot_execution_time == pytest.approx(60.0)
+        assert params.num_cases == 500
+
+    def test_selected_resource_id_propagated(self, pattern, bpmn_result):
+        params = pattern.params_from_values(_VALUES, bpmn_result)
+        assert params.selected_resource_id == "res_human_1"
+
+    def test_none_selected_resource_propagated(self, pattern, bpmn_file, params_file, tmp_path):
+        bpmn_out, ids = pattern.apply_pattern(bpmn_file, "Test Task", tmp_path / "out2")
+        template = pattern.build_scenario_template(params_file, ids)
+        result_none = BpmnTransformResult(
+            bpmn_path=bpmn_out, scenario_template=template, ids=ids,
+            selected_resource_id=None,
+        )
+        params = pattern.params_from_values(_VALUES, result_none)
+        assert params.selected_resource_id is None
 
 
 # ── Helpers used by multiple test classes ─────────────────────────────────────

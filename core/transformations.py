@@ -8,7 +8,11 @@ from dataclasses import dataclass
 from pathlib import Path
 
 from .parameters import Parameter, ScenarioParams
-from .constants import KEY_TASK_RESOURCE_DISTRIBUTION
+from .constants import (
+    KEY_TASK_RESOURCE_DISTRIBUTION,
+    F_PCT_AUTO, F_PCT_OK, F_T_AUTO, F_T_MANUAL,
+    F_NUM_BOTS, F_NUM_MANUAL_RESOURCES, F_NUM_CASES,
+)
 from .simulation.prosimos_edit import (
     set_uniform, set_fixed, set_resource_amount,
     ensure_calendar, upsert_resource_in_profile,
@@ -51,15 +55,6 @@ BOT_BRANCH_LABEL   = "bot"
 HUMAN_BRANCH_LABEL = "human"
 BOT_SUCCESS_LABEL  = "success"
 BOT_FAILURE_LABEL  = "failure"
-
-# ── Taguchi factor IDs ────────────────────────────────────────────────────────
-F_PCT_AUTO             = "pct_auto"
-F_PCT_OK               = "pct_ok"
-F_T_AUTO               = "t_auto"
-F_T_MANUAL             = "t_manual"
-F_NUM_BOTS             = "num_bots"
-F_NUM_MANUAL_RESOURCES = "num_manual_resources"
-F_NUM_CASES            = "num_cases"
 
 # ── XOR split automation: Taguchi parameter defaults ──────────────────────────
 DEFAULT_MANUAL_DURATION_S = 1800.0
@@ -161,9 +156,10 @@ class TransformIds:
 @dataclass
 class BpmnTransformResult:
     """Returned by prepare_experiment(). Shared across all scenarios in one experiment."""
-    bpmn_path:         Path
-    scenario_template: dict   # deep-copied and extended per scenario by apply_params
-    ids:               TransformIds
+    bpmn_path:            Path
+    scenario_template:    dict   # deep-copied and extended per scenario by apply_params
+    ids:                  TransformIds
+    selected_resource_id: str | None = None  # carried through for params_from_values
 
 
 class Transformation(ABC):
@@ -181,11 +177,21 @@ class Transformation(ABC):
 
     def prepare_experiment(self, bpmn_in: Path, json_in: Path, target_activity: str,
                            out_dir: Path,
-                           bot_cost_per_hour: float = 0.0) -> BpmnTransformResult:
+                           bot_cost_per_hour: float = 0.0,
+                           selected_resource_id: str | None = None) -> BpmnTransformResult:
         """Coordinate the two-step experiment setup. Called once per experiment."""
-        bpmn_out, ids      = self.apply_pattern(bpmn_in, target_activity, out_dir)
-        scenario_template  = self.build_scenario_template(json_in, ids, bot_cost_per_hour)
-        return BpmnTransformResult(bpmn_path=bpmn_out, scenario_template=scenario_template, ids=ids)
+        bpmn_out, ids     = self.apply_pattern(bpmn_in, target_activity, out_dir)
+        scenario_template = self.build_scenario_template(json_in, ids, bot_cost_per_hour)
+        return BpmnTransformResult(
+            bpmn_path=bpmn_out,
+            scenario_template=scenario_template,
+            ids=ids,
+            selected_resource_id=selected_resource_id,
+        )
+
+    @abstractmethod
+    def params_from_values(self, values: dict, result: BpmnTransformResult) -> ScenarioParams:
+        """Convert one Taguchi row into typed ScenarioParams for apply_params()."""
 
     @abstractmethod
     def apply_pattern(self, bpmn_in: Path, target_activity: str,
@@ -295,6 +301,12 @@ class XORSplitAutomation(Transformation):
             Parameter(F_NUM_CASES,            "Cases per replication",
                       levels=list(NUM_CASES_LEVELS), kind="categorical"),
         ]
+
+    # --- params_from_values --------------------------------------------------
+    def params_from_values(self, values: dict, result: BpmnTransformResult) -> ScenarioParams:
+        return AutomationParams.from_taguchi_values(
+            values, selected_resource_id=result.selected_resource_id
+        )
 
     # --- apply_pattern -------------------------------------------------------
     def apply_pattern(self, bpmn_in: Path, target_activity: str,
