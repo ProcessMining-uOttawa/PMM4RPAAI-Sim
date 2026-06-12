@@ -5,10 +5,9 @@ import json
 import xml.etree.ElementTree as ET
 from abc import ABC, abstractmethod
 from dataclasses import dataclass
-from typing import Any
 from pathlib import Path
 
-from .parameters import Parameter
+from .parameters import Parameter, ScenarioParams
 from .constants import KEY_TASK_RESOURCE_DISTRIBUTION
 from .simulation.prosimos_edit import (
     set_uniform, set_fixed, set_resource_amount,
@@ -76,8 +75,8 @@ NUM_CASES_LEVELS   = [100, 500, 1000]
 # ── XORSplitAutomation: scenario input type ───────────────────────────────────
 
 @dataclass(frozen=True)
-class AutomationScenario:
-    """Concrete inputs for one XORSplitAutomation simulation run.
+class AutomationParams(ScenarioParams):
+    """Typed simulation parameters for one XORSplitAutomation scenario.
 
     Primary fields are set directly. Complements are computed properties so
     the caller never has to manage them explicitly.
@@ -112,8 +111,8 @@ class AutomationScenario:
 
     @classmethod
     def from_taguchi_values(cls, values: dict,
-                            selected_resource_id: str | None = None) -> "AutomationScenario":
-        """Bridge: construct AutomationScenario from a Taguchi-generated values dict."""
+                            selected_resource_id: str | None = None) -> "AutomationParams":
+        """Bridge: construct AutomationParams from a Taguchi-generated values dict."""
         return cls(
             automation_rate=float(values.get(F_PCT_AUTO, 50.0)) / 100.0,
             bot_failure_rate=1.0 - float(values.get(F_PCT_OK, 90.0)) / 100.0,
@@ -200,9 +199,8 @@ class Transformation(ABC):
 
     @abstractmethod
     def apply_params(self, scenario_template: dict, ids: TransformIds,
-                     scenario: Any, json_out: Path) -> Path:
-        """Deep-copy scenario_template and inject scenario-specific values. Called once per scenario.
-        The concrete type of `scenario` is pattern-specific."""
+                     scenario: ScenarioParams, json_out: Path) -> Path:
+        """Deep-copy scenario_template and inject scenario-specific values. Called once per scenario."""
 
 
 # ── ID helper ─────────────────────────────────────────────────────────────────
@@ -404,9 +402,10 @@ class XORSplitAutomation(Transformation):
 
     # --- apply_params --------------------------------------------------------
     def apply_params(self, scenario_template: dict, ids: TransformIds,
-                     scenario: AutomationScenario, json_out: Path) -> Path:
+                     scenario: ScenarioParams, json_out: Path) -> Path:
         """Inject scenario-specific values into a deep copy of scenario_template.
         Called once per scenario; never mutates scenario_template."""
+        assert isinstance(scenario, AutomationParams)
         data = copy.deepcopy(scenario_template)
 
         manual_entry = next(

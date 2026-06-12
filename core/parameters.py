@@ -4,6 +4,14 @@ from dataclasses import dataclass
 from typing import Any, Literal
 
 
+class ScenarioParams:
+    """Base class for pattern-specific simulation parameters derived from a Scenario.
+
+    Each Transformation subclass has a paired ScenarioParams subclass that
+    holds the typed, validated inputs its apply_params() needs.
+    """
+
+
 @dataclass
 class Parameter:
     """A single experiment factor with 3 levels (Taguchi-style)."""
