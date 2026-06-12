@@ -362,10 +362,17 @@ class XORSplitAutomation(Transformation):
         """Load the Prosimos JSON and inject bot resource infrastructure.
         Durations and gateway probabilities are scenario-specific — added in apply_params."""
         data = json.loads(Path(json_in).read_text())
-        if not any(e.get("task_id") == ids.task_id
-                   for e in data.get(KEY_TASK_RESOURCE_DISTRIBUTION, [])):
+        _manual_entry = next(
+            (e for e in data.get(KEY_TASK_RESOURCE_DISTRIBUTION, [])
+             if e.get("task_id") == ids.task_id), None
+        )
+        if _manual_entry is None:
             raise RuntimeError(
                 f"No task_resource_distribution entry for {ids.task_id} in {json_in}"
+            )
+        if not _manual_entry.get("resources"):
+            raise RuntimeError(
+                f"Task {ids.task_id} has no resources assigned in {json_in}"
             )
 
         # 1. Add 24/7 bot calendar if absent.
