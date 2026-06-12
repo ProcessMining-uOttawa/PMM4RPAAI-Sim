@@ -1,10 +1,10 @@
-"""Tests for core/experiment.py, AutomationScenario.from_taguchi_values, and demo monotonicity."""
+"""Tests for core/experiment.py, AutomationParams.from_taguchi_values, and demo monotonicity."""
 from __future__ import annotations
 import pytest
 
 from core.experiment import build_scenarios, pick_array
 from core.parameters import Parameter
-from core.transformations import AutomationScenario
+from core.transformations import AutomationParams
 
 
 # ── pick_array ────────────────────────────────────────────────────────────────
@@ -80,7 +80,7 @@ class TestBuildScenarios:
         assert scenarios[8].id == "S09"
 
 
-# ── AutomationScenario.from_taguchi_values ────────────────────────────────────
+# ── AutomationParams.from_taguchi_values ────────────────────────────────────
 
 class TestFromTaguchiValues:
 
@@ -95,7 +95,7 @@ class TestFromTaguchiValues:
     }
 
     def test_full_values_mapped_correctly(self):
-        s = AutomationScenario.from_taguchi_values(self._FULL)
+        s = AutomationParams.from_taguchi_values(self._FULL)
         assert s.automation_rate       == pytest.approx(0.75)
         assert s.bot_failure_rate      == pytest.approx(0.10)  # 1 - 90/100
         assert s.bot_execution_time    == pytest.approx(60.0)
@@ -105,7 +105,7 @@ class TestFromTaguchiValues:
         assert s.num_cases             == 500
 
     def test_empty_dict_uses_defaults(self):
-        s = AutomationScenario.from_taguchi_values({})
+        s = AutomationParams.from_taguchi_values({})
         assert s.automation_rate      == pytest.approx(0.50)
         assert s.bot_failure_rate     == pytest.approx(0.10)
         assert s.num_bots             == 1
@@ -113,14 +113,14 @@ class TestFromTaguchiValues:
         assert s.num_cases            == 100
 
     def test_num_bots_and_num_manual_keys_used(self):
-        s = AutomationScenario.from_taguchi_values(
+        s = AutomationParams.from_taguchi_values(
             {"num_bots": 3, "num_manual_resources": 5}
         )
         assert s.num_bots == 3
         assert s.num_manual_resources == 5
 
     def test_selected_resource_id_passed_through(self):
-        s = AutomationScenario.from_taguchi_values({}, selected_resource_id="res_42")
+        s = AutomationParams.from_taguchi_values({}, selected_resource_id="res_42")
         assert s.selected_resource_id == "res_42"
 
 

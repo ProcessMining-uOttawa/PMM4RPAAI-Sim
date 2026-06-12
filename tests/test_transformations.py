@@ -9,7 +9,7 @@ from core.transformations import (
     BOT_CALENDAR_ID, BOT_PROFILE_ID,
 )
 from core.simulation.prosimos_edit import KEY_RESOURCE_CALENDARS, KEY_GATEWAY_BRANCHING_PROBS
-from core.transformations import AutomationScenario
+from core.transformations import AutomationParams
 from core.bpmn.utils import resource_pool_size
 from core.bpmn import BPMN_NS
 from core.constants import KEY_RESOURCE_PROFILES, KEY_TASK_RESOURCE_DISTRIBUTION
@@ -168,7 +168,7 @@ class TestBuildBaseJson:
 
 # ── TestApplyParams ───────────────────────────────────────────────────────────
 
-_SCENARIO = AutomationScenario(
+_SCENARIO = AutomationParams(
     automation_rate=0.75,
     bot_failure_rate=0.10,
     bot_execution_time=60.0,
@@ -245,7 +245,7 @@ class TestApplyParams:
     def test_selected_resource_none_skips_pool_resize(self, pattern, params_file, applied, tmp_path):
         _, ids = applied
         scenario_template = pattern.build_scenario_template(params_file, ids)
-        scenario = AutomationScenario(
+        scenario = AutomationParams(
             automation_rate=0.5, bot_failure_rate=0.1,
             bot_execution_time=60.0, manual_execution_time=1800.0,
             num_bots=1, num_manual_resources=3, num_cases=100,
@@ -258,9 +258,9 @@ class TestApplyParams:
         assert resource_pool_size(data, "res_human_1") == 1
 
 
-# ── AutomationScenario validation ────────────────────────────────────────────
+# ── AutomationParams validation ────────────────────────────────────────────
 
-class TestAutomationScenarioValidation:
+class TestAutomationParamsValidation:
     _base = dict(
         automation_rate=0.5, bot_failure_rate=0.1,
         bot_execution_time=60.0, manual_execution_time=1800.0,
@@ -268,7 +268,7 @@ class TestAutomationScenarioValidation:
     )
 
     def _make(self, **overrides):
-        return AutomationScenario(**{**self._base, **overrides})
+        return AutomationParams(**{**self._base, **overrides})
 
     def test_valid_scenario_ok(self):
         self._make()  # should not raise
