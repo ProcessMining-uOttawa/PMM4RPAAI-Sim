@@ -1,7 +1,5 @@
 """Simulation run loop — pure business logic, no Streamlit dependency."""
 from __future__ import annotations
-import os
-from concurrent.futures import ThreadPoolExecutor, as_completed
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Callable
@@ -9,6 +7,7 @@ from typing import Callable
 import pandas as pd
 
 from .simulation import prosimos_csv, runner, store
+from .simulation.pool import SimulationTask, run_all, TASK_BASELINE, TASK_SCENARIO
 from .constants import (
     COL_CYCLE_H, COL_COST, COL_TOTAL_CYCLE_S, COL_TOTAL_COST,
     COL_TOTAL_CYCLE_S_MEAN, COL_TOTAL_COST_MEAN,
@@ -71,67 +70,64 @@ def run_experiment(
     rows: list[dict] = []
     baseline_reps: dict[int, list[dict]] = {n: [] for n in cases_levels}
 
-    # Each future maps to a tag tuple describing its result type.
-    # baseline: ("baseline", n_cases, rep, out_log, out_stat)
-    # scenario: ("scenario", sid, rep, out_log, out_stat, values)
-    future_tags: dict = {}
+    tasks: list[SimulationTask] = []
+    for n_cases in cases_levels:
+        for rep in range(n_reps):
+            tasks.append(SimulationTask(
+                bpmn_path=bpmn_path,
+                json_path=json_path,
+                n_cases=n_cases,
+                out_log=store.baseline_log(exp_dir, rep, n_cases),
+                out_stat=store.baseline_stats(exp_dir, rep, n_cases),
+                proc_log=store.baseline_subprocess_log(exp_dir, rep, n_cases),
+                metadata=(TASK_BASELINE, n_cases, rep),
+            ))
+    for s in scenarios:
+        aut = automation_scenarios[s.id]
+        s_json = scenario_json_paths[s.id]
+        for rep in range(n_reps):
+            tasks.append(SimulationTask(
+                bpmn_path=bpmn_tr.bpmn_path,
+                json_path=s_json,
+                n_cases=aut.num_cases,
+                out_log=store.replication_log(exp_dir, s.id, rep),
+                out_stat=store.replication_stats(exp_dir, s.id, rep),
+                proc_log=store.replication_subprocess_log(exp_dir, s.id, rep),
+                metadata=(TASK_SCENARIO, s.id, rep, s.values),
+            ))
 
-    with ThreadPoolExecutor(max_workers=os.cpu_count()) as pool:
-        for n_cases in cases_levels:
-            for rep in range(n_reps):
-                out_log  = store.baseline_log(exp_dir, rep, n_cases)
-                out_stat = store.baseline_stats(exp_dir, rep, n_cases)
-                proc_log = store.baseline_subprocess_log(exp_dir, rep, n_cases)
-                f = pool.submit(runner.simulate, bpmn_path, json_path, n_cases,
-                                out_log, stat_out=out_stat, proc_log=proc_log)
-                future_tags[f] = ("baseline", n_cases, rep, out_log, out_stat)
+    def _on_complete(task: SimulationTask) -> None:
+        nonlocal done
+        kind = task.metadata[0]
+        if kind == TASK_BASELINE:
+            _, n_cases, rep = task.metadata
+            baseline_reps[n_cases].append(
+                prosimos_csv.replication_metrics(task.out_log, task.out_stat))
+            label = "baseline"
+        else:
+            _, sid, rep, values = task.metadata
+            m = prosimos_csv.replication_metrics(
+                task.out_log, task.out_stat,
+                bot_task_name=bpmn_tr.ids.bot_task_name,
+                original_task_name=bpmn_tr.ids.task_name,
+            )
+            rows.append({
+                "scenario_id":     sid,
+                "replication":     rep,
+                COL_CYCLE_H:       m[COL_CYCLE_H],
+                COL_COST:          m[COL_COST],
+                COL_TOTAL_CYCLE_S: m[COL_TOTAL_CYCLE_S],
+                COL_TOTAL_COST:    m[COL_TOTAL_COST],
+                COL_REWORK_COUNT:  m[COL_REWORK_COUNT],
+                COL_REWORK_RATE:   m[COL_REWORK_RATE],
+                **values,
+            })
+            label = sid
+        done += 1
+        if on_progress:
+            on_progress(done, total, label, rep)
 
-        for s in scenarios:
-            aut = automation_scenarios[s.id]
-            s_json = scenario_json_paths[s.id]
-            for rep in range(n_reps):
-                out_log  = store.replication_log(exp_dir, s.id, rep)
-                out_stat = store.replication_stats(exp_dir, s.id, rep)
-                proc_log = store.replication_subprocess_log(exp_dir, s.id, rep)
-                f = pool.submit(runner.simulate, bpmn_tr.bpmn_path, s_json,
-                                aut.num_cases, out_log,
-                                stat_out=out_stat, proc_log=proc_log)
-                future_tags[f] = ("scenario", s.id, rep, out_log, out_stat, s.values)
-
-        try:
-            for f in as_completed(future_tags):
-                f.result()  # re-raises CalledProcessError on simulation failure
-                tag = future_tags[f]
-                if tag[0] == "baseline":
-                    _, n_cases, rep, out_log, out_stat = tag
-                    baseline_reps[n_cases].append(
-                        prosimos_csv.replication_metrics(out_log, out_stat))
-                    label = "baseline"
-                else:
-                    _, sid, rep, out_log, out_stat, values = tag
-                    m = prosimos_csv.replication_metrics(
-                        out_log, out_stat,
-                        bot_task_name=bpmn_tr.ids.bot_task_name,
-                        original_task_name=bpmn_tr.ids.task_name,
-                    )
-                    rows.append({
-                        "scenario_id":     sid,
-                        "replication":     rep,
-                        COL_CYCLE_H:       m[COL_CYCLE_H],
-                        COL_COST:          m[COL_COST],
-                        COL_TOTAL_CYCLE_S: m[COL_TOTAL_CYCLE_S],
-                        COL_TOTAL_COST:    m[COL_TOTAL_COST],
-                        COL_REWORK_COUNT:  m[COL_REWORK_COUNT],
-                        COL_REWORK_RATE:   m[COL_REWORK_RATE],
-                        **values,
-                    })
-                    label = sid
-                done += 1
-                if on_progress:
-                    on_progress(done, total, label, rep)
-        except Exception:
-            pool.shutdown(wait=False, cancel_futures=True)
-            raise
+    run_all(tasks, _on_complete)
 
     baseline_agg: dict[int, dict] = {}
     for n_cases, rep_list in baseline_reps.items():
