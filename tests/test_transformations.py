@@ -165,6 +165,18 @@ class TestBuildBaseJson:
         with pytest.raises(RuntimeError, match="No task_resource_distribution entry"):
             pattern.build_scenario_template(params_file, ids)
 
+    def test_empty_resources_in_params_raises(self, pattern, applied, tmp_path):
+        _, ids = applied
+        params_empty = tmp_path / "empty_resources.json"
+        params_empty.write_text(json.dumps({
+            KEY_RESOURCE_CALENDARS: [],
+            KEY_RESOURCE_PROFILES: [],
+            KEY_TASK_RESOURCE_DISTRIBUTION: [{"task_id": ids.task_id, "resources": []}],
+            KEY_GATEWAY_BRANCHING_PROBS: [],
+        }))
+        with pytest.raises(RuntimeError, match="no resources assigned"):
+            pattern.build_scenario_template(params_empty, ids)
+
 
 # ── TestApplyParams ───────────────────────────────────────────────────────────
 
