@@ -23,7 +23,7 @@ from .constants import (
     F_NUM_CASES,
 )
 from .parameters import Scenario
-from .transformations import AutomationParams, Transformation
+from .transformations import Transformation
 
 
 @dataclass
@@ -52,7 +52,9 @@ def run_experiment(
     if provided — lets the caller update a progress bar without a Streamlit import here.
     """
     bpmn_tr = transformation.prepare_experiment(
-        bpmn_path, json_path, target, exp_dir, bot_cost_per_hour=bot_cost_per_hour
+        bpmn_path, json_path, target, exp_dir,
+        bot_cost_per_hour=bot_cost_per_hour,
+        selected_resource_id=selected_resource_id,
     )
     experiment_bpmn_path = bpmn_tr.bpmn_path
     cases_levels = sorted({int(s.values[F_NUM_CASES]) for s in scenarios})
@@ -60,19 +62,15 @@ def run_experiment(
     # Pre-generate all scenario JSONs sequentially — XML/JSON mutation is not
     # thread-safe and must complete before workers read the output files.
     scenario_json_paths: dict[str, Path] = {}
-    automation_scenarios: dict[str, AutomationParams] = {}
     for s in scenarios:
-        aut = AutomationParams.from_taguchi_values(
-            s.values, selected_resource_id=selected_resource_id
-        )
+        params = transformation.params_from_values(s.values, bpmn_tr)
         s_json = transformation.apply_params(
             bpmn_tr.scenario_template,
             bpmn_tr.ids,
-            aut,
+            params,
             store.scenario_dir(exp_dir, s.id) / "params.json",
         )
         scenario_json_paths[s.id] = s_json
-        automation_scenarios[s.id] = aut
 
     total = len(scenarios) * n_reps + len(cases_levels) * n_reps
     done = 0
@@ -94,14 +92,14 @@ def run_experiment(
                 )
             )
     for s in scenarios:
-        aut = automation_scenarios[s.id]
         s_json = scenario_json_paths[s.id]
+        n_cases = int(s.values[F_NUM_CASES])
         for rep in range(n_reps):
             tasks.append(
                 SimulationTask(
                     bpmn_path=bpmn_tr.bpmn_path,
                     json_path=s_json,
-                    n_cases=aut.num_cases,
+                    n_cases=n_cases,
                     out_log=store.replication_log(exp_dir, s.id, rep),
                     out_stat=store.replication_stats(exp_dir, s.id, rep),
                     proc_log=store.replication_subprocess_log(exp_dir, s.id, rep),
