@@ -1,10 +1,8 @@
 """Streamlit dashboard — Mockup B layout."""
 
 from __future__ import annotations
-import io
 import json
 import xml.etree.ElementTree as ET
-import zipfile
 import streamlit as st
 
 from pathlib import Path
@@ -21,32 +19,12 @@ from core.bpmn.utils import (
     find_task_by_name,
     list_activities,
     task_mean_duration_s,
-    task_resources,
-    shared_resource_ids,
-    resource_pool_size,
+    resource_selector_config,
 )
 
 st.set_page_config(
     page_title="Automation What-If Simulator", page_icon="⚙", layout="wide"
 )
-
-
-def _json_zip(json_paths: dict) -> bytes:
-    buf = io.BytesIO()
-    with zipfile.ZipFile(buf, "w", zipfile.ZIP_DEFLATED) as z:
-        for sid, p in sorted(json_paths.items()):
-            z.writestr(f"scenarios/{sid}_params.json", p.read_text())
-    return buf.getvalue()
-
-
-def _group_zip(bpmn_path: Path, json_paths: dict, stats_csv: str) -> bytes:
-    buf = io.BytesIO()
-    with zipfile.ZipFile(buf, "w", zipfile.ZIP_DEFLATED) as z:
-        z.write(str(bpmn_path), arcname="model.bpmn")
-        z.writestr("statistics.csv", stats_csv)
-        for sid, p in sorted(json_paths.items()):
-            z.writestr(f"scenarios/{sid}_params.json", p.read_text())
-    return buf.getvalue()
 
 
 # --- session state defaults --------------------------------------------------
@@ -219,67 +197,65 @@ if not ss.activities:
 # --- main: 2x2 dashboard -----------------------------------------------------
 col1, col2 = st.columns(2)
 
-# Load Prosimos JSON once; shared between col1 (resource detection) and col2 (duration prepopulation).
-prosimos_data: dict | None = None
-target_el: ET.Element | None = None
-
 with col1:
     with st.container(border=True):
         st.markdown("##### 1 · Activity & pattern")
         target = st.selectbox("Target activity", ss.activities, index=1)
 
+        # Load model info — results shared with col2 (duration prepopulation).
+        _task_id: str | None = None
+        prosimos_data: dict | None = None
+        _resource_cfg = None
+        if ss.bpmn_path and ss.json_path and not demo_mode:
+            try:
+                _tree = ET.parse(str(ss.bpmn_path))
+                _target_el = find_task_by_name(_tree, target)
+                if _target_el is not None:
+                    _task_id = _target_el.get("id")
+                    prosimos_data = json.loads(Path(ss.json_path).read_text())
+            except (ET.ParseError, json.JSONDecodeError, OSError):
+                pass
+            if _task_id is not None and prosimos_data is not None:
+                _resource_cfg = resource_selector_config(prosimos_data, _task_id)
+
         # Resource selector — only shown in non-demo mode when task has multiple resources.
         selected_resource_id: str | None = None
         frozen_pool_size: int | None = None
 
-        if ss.bpmn_path and ss.json_path and not demo_mode:
-            try:
-                _tree = ET.parse(str(ss.bpmn_path))
-                target_el = find_task_by_name(_tree, target)
-                if target_el is not None:
-                    prosimos_data = json.loads(Path(ss.json_path).read_text())
-                    _task_id = target_el.get("id")
-                    _resources = task_resources(prosimos_data, _task_id)
-                    if len(_resources) == 1:
-                        selected_resource_id = _resources[0]["id"]
-                    elif len(_resources) > 1:
-                        _shared = shared_resource_ids(prosimos_data)
-                        _selectable = [r for r in _resources if r["id"] not in _shared]
-                        _frozen = [r for r in _resources if r["id"] in _shared]
-                        if _selectable:
-                            if _frozen:
-                                st.caption(
-                                    f"Shared (frozen): {', '.join(r['name'] for r in _frozen)}"
-                                )
-                            _sel_name = st.selectbox(
-                                "Manual resource", [r["name"] for r in _selectable]
-                            )
-                            selected_resource_id = next(
-                                r["id"] for r in _selectable if r["name"] == _sel_name
-                            )
-                        else:
-                            # All resources are shared — freeze the pool factor.
-                            st.selectbox(
-                                "Manual resource",
-                                [r["name"] for r in _resources],
-                                disabled=True,
-                            )
-                            _pool = resource_pool_size(
-                                prosimos_data, _resources[0]["id"]
-                            )
-                            if _pool is None:
-                                st.warning(
-                                    "All resources are shared across tasks — "
-                                    "resource not found in profiles; pool size unknown."
-                                )
-                            else:
-                                st.warning(
-                                    "All resources are shared across tasks — "
-                                    "Human pool size is frozen at its current value."
-                                )
-                                frozen_pool_size = _pool
-            except Exception:
-                pass
+        if _resource_cfg is not None:
+            cfg = _resource_cfg
+            if cfg.selectable or cfg.frozen:
+                if not cfg.selectable:
+                    st.selectbox(
+                        "Manual resource",
+                        [r["name"] for r in cfg.frozen],
+                        disabled=True,
+                    )
+                    if cfg.frozen_pool_size is None:
+                        st.warning(
+                            "All resources are shared across tasks — "
+                            "resource not found in profiles; pool size unknown."
+                        )
+                    else:
+                        st.warning(
+                            "All resources are shared across tasks — "
+                            "Human pool size is frozen at its current value."
+                        )
+                        frozen_pool_size = cfg.frozen_pool_size
+                else:
+                    if cfg.frozen:
+                        st.caption(
+                            f"Shared (frozen): {', '.join(r['name'] for r in cfg.frozen)}"
+                        )
+                    if len(cfg.selectable) == 1:
+                        selected_resource_id = cfg.selectable[0]["id"]
+                    else:
+                        _sel_name = st.selectbox(
+                            "Manual resource", [r["name"] for r in cfg.selectable]
+                        )
+                        selected_resource_id = next(
+                            r["id"] for r in cfg.selectable if r["name"] == _sel_name
+                        )
 
         pattern_id = st.selectbox(
             "Substitution pattern",
@@ -293,11 +269,8 @@ with col2:
         transformation = REGISTRY[pattern_id]
         # Prepopulate Non-Auto-Time from Simod's discovered duration when available.
         current_dur = None
-        if target_el is not None and prosimos_data is not None:
-            try:
-                current_dur = task_mean_duration_s(prosimos_data, target_el.get("id"))
-            except Exception:
-                pass
+        if _task_id is not None and prosimos_data is not None:
+            current_dur = task_mean_duration_s(prosimos_data, _task_id)
         params = transformation.parameters(
             target,
             current_duration_s=current_dur,
@@ -483,7 +456,7 @@ if ss.results is not None:
         col_bpmn, col_json, col_stats, col_all = st.columns(4)
         col_json.download_button(
             "⬇ Scenarios (JSON zip)",
-            data=_json_zip(json_paths) if json_paths else b"",
+            data=store.json_zip(json_paths),
             file_name="scenarios.zip",
             mime="application/zip",
             use_container_width=True,
@@ -506,7 +479,7 @@ if ss.results is not None:
         )
         col_all.download_button(
             "⬇ All (ZIP)",
-            data=_group_zip(Path(bpmn_path), json_paths, stats_csv) if (bpmn_exists and json_paths) else b"",
+            data=store.group_zip(Path(bpmn_path), json_paths, stats_csv) if (bpmn_exists and json_paths) else b"",
             file_name="export.zip",
             mime="application/zip",
             use_container_width=True,
