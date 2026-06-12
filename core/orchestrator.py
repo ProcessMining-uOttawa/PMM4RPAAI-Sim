@@ -6,7 +6,7 @@ from typing import Callable
 
 import pandas as pd
 
-from .simulation import prosimos_csv, runner, store
+from .simulation import prosimos_csv, store
 from .simulation.pool import SimulationTask, run_all, TASK_BASELINE, TASK_SCENARIO
 from .constants import (
     COL_CYCLE_H, COL_COST, COL_TOTAL_CYCLE_S, COL_TOTAL_COST,
@@ -101,11 +101,13 @@ def run_experiment(
         kind = task.metadata[0]
         if kind == TASK_BASELINE:
             _, n_cases, rep = task.metadata
+            assert task.out_stat is not None
             baseline_reps[n_cases].append(
                 prosimos_csv.replication_metrics(task.out_log, task.out_stat))
             label = "baseline"
         else:
             _, sid, rep, values = task.metadata
+            assert task.out_stat is not None
             m = prosimos_csv.replication_metrics(
                 task.out_log, task.out_stat,
                 bot_task_name=bpmn_tr.ids.bot_task_name,

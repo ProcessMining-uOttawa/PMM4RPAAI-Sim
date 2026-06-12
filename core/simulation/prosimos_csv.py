@@ -93,8 +93,8 @@ def _rework_metrics(df: pd.DataFrame,
     if "activity" not in df.columns:
         return {COL_REWORK_COUNT: 0.0, COL_REWORK_RATE: 0.0}
     activity_counts = df.groupby(["case_id", "activity"]).size()
-    excess = activity_counts[activity_counts > 1] - 1
-    per_case: pd.Series = excess.groupby(level="case_id").sum()
+    excess = activity_counts[activity_counts > 1] - 1  # type: ignore[index]
+    per_case: pd.Series = excess.groupby(level="case_id").sum()  # type: ignore[assignment]
 
     if bot_task_name and original_task_name:
         idx = activity_counts.index
