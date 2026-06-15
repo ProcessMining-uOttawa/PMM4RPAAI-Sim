@@ -414,13 +414,18 @@ if ss.results is not None:
             if _m.aggregate:
                 _kpi_rename[_m.aggregate.column] = _m.aggregate.display_name
                 _agg_transforms[_m.aggregate.column] = _m.aggregate.display_fn
+        _per_goal_rename = {
+            f"{g.metric}_met": MetricRegistry.by_column(g.metric).display_name + " ✓"
+            for g in goals if g.weight != 0
+        }
         st.dataframe(
             ranked.assign(
-                Goals=ranked["goal_met"].map({True: "✓ met", False: "✗"}),
+                **{col: ranked[col].map({True: "✓", False: "✗"})
+                   for col in _per_goal_rename if col in ranked.columns},
                 **{col: ranked[col].map(fn)  # type: ignore[arg-type]
                    for col, fn in _agg_transforms.items() if col in ranked.columns},
             ).drop(columns=["goal_met", "score"] + _std_cols, errors="ignore")
-             .rename(columns={**_kpi_rename, **{p.id: p.label for p in params}}),
+             .rename(columns={**_kpi_rename, **_per_goal_rename, **{p.id: p.label for p in params}}),
             use_container_width=True,
             hide_index=True,
         )

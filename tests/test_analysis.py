@@ -290,6 +290,42 @@ class TestRank:
         assert by_sid.loc["S02", "goal_met"]
         assert ranked.iloc[0]["scenario_id"] == "S02"
 
+    def test_per_goal_met_column_added(self):
+        agg = pd.DataFrame([{"scenario_id": "S01", COL_CYCLE_H_MEAN: 20.0}])
+        ranked = rank(agg, [Goal(COL_CYCLE_H_MEAN, weight=1.0, target=24.0)])
+        assert f"{COL_CYCLE_H_MEAN}_met" in ranked.columns
+
+    def test_per_goal_met_values(self):
+        agg = pd.DataFrame([
+            {"scenario_id": "S01", COL_CYCLE_H_MEAN: 20.0},
+            {"scenario_id": "S02", COL_CYCLE_H_MEAN: 30.0},
+        ])
+        ranked = rank(agg, [Goal(COL_CYCLE_H_MEAN, weight=1.0, target=24.0)])
+        by_sid = ranked.set_index("scenario_id")
+        assert by_sid.loc["S01", f"{COL_CYCLE_H_MEAN}_met"]
+        assert not by_sid.loc["S02", f"{COL_CYCLE_H_MEAN}_met"]
+
+    def test_per_goal_met_independent_of_aggregate(self):
+        agg = pd.DataFrame([{"scenario_id": "S01", COL_CYCLE_H_MEAN: 20.0, COL_COST_MEAN: 15.0}])
+        goals = [
+            Goal(COL_CYCLE_H_MEAN, weight=0.5, target=24.0),
+            Goal(COL_COST_MEAN,    weight=0.5, target=12.0),
+        ]
+        ranked = rank(agg, goals)
+        assert ranked.iloc[0][f"{COL_CYCLE_H_MEAN}_met"]
+        assert not ranked.iloc[0][f"{COL_COST_MEAN}_met"]
+        assert not ranked.iloc[0]["goal_met"]
+
+    def test_zero_weight_goal_has_no_per_goal_column(self):
+        agg = pd.DataFrame([{"scenario_id": "S01", COL_CYCLE_H_MEAN: 20.0, COL_COST_MEAN: 100.0}])
+        goals = [
+            Goal(COL_CYCLE_H_MEAN, weight=1.0, target=24.0),
+            Goal(COL_COST_MEAN,    weight=0.0, target=12.0),
+        ]
+        ranked = rank(agg, goals)
+        assert f"{COL_CYCLE_H_MEAN}_met" in ranked.columns
+        assert f"{COL_COST_MEAN}_met" not in ranked.columns
+
 
 # ── Goal ──────────────────────────────────────────────────────────────────────
 

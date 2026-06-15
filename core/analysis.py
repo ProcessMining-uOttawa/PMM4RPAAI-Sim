@@ -110,11 +110,12 @@ def main_effects(
 
 
 def rank(agg: pd.DataFrame, goals: list[Goal]) -> pd.DataFrame:
-    """Adds 'goal_met' and 'score' (weighted ratio, lower = better).
+    """Adds per-goal '{metric}_met' columns, aggregate 'goal_met', and 'score'.
 
-    goal_met = all non-zero-weight goals individually met.
-    score = weighted sum of (metric / target) across non-zero-weight goals.
-    Zero-weight goals are excluded from both score and goal_met.
+    Per-goal columns: True when that goal's metric is at or below its target.
+    goal_met: True only when all non-zero-weight goals are individually met.
+    score: weighted sum of (metric / target) across non-zero-weight goals (lower = better).
+    Zero-weight goals are excluded from all three.
     """
     out = agg.copy()
     scores = pd.Series(0.0, index=out.index)
@@ -122,8 +123,10 @@ def rank(agg: pd.DataFrame, goals: list[Goal]) -> pd.DataFrame:
     for goal in goals:
         if goal.weight == 0:
             continue
+        per_goal = out[goal.metric].le(goal.target).fillna(False)
+        out[f"{goal.metric}_met"] = per_goal
         scores += goal.weight * (out[goal.metric] / goal.target).fillna(float("inf"))
-        goal_met &= out[goal.metric].le(goal.target).fillna(False)
+        goal_met &= per_goal
     out["goal_met"] = goal_met
     out["score"] = scores
     return out.sort_values(["goal_met", "score"], ascending=[False, True])
