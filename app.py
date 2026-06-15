@@ -10,11 +10,12 @@ from core.transformations import REGISTRY
 from core.experiment import build_scenarios
 from core import analysis, demo, orchestrator, preflight
 from core.simulation import runner, store
-from core.constants import COL_CYCLE_H, COL_COST, COL_REWORK_RATE
+from core.constants import COL_COST
 from core.goals import Goal, baseline_per_case
 from core.metrics import MetricRegistry
 from ui.goals import GOAL_OPTIONS
 from ui.plots import factor_label_map, main_effects_chart
+from ui.table import prepare_ranked_display
 from ui.widgets import level_input_kwargs
 from core.bpmn.utils import (
     find_task_by_name,
@@ -180,9 +181,9 @@ with st.sidebar:
         _hdr[1].caption("Reduction (%)")
         _hdr[2].caption("Weight")
         for _m, _opt in GOAL_OPTIONS.items():
-            _gcol = _m.per_case.mean.column
+            _gcol = _m.per_case_column
             _grow = st.columns([3, 2, 1.5])
-            _grow[0].markdown(_m.per_case.mean.display_name)
+            _grow[0].markdown(_m.per_case_display_name)
             _pct = _grow[1].number_input(
                 f"pct_{_gcol}",
                 value=_opt.default_pct,
@@ -403,50 +404,21 @@ if ss.results is not None:
             for col, pct, wt in _goal_specs
         ]
         ranked = analysis.rank(agg, goals)
-        ranked.insert(0, "rank", range(1, len(ranked) + 1))
-        _kpi_rename = {"scenario_id": "Scenario"}
-        _std_cols = []
-        _agg_transforms: dict[str, object] = {}
-        for _m in MetricRegistry.all():
-            if _m.per_case:
-                _kpi_rename[_m.per_case.mean.column] = _m.per_case.mean.display_name
-                if _m.per_case.std:
-                    _std_cols.append(_m.per_case.std.column)
-            if _m.aggregate:
-                _kpi_rename[_m.aggregate.column] = _m.aggregate.display_name
-                _agg_transforms[_m.aggregate.column] = _m.aggregate.display_fn
-        _per_goal_rename = {
-            f"{g.metric}_met": MetricRegistry.by_column(g.metric).display_name + " ✓"
-            for g in goals if g.weight != 0
-        }
+        show_factors = st.checkbox("Show Taguchi factors", value=False, key="show_factors")
         st.dataframe(
-            ranked.assign(
-                **{col: ranked[col].map({True: "✓", False: "✗"})
-                   for col in _per_goal_rename if col in ranked.columns},
-                **{col: ranked[col].map(fn)  # type: ignore[arg-type]
-                   for col, fn in _agg_transforms.items() if col in ranked.columns},
-            ).drop(columns=["goal_met", "score"] + _std_cols, errors="ignore")
-             .rename(columns={**_kpi_rename, **_per_goal_rename, **{p.id: p.label for p in params}}),
+            prepare_ranked_display(ranked, goals, params, show_factors),
             use_container_width=True,
             hide_index=True,
         )
         st.markdown("###### Main effects (smaller is better)")
         label_map = factor_label_map(params)
-        _me_metrics = [
-            (MetricRegistry.CYCLE_TIME, COL_CYCLE_H),
-            (MetricRegistry.COST,       COL_COST),
-            (MetricRegistry.REWORK_RATE, COL_REWORK_RATE),
-        ]
-        tab_cycle, tab_cost, tab_rework = st.tabs(
-            [m.per_case.mean.display_name for m, _ in _me_metrics]
-        )
-        for _tab, (_metric, _col) in zip(
-            [tab_cycle, tab_cost, tab_rework], _me_metrics
-        ):
+        _me_metrics = MetricRegistry.rankable()
+        _tabs = st.tabs([m.per_case_display_name for m in _me_metrics])
+        for _tab, _metric in zip(_tabs, _me_metrics):
             with _tab:
-                me = analysis.main_effects(ss.results, _col, direction=_metric.per_case.mean.direction, floor=_metric.sn_floor)
+                me = analysis.main_effects(ss.results, _metric)
                 st.plotly_chart(
-                    main_effects_chart(me, label_map, _metric.per_case.mean.display_name),
+                    main_effects_chart(me, label_map, _metric.per_case_display_name),
                     use_container_width=True,
                 )
 

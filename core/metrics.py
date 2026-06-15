@@ -6,6 +6,7 @@ from enum import Enum
 from typing import Callable, NamedTuple
 
 from .constants import (
+    COL_CYCLE_H, COL_COST, COL_REWORK_RATE,
     COL_CYCLE_H_MEAN, COL_COST_MEAN, COL_REWORK_RATE_MEAN,
     COL_TOTAL_CYCLE_S_MEAN, COL_TOTAL_COST_MEAN, COL_REWORK_COUNT_MEAN,
 )
@@ -32,10 +33,12 @@ class MetricSpec(NamedTuple):
     display_fn: Callable[[float], float] = _id
     delta_name: str | None = None
     pct_change_name: str | None = None
+    short_label: str | None = None  # name without unit, for compact displays
 
 
 @dataclass(frozen=True)
 class PerCaseMetric:
+    results_column: str  # column in the raw per-replication results DataFrame
     mean: MetricSpec
     std: MetricSpec | None = None  # hidden by default; registered for future toggle
 
@@ -47,14 +50,24 @@ class Metric:
     rankable: bool
     sn_floor: float = 0.0
 
+    @property
+    def per_case_column(self) -> str | None:
+        return self.per_case.mean.column if self.per_case else None
+
+    @property
+    def per_case_display_name(self) -> str | None:
+        return self.per_case.mean.display_name if self.per_case else None
+
 
 class MetricRegistry:
     CYCLE_TIME: Metric = Metric(
         per_case=PerCaseMetric(
+            results_column=COL_CYCLE_H,
             mean=MetricSpec(
                 column=COL_CYCLE_H_MEAN,
                 display_name="Cycle Time (h/case)",
                 decimal_places=2,
+                short_label="Cycle Time",
             ),
             std=MetricSpec(
                 column="cycle_h_std",
@@ -75,10 +88,12 @@ class MetricRegistry:
 
     COST: Metric = Metric(
         per_case=PerCaseMetric(
+            results_column=COL_COST,
             mean=MetricSpec(
                 column=COL_COST_MEAN,
                 display_name="Cost ($/case)",
                 decimal_places=2,
+                short_label="Cost",
             ),
             std=MetricSpec(
                 column="cost_std",
@@ -110,10 +125,12 @@ class MetricRegistry:
 
     REWORK_RATE: Metric = Metric(
         per_case=PerCaseMetric(
+            results_column=COL_REWORK_RATE,
             mean=MetricSpec(
                 column=COL_REWORK_RATE_MEAN,
                 display_name="Rework Rate (%)",
                 decimal_places=1,
+                short_label="Rework Rate",
             ),
             std=None,
         ),
