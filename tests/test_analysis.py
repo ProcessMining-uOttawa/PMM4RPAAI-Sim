@@ -12,6 +12,7 @@ from core.analysis import (
     signal_to_noise,
     rank,
 )
+from core.goals import Goal
 from core.metrics import MetricDirection
 from core.constants import (
     COL_CYCLE_H, COL_COST, COL_CYCLE_H_MEAN, COL_COST_MEAN,
@@ -213,7 +214,7 @@ class TestRank:
             {"scenario_id": "S01", COL_CYCLE_H_MEAN: 20.0},
             {"scenario_id": "S02", COL_CYCLE_H_MEAN: 30.0},
         ])
-        ranked = rank(agg, COL_CYCLE_H_MEAN, 24.0)
+        ranked = rank(agg, [Goal(COL_CYCLE_H_MEAN, weight=1.0, target=24.0)])
         by_sid = ranked.set_index("scenario_id")
         assert by_sid.loc["S01", "goal_met"]
         assert not by_sid.loc["S02", "goal_met"]
@@ -223,14 +224,12 @@ class TestRank:
             {"scenario_id": "S01", COL_CYCLE_H_MEAN: 30.0},
             {"scenario_id": "S02", COL_CYCLE_H_MEAN: 10.0},
         ])
-        ranked = rank(agg, COL_CYCLE_H_MEAN, 24.0)
+        ranked = rank(agg, [Goal(COL_CYCLE_H_MEAN, weight=1.0, target=24.0)])
         assert ranked.iloc[0]["scenario_id"] == "S02"
 
     def test_nan_treated_as_unmet(self):
-        agg = pd.DataFrame([{
-            "scenario_id": "S01", COL_CYCLE_H_MEAN: float("nan"),
-        }])
-        ranked = rank(agg, COL_CYCLE_H_MEAN, 24.0)
+        agg = pd.DataFrame([{"scenario_id": "S01", COL_CYCLE_H_MEAN: float("nan")}])
+        ranked = rank(agg, [Goal(COL_CYCLE_H_MEAN, weight=1.0, target=24.0)])
         assert not ranked.iloc[0]["goal_met"]
 
     def test_cost_mean_metric(self):
@@ -238,48 +237,73 @@ class TestRank:
             {"scenario_id": "S01", COL_COST_MEAN: 10.0},
             {"scenario_id": "S02", COL_COST_MEAN: 30.0},
         ])
-        ranked = rank(agg, COL_COST_MEAN, 20.0)
+        ranked = rank(agg, [Goal(COL_COST_MEAN, weight=1.0, target=20.0)])
         by_sid = ranked.set_index("scenario_id")
         assert by_sid.loc["S01", "goal_met"]
         assert not by_sid.loc["S02", "goal_met"]
 
-    def test_score_value(self):
+    def test_score_is_weighted_ratio(self):
         agg = pd.DataFrame([{"scenario_id": "S01", COL_CYCLE_H_MEAN: 20.0}])
-        ranked = rank(agg, COL_CYCLE_H_MEAN, 40.0)
+        ranked = rank(agg, [Goal(COL_CYCLE_H_MEAN, weight=1.0, target=40.0)])
         assert ranked.iloc[0]["score"] == pytest.approx(0.5)
 
-    def test_negative_goal_max_raises(self):
-        agg = pd.DataFrame([{"scenario_id": "S01", COL_CYCLE_H_MEAN: 20.0}])
-        with pytest.raises(ValueError):
-            rank(agg, COL_CYCLE_H_MEAN, -1.0)
+    def test_multiple_goals_all_met(self):
+        agg = pd.DataFrame([{"scenario_id": "S01", COL_CYCLE_H_MEAN: 20.0, COL_COST_MEAN: 10.0}])
+        goals = [
+            Goal(COL_CYCLE_H_MEAN, weight=0.5, target=24.0),
+            Goal(COL_COST_MEAN,    weight=0.5, target=12.0),
+        ]
+        assert rank(agg, goals).iloc[0]["goal_met"]
 
-    def test_zero_goal_max_score_is_raw_metric(self):
-        # goal_max=0: score = raw metric value, lower is better
-        agg = pd.DataFrame([
-            {"scenario_id": "S01", COL_CYCLE_H_MEAN: 0.0},
-            {"scenario_id": "S02", COL_CYCLE_H_MEAN: 0.1},
-        ])
-        ranked = rank(agg, COL_CYCLE_H_MEAN, 0.0)
-        assert ranked.iloc[0]["scenario_id"] == "S01"
-        assert ranked.iloc[0]["score"] == pytest.approx(0.0)
-        assert ranked.iloc[1]["score"] == pytest.approx(0.1)
+    def test_multiple_goals_partial_met(self):
+        agg = pd.DataFrame([{"scenario_id": "S01", COL_CYCLE_H_MEAN: 20.0, COL_COST_MEAN: 15.0}])
+        goals = [
+            Goal(COL_CYCLE_H_MEAN, weight=0.5, target=24.0),
+            Goal(COL_COST_MEAN,    weight=0.5, target=12.0),  # not met
+        ]
+        assert not rank(agg, goals).iloc[0]["goal_met"]
 
-    def test_zero_goal_max_goal_met_only_when_metric_is_zero(self):
-        agg = pd.DataFrame([
-            {"scenario_id": "S01", COL_CYCLE_H_MEAN: 0.0},
-            {"scenario_id": "S02", COL_CYCLE_H_MEAN: 0.05},
-        ])
-        ranked = rank(agg, COL_CYCLE_H_MEAN, 0.0).set_index("scenario_id")
-        assert ranked.loc["S01", "goal_met"]
-        assert not ranked.loc["S02", "goal_met"]
+    def test_weighted_score(self):
+        agg = pd.DataFrame([{"scenario_id": "S01", COL_CYCLE_H_MEAN: 20.0, COL_COST_MEAN: 10.0}])
+        goals = [
+            Goal(COL_CYCLE_H_MEAN, weight=0.6, target=40.0),  # 0.6 * 0.5 = 0.30
+            Goal(COL_COST_MEAN,    weight=0.4, target=20.0),  # 0.4 * 0.5 = 0.20
+        ]
+        assert rank(agg, goals).iloc[0]["score"] == pytest.approx(0.5)
+
+    def test_zero_weight_excluded_from_score_and_goal_met(self):
+        agg = pd.DataFrame([{"scenario_id": "S01", COL_CYCLE_H_MEAN: 20.0, COL_COST_MEAN: 100.0}])
+        goals = [
+            Goal(COL_CYCLE_H_MEAN, weight=1.0, target=24.0),
+            Goal(COL_COST_MEAN,    weight=0.0, target=12.0),  # excluded
+        ]
+        assert rank(agg, goals).iloc[0]["goal_met"]
 
     def test_rework_rate_goal(self):
         agg = pd.DataFrame([
             {"scenario_id": "S01", COL_REWORK_RATE_MEAN: 4.0},
-            {"scenario_id": "S02", COL_REWORK_RATE_MEAN: 0.0},  # zero rework — legitimate best case
+            {"scenario_id": "S02", COL_REWORK_RATE_MEAN: 0.0},
         ])
-        ranked = rank(agg, COL_REWORK_RATE_MEAN, 5.0)
+        ranked = rank(agg, [Goal(COL_REWORK_RATE_MEAN, weight=1.0, target=5.0)])
         by_sid = ranked.set_index("scenario_id")
         assert by_sid.loc["S01", "goal_met"]
         assert by_sid.loc["S02", "goal_met"]
-        assert ranked.iloc[0]["scenario_id"] == "S02"  # zero rework ranks first
+        assert ranked.iloc[0]["scenario_id"] == "S02"
+
+
+# ── Goal ──────────────────────────────────────────────────────────────────────
+
+class TestGoal:
+
+    def test_from_pct_reduction_absolute_target(self):
+        goal = Goal.from_pct_reduction("col", weight=0.5, pct=20.0, baseline_val=25.0)
+        assert goal.target == pytest.approx(20.0)  # 25 * 0.8
+
+    def test_from_pct_reduction_zero_pct(self):
+        goal = Goal.from_pct_reduction("col", weight=1.0, pct=0.0, baseline_val=25.0)
+        assert goal.target == pytest.approx(25.0)  # 25 * 1.0
+
+    def test_from_pct_reduction_preserves_metric_and_weight(self):
+        goal = Goal.from_pct_reduction("cycle_h_mean", weight=0.4, pct=10.0, baseline_val=30.0)
+        assert goal.metric == "cycle_h_mean"
+        assert goal.weight == pytest.approx(0.4)
