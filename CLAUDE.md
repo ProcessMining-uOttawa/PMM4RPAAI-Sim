@@ -253,8 +253,14 @@ Known bugs / reliability gaps:
   cycle time as `max(end_time) − min(start_time)` over all cases with no filter for
   completion. Currently safe because Prosimos runs until `--total_cases N` cases
   **complete**, so the output log should never contain truncated cases. If that
-  assumption ever breaks, incomplete cases would have artificially short cycle times
-  and pull the mean down silently.
+  assumption ever breaks, a partial fix (filter cases with any NaT `end_time` from
+  the event log) would correct `COL_CYCLE_H` and rework metrics but break the
+  stats-CSV-derived metrics: `COL_COST = COL_TOTAL_COST / n_cases` would use a
+  contaminated total (the stats CSV aggregates across all Prosimos cases with no
+  case-level breakdown) divided by a smaller filtered N, inflating per-case cost.
+  `COL_TOTAL_CYCLE_S` and `COL_TOTAL_COST` would remain wrong for the same reason.
+  A complete fix requires computing all metrics from the event log (first principles),
+  which is not currently worth the complexity given the Prosimos guarantee.
 Design decisions:
 
 - **Multi-goal weighted ranking** (`core/analysis.py`, `core/goals.py`, `ui/goals.py`, `app.py`): `rank(agg, goals)` accepts all three goals simultaneously, each with an independent percentage-reduction target and weight. `score = Σ weight_i × (metric_i / target_i)` — lower is better; `goal_met = True` only when every non-zero-weight goal is individually satisfied. Zero-weight goals are excluded from score, `goal_met`, and per-goal columns. Per-goal `{metric}_met` bool columns (e.g. `cycle_h_mean_met`) are emitted by `rank()` for each non-zero-weight goal; `app.py` formats them as ✓/✗ and names them via `MetricRegistry.by_column()` display names (e.g. "Cycle Time (h/case) ✓"). The aggregate `goal_met` column drives sort order and is dropped from the display — per-goal columns make it redundant. Targets are percentage reductions from baseline (clamped to 0–99% via widget `max_value` to prevent division by zero at 100%) — converted to absolute thresholds at ranking time via `Goal.from_pct_reduction()`. Weights sum to ~1 by convention; a `st.warning` fires when `|sum − 1| > 0.01` — the score is still well-defined with any positive weights, so no enforcement gate is applied. `baseline_per_case()` in `core/goals.py` derives per-case baseline values from the orchestrator's `baseline_agg`; `demo.demo_baseline_agg()` returns the same shape so `app.py` has a single call site: `baseline_per_case(ss.baseline_agg or demo.demo_baseline_agg())`. The goals sidebar section is gated on `ss.activities` — it is hidden until discovery completes (demo or real); `_goal_specs` is initialised as `[]` before the gate so Panel 4 always has a defined list.
