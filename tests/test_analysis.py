@@ -13,7 +13,7 @@ from core.analysis import (
     rank,
 )
 from core.goals import Goal
-from core.metrics import MetricDirection
+from core.metrics import MetricDirection, MetricRegistry
 from core.constants import (
     COL_CYCLE_H, COL_COST, COL_CYCLE_H_MEAN, COL_COST_MEAN,
     COL_TOTAL_CYCLE_S, COL_TOTAL_COST, COL_TOTAL_CYCLE_S_MEAN, COL_TOTAL_COST_MEAN,
@@ -186,21 +186,21 @@ class TestCompareToBaseline:
 class TestMainEffects:
 
     def test_has_required_columns(self):
-        me = main_effects(_results_df(), COL_CYCLE_H)
+        me = main_effects(_results_df(), MetricRegistry.CYCLE_TIME)
         assert {"factor", "level", "mean", "sn"} <= set(me.columns)
 
     def test_correct_factors_and_levels(self):
-        me = main_effects(_results_df(), COL_CYCLE_H)
+        me = main_effects(_results_df(), MetricRegistry.CYCLE_TIME)
         assert set(me["factor"].unique()) == {"f_a"}
         assert set(me["level"].unique()) == {"low", "high"}
 
     def test_level_mean_correct(self):
-        me = main_effects(_results_df(), COL_CYCLE_H)
+        me = main_effects(_results_df(), MetricRegistry.CYCLE_TIME)
         low_mean = me[me["level"] == "low"]["mean"].iloc[0]
         assert low_mean == pytest.approx(11.0)
 
     def test_rework_rate_metric(self):
-        me = main_effects(_results_df(), COL_REWORK_RATE)
+        me = main_effects(_results_df(), MetricRegistry.REWORK_RATE)
         low_mean = me[me["level"] == "low"]["mean"].iloc[0]
         assert low_mean == pytest.approx(15.0)  # (10.0 + 20.0) / 2
 

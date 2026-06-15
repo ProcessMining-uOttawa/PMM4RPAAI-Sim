@@ -10,7 +10,7 @@ from .constants import (
     COL_REWORK_COUNT, COL_REWORK_RATE, COL_REWORK_COUNT_MEAN, COL_REWORK_RATE_MEAN,
 )
 from .goals import Goal
-from .metrics import MetricDirection, MetricRegistry
+from .metrics import Metric, MetricDirection, MetricRegistry
 from .constants import F_NUM_CASES
 
 
@@ -20,9 +20,13 @@ _NON_FACTOR_COLS = frozenset({
 })
 
 
+def _factor_cols(df: pd.DataFrame) -> list[str]:
+    return [c for c in df.columns if c not in _NON_FACTOR_COLS]
+
+
 def aggregate(results: pd.DataFrame) -> pd.DataFrame:
     """results: scenario_id, replication, + all six metric cols (+ factor cols)."""
-    factor_cols = [c for c in results.columns if c not in _NON_FACTOR_COLS]
+    factor_cols = _factor_cols(results)
     agg_spec: dict = {
         COL_CYCLE_H_MEAN:       (COL_CYCLE_H,       "mean"),
         "cycle_h_std":          (COL_CYCLE_H,       "std"),
@@ -47,7 +51,7 @@ def compare_to_baseline(agg: pd.DataFrame, baseline_agg: dict[int, dict]) -> pd.
     Scenarios are grouped by their cases level; each group is preceded by its baseline row.
     """
     specs = [m.aggregate for m in MetricRegistry.all() if m.aggregate is not None]
-    num_cases_col = next((c for c in agg.columns if c == F_NUM_CASES), None)
+    num_cases_col = F_NUM_CASES if F_NUM_CASES in agg.columns else None
     rows: list[dict] = []
     for n_cases in sorted(baseline_agg):
         b = baseline_agg[n_cases]
@@ -90,21 +94,18 @@ def signal_to_noise(
     raise ValueError(direction)
 
 
-def main_effects(
-    results: pd.DataFrame,
-    metric: str,
-    direction: MetricDirection = MetricDirection.SMALLER_IS_BETTER,
-    floor: float = 0.0,
-) -> pd.DataFrame:
+def main_effects(results: pd.DataFrame, metric: Metric) -> pd.DataFrame:
     """For each factor × level: mean metric and S/N ratio."""
-    factor_cols = [c for c in results.columns if c not in _NON_FACTOR_COLS]
+    col = metric.per_case.results_column  # type: ignore[union-attr]
+    direction = metric.per_case.mean.direction  # type: ignore[union-attr]
+    floor = metric.sn_floor
     rows = []
-    for f in factor_cols:
+    for f in _factor_cols(results):
         for level, sub in results.groupby(f):
             rows.append({
                 "factor": f, "level": level,
-                "mean": sub[metric].mean(),
-                "sn": signal_to_noise(sub[metric].tolist(), direction, floor),
+                "mean": sub[col].mean(),
+                "sn": signal_to_noise(sub[col].tolist(), direction, floor),
             })
     return pd.DataFrame(rows)
 
