@@ -202,6 +202,10 @@ with st.sidebar:
         )
         _goal_specs.append((_gcol, _pct, _wt))
 
+    _weight_sum = sum(wt for _, _, wt in _goal_specs)
+    if abs(_weight_sum - 1.0) > 0.01:
+        st.warning(f"Weights sum to {_weight_sum:.2f} — scores will be skewed unless they sum to 1.")
+
     st.divider()
     st.subheader("Run config")
     n_reps = st.number_input("Replications (N)", 1, 100, 5)
