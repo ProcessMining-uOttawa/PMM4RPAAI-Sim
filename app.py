@@ -172,39 +172,40 @@ with st.sidebar:
             ss.baseline_agg = None
             st.rerun()
 
-    st.divider()
-    st.subheader("Goals")
     _goal_specs: list[tuple[str, float, float]] = []  # (col, pct, weight)
-    _hdr = st.columns([3, 2, 1.5])
-    _hdr[1].caption("Reduction (%)")
-    _hdr[2].caption("Weight")
-    for _m, _opt in GOAL_OPTIONS.items():
-        _gcol = _m.per_case.mean.column
-        _grow = st.columns([3, 2, 1.5])
-        _grow[0].markdown(_m.per_case.mean.display_name)
-        _pct = _grow[1].number_input(
-            f"pct_{_gcol}",
-            value=_opt.default_pct,
-            min_value=0.0,
-            max_value=99.0,
-            step=_opt.step,
-            key=f"goal_pct_{_gcol}",
-            label_visibility="collapsed",
-        )
-        _wt = _grow[2].number_input(
-            f"wt_{_gcol}",
-            value=_opt.default_weight,
-            min_value=0.0,
-            max_value=1.0,
-            step=0.05,
-            key=f"goal_weight_{_gcol}",
-            label_visibility="collapsed",
-        )
-        _goal_specs.append((_gcol, _pct, _wt))
+    if ss.activities:
+        st.divider()
+        st.subheader("Goals")
+        _hdr = st.columns([3, 2, 1.5])
+        _hdr[1].caption("Reduction (%)")
+        _hdr[2].caption("Weight")
+        for _m, _opt in GOAL_OPTIONS.items():
+            _gcol = _m.per_case.mean.column
+            _grow = st.columns([3, 2, 1.5])
+            _grow[0].markdown(_m.per_case.mean.display_name)
+            _pct = _grow[1].number_input(
+                f"pct_{_gcol}",
+                value=_opt.default_pct,
+                min_value=0.0,
+                max_value=99.0,
+                step=_opt.step,
+                key=f"goal_pct_{_gcol}",
+                label_visibility="collapsed",
+            )
+            _wt = _grow[2].number_input(
+                f"wt_{_gcol}",
+                value=_opt.default_weight,
+                min_value=0.0,
+                max_value=1.0,
+                step=0.05,
+                key=f"goal_weight_{_gcol}",
+                label_visibility="collapsed",
+            )
+            _goal_specs.append((_gcol, _pct, _wt))
 
-    _weight_sum = sum(wt for _, _, wt in _goal_specs)
-    if abs(_weight_sum - 1.0) > 0.01:
-        st.warning(f"Weights sum to {_weight_sum:.2f} — scores will be skewed unless they sum to 1.")
+        _weight_sum = sum(wt for _, _, wt in _goal_specs)
+        if abs(_weight_sum - 1.0) > 0.01:
+            st.warning(f"Weights sum to {_weight_sum:.2f} — scores will be skewed unless they sum to 1.")
 
     st.divider()
     st.subheader("Run config")
