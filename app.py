@@ -420,16 +420,11 @@ if ss.results is not None:
             [tab_cycle, tab_cost, tab_rework], _me_metrics
         ):
             with _tab:
-                me = analysis.main_effects(ss.results, _col, direction=_metric.per_case.mean.direction)
+                me = analysis.main_effects(ss.results, _col, direction=_metric.per_case.mean.direction, floor=_metric.sn_floor)
                 st.plotly_chart(
                     main_effects_chart(me, label_map, _metric.per_case.mean.display_name),
                     use_container_width=True,
                 )
-                if _metric is MetricRegistry.REWORK_RATE and me["sn"].isna().any():
-                    st.caption(
-                        "S/N is NaN for factor levels where all replications have zero "
-                        "rework rate — the log formula requires positive values."
-                    )
 
         bpmn_path = ss.get("experiment_bpmn_path")
         bpmn_exists = bpmn_path and Path(bpmn_path).exists()

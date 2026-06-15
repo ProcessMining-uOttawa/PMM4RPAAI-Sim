@@ -51,9 +51,19 @@ class TestSignalToNoise:
     def test_all_none_returns_nan(self):
         assert math.isnan(signal_to_noise([None, None]))
 
-    def test_zeros_return_nan(self):
-        # known limitation: v > 0 excludes zero costs (e.g. all-bot scenarios)
+    def test_zeros_return_nan_without_floor(self):
         assert math.isnan(signal_to_noise([0.0, 0.0]))
+
+    def test_floor_prevents_nan_for_zeros(self):
+        result = signal_to_noise([0.0, 0.0], floor=0.01)
+        assert not math.isnan(result)
+        expected = -10 * math.log10(sum(v * v for v in [0.01, 0.01]) / 2)
+        assert result == pytest.approx(expected)
+
+    def test_floor_applied_to_nonzero_values(self):
+        result = signal_to_noise([2.0, 4.0], floor=0.01)
+        expected = -10 * math.log10(sum(v * v for v in [2.01, 4.01]) / 2)
+        assert result == pytest.approx(expected)
 
     def test_none_values_ignored(self):
         assert signal_to_noise([None, 2.0, None, 4.0]) == pytest.approx(

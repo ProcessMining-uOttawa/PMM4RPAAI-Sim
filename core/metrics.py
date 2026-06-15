@@ -45,6 +45,7 @@ class Metric:
     per_case: PerCaseMetric | None
     aggregate: MetricSpec | None
     rankable: bool
+    sn_floor: float = 0.0
 
 
 class MetricRegistry:
@@ -123,6 +124,7 @@ class MetricRegistry:
             delta_name="Δ Rate (pp)",
         ),
         rankable=True,
+        sn_floor=0.01,
     )
 
     @classmethod

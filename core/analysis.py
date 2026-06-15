@@ -77,8 +77,9 @@ def compare_to_baseline(agg: pd.DataFrame, baseline_agg: dict[int, dict]) -> pd.
 def signal_to_noise(
     values,
     direction: MetricDirection = MetricDirection.SMALLER_IS_BETTER,
+    floor: float = 0.0,
 ) -> float:
-    vals = [v for v in values if v is not None and v > 0]
+    vals = [v + floor for v in values if v is not None and v + floor > 0]
     if not vals:
         return float("nan")
     if direction == MetricDirection.SMALLER_IS_BETTER:
@@ -92,6 +93,7 @@ def main_effects(
     results: pd.DataFrame,
     metric: str,
     direction: MetricDirection = MetricDirection.SMALLER_IS_BETTER,
+    floor: float = 0.0,
 ) -> pd.DataFrame:
     """For each factor × level: mean metric and S/N ratio."""
     factor_cols = [c for c in results.columns if c not in _NON_FACTOR_COLS]
@@ -101,7 +103,7 @@ def main_effects(
             rows.append({
                 "factor": f, "level": level,
                 "mean": sub[metric].mean(),
-                "sn": signal_to_noise(sub[metric].tolist(), direction),
+                "sn": signal_to_noise(sub[metric].tolist(), direction, floor),
             })
     return pd.DataFrame(rows)
 
