@@ -9,6 +9,7 @@ from .constants import (
     COL_TOTAL_CYCLE_S, COL_TOTAL_COST, COL_TOTAL_CYCLE_S_MEAN, COL_TOTAL_COST_MEAN,
     COL_REWORK_COUNT, COL_REWORK_RATE, COL_REWORK_COUNT_MEAN, COL_REWORK_RATE_MEAN,
 )
+from .goals import Goal
 from .metrics import MetricDirection, MetricRegistry
 from .constants import F_NUM_CASES
 
@@ -108,18 +109,24 @@ def main_effects(
     return pd.DataFrame(rows)
 
 
-def rank(agg: pd.DataFrame, goal_metric: str, goal_max: float) -> pd.DataFrame:
-    """Adds 'goal_met' and 'score' (lower = better) ranked by a single goal metric.
+def rank(agg: pd.DataFrame, goals: list[Goal]) -> pd.DataFrame:
+    """Adds per-goal '{metric}_met' columns, aggregate 'goal_met', and 'score'.
 
-    When goal_max > 0, score = metric / goal_max (ratio to target).
-    When goal_max = 0, score = metric directly (raw value; ratio is undefined).
+    Per-goal columns: True when that goal's metric is at or below its target.
+    goal_met: True only when all non-zero-weight goals are individually met.
+    score: weighted sum of (metric / target) across non-zero-weight goals (lower = better).
+    Zero-weight goals are excluded from all three.
     """
-    if goal_max < 0:
-        raise ValueError(f"goal_max must be non-negative, got {goal_max}")
     out = agg.copy()
-    out["goal_met"] = out[goal_metric].le(goal_max).fillna(False)
-    if goal_max == 0:
-        out["score"] = out[goal_metric].fillna(float("inf"))
-    else:
-        out["score"] = (out[goal_metric] / goal_max).fillna(0)
+    scores = pd.Series(0.0, index=out.index)
+    goal_met = pd.Series(True, index=out.index)
+    for goal in goals:
+        if goal.weight == 0:
+            continue
+        per_goal = out[goal.metric].le(goal.target).fillna(False)
+        out[f"{goal.metric}_met"] = per_goal
+        scores += goal.weight * (out[goal.metric] / goal.target).fillna(float("inf"))
+        goal_met &= per_goal
+    out["goal_met"] = goal_met
+    out["score"] = scores
     return out.sort_values(["goal_met", "score"], ascending=[False, True])

@@ -131,7 +131,7 @@ def per_log_metrics(log_csv: Path, stats_csv: Path | None = None) -> dict:
         with open(stats_csv) as f:
             rows = list(csv.reader(f))
         cost = _cost_from_rows(rows, len(per_case))
-    return {COL_CYCLE_H: float(cycle_h.median()), COL_COST: cost}
+    return {COL_CYCLE_H: float(cycle_h.mean()), COL_COST: cost}
 
 
 def total_metrics(stats_csv: Path) -> dict:
@@ -157,7 +157,7 @@ def replication_metrics(log_csv: Path, stats_csv: Path,
     with open(stats_csv) as f:
         rows = list(csv.reader(f))
     return {
-        COL_CYCLE_H: float(cycle_h.median()),
+        COL_CYCLE_H: float(cycle_h.mean()),
         COL_COST: _cost_from_rows(rows, len(per_case)),
         **_totals_from_rows(rows, stats_csv),
         **_rework_metrics(df, bot_task_name, original_task_name),

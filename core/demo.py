@@ -14,6 +14,7 @@ from .constants import (
 from .constants import (
     COL_CYCLE_H, COL_COST, COL_TOTAL_CYCLE_S, COL_TOTAL_COST,
     COL_REWORK_COUNT, COL_REWORK_RATE,
+    COL_TOTAL_CYCLE_S_MEAN, COL_TOTAL_COST_MEAN, COL_REWORK_RATE_MEAN,
 )
 from .orchestrator import ExperimentResult
 
@@ -39,6 +40,20 @@ class _SimResult:
     total_cost: float
     rework_count: float
     rework_rate: float
+
+
+def demo_baseline_agg() -> dict[int, dict]:
+    """Synthetic baseline_agg for goal target computation in demo mode.
+
+    Matches the shape produced by orchestrator.run_experiment() so
+    app.py can always call baseline_per_case() regardless of mode.
+    n=1 is used as the reference key so the division in baseline_per_case() cancels cleanly.
+    """
+    return {1: {
+        COL_TOTAL_CYCLE_S_MEAN: BASELINE_CYCLE_H * 3600,
+        COL_TOTAL_COST_MEAN:    BASELINE_COST,
+        COL_REWORK_RATE_MEAN:   BASELINE_REWORK_RATE,
+    }}
 
 
 def fake_discovery() -> list[str]:

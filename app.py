@@ -11,6 +11,7 @@ from core.experiment import build_scenarios
 from core import analysis, demo, orchestrator, preflight
 from core.simulation import runner, store
 from core.constants import COL_CYCLE_H, COL_COST, COL_REWORK_RATE
+from core.goals import Goal, baseline_per_case
 from core.metrics import MetricRegistry
 from ui.goals import GOAL_OPTIONS
 from ui.plots import factor_label_map, main_effects_chart
@@ -171,18 +172,40 @@ with st.sidebar:
             ss.baseline_agg = None
             st.rerun()
 
-    st.divider()
-    st.subheader("Goals")
-    goal_metric = st.selectbox(
-        "Optimise for",
-        list(GOAL_OPTIONS.keys()),
-        format_func=lambda m: m.per_case.mean.display_name,
-    )
-    opt = GOAL_OPTIONS[goal_metric]
-    goal_col = goal_metric.per_case.mean.column
-    goal_max = st.number_input(
-        "Target ≤", value=opt.default, step=opt.step, key=f"goal_max_{goal_col}"
-    )
+    _goal_specs: list[tuple[str, float, float]] = []  # (col, pct, weight)
+    if ss.activities:
+        st.divider()
+        st.subheader("Goals")
+        _hdr = st.columns([3, 2, 1.5])
+        _hdr[1].caption("Reduction (%)")
+        _hdr[2].caption("Weight")
+        for _m, _opt in GOAL_OPTIONS.items():
+            _gcol = _m.per_case.mean.column
+            _grow = st.columns([3, 2, 1.5])
+            _grow[0].markdown(_m.per_case.mean.display_name)
+            _pct = _grow[1].number_input(
+                f"pct_{_gcol}",
+                value=_opt.default_pct,
+                min_value=0.0,
+                max_value=99.0,
+                step=_opt.step,
+                key=f"goal_pct_{_gcol}",
+                label_visibility="collapsed",
+            )
+            _wt = _grow[2].number_input(
+                f"wt_{_gcol}",
+                value=_opt.default_weight,
+                min_value=0.0,
+                max_value=1.0,
+                step=0.05,
+                key=f"goal_weight_{_gcol}",
+                label_visibility="collapsed",
+            )
+            _goal_specs.append((_gcol, _pct, _wt))
+
+        _weight_sum = sum(wt for _, _, wt in _goal_specs)
+        if abs(_weight_sum - 1.0) > 0.01:
+            st.warning(f"Weights sum to {_weight_sum:.2f} — scores will be skewed unless they sum to 1.")
 
     st.divider()
     st.subheader("Run config")
@@ -374,10 +397,12 @@ if ss.results is not None:
                 "Cost goals are marked unmet.",
                 icon="⚠️",
             )
-        if goal_max < 0 or (not opt.allow_zero and goal_max == 0):
-            st.error("Target must be a positive number.")
-            st.stop()
-        ranked = analysis.rank(agg, goal_col, goal_max)
+        _baseline = baseline_per_case(ss.baseline_agg or demo.demo_baseline_agg())
+        goals = [
+            Goal.from_pct_reduction(col, wt, pct, _baseline[col])
+            for col, pct, wt in _goal_specs
+        ]
+        ranked = analysis.rank(agg, goals)
         ranked.insert(0, "rank", range(1, len(ranked) + 1))
         _kpi_rename = {"scenario_id": "Scenario"}
         _std_cols = []
@@ -390,22 +415,21 @@ if ss.results is not None:
             if _m.aggregate:
                 _kpi_rename[_m.aggregate.column] = _m.aggregate.display_name
                 _agg_transforms[_m.aggregate.column] = _m.aggregate.display_fn
+        _per_goal_rename = {
+            f"{g.metric}_met": MetricRegistry.by_column(g.metric).display_name + " ✓"
+            for g in goals if g.weight != 0
+        }
         st.dataframe(
             ranked.assign(
-                goals=ranked["goal_met"].map({True: "✓ met", False: "✗"}),
+                **{col: ranked[col].map({True: "✓", False: "✗"})
+                   for col in _per_goal_rename if col in ranked.columns},
                 **{col: ranked[col].map(fn)  # type: ignore[arg-type]
                    for col, fn in _agg_transforms.items() if col in ranked.columns},
             ).drop(columns=["goal_met", "score"] + _std_cols, errors="ignore")
-             .rename(columns={**_kpi_rename, **{p.id: p.label for p in params}}),
+             .rename(columns={**_kpi_rename, **_per_goal_rename, **{p.id: p.label for p in params}}),
             use_container_width=True,
             hide_index=True,
         )
-        if opt.allow_zero and goal_max == 0:
-            st.caption(
-                "Score shows raw rework rate (lower is better). "
-                "Ratio-to-target is undefined when the target is zero."
-            )
-
         st.markdown("###### Main effects (smaller is better)")
         label_map = factor_label_map(params)
         _me_metrics = [
