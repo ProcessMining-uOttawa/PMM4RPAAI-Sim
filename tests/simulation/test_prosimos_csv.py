@@ -97,7 +97,7 @@ class TestParseSection:
 
 class TestPerLogMetrics:
 
-    def test_cycle_time_median(self, tmp_path):
+    def test_cycle_time_mean(self, tmp_path):
         log = tmp_path / "log.csv"
         _write_log(log, [
             ("c1", "2025-01-01T08:00:00", "2025-01-01T10:00:00"),  # 2 h
