@@ -9,7 +9,7 @@ from .constants import (
     COL_TOTAL_CYCLE_S, COL_TOTAL_COST, COL_TOTAL_CYCLE_S_MEAN, COL_TOTAL_COST_MEAN,
     COL_REWORK_COUNT, COL_REWORK_RATE, COL_REWORK_COUNT_MEAN, COL_REWORK_RATE_MEAN,
 )
-from .metrics import MetricRegistry
+from .metrics import MetricDirection, MetricRegistry
 from .constants import F_NUM_CASES
 
 
@@ -74,19 +74,25 @@ def compare_to_baseline(agg: pd.DataFrame, baseline_agg: dict[int, dict]) -> pd.
     return pd.DataFrame(rows)
 
 
-def signal_to_noise(values, kind="smaller_is_better") -> float:
+def signal_to_noise(
+    values,
+    direction: MetricDirection = MetricDirection.SMALLER_IS_BETTER,
+) -> float:
     vals = [v for v in values if v is not None and v > 0]
     if not vals:
         return float("nan")
-    if kind == "smaller_is_better":
+    if direction == MetricDirection.SMALLER_IS_BETTER:
         return -10 * math.log10(sum(v*v for v in vals) / len(vals))
-    if kind == "larger_is_better":
+    if direction == MetricDirection.LARGER_IS_BETTER:
         return -10 * math.log10(sum(1/(v*v) for v in vals) / len(vals))
-    raise ValueError(kind)
+    raise ValueError(direction)
 
 
-def main_effects(results: pd.DataFrame, metric: str,
-                 kind: str = "smaller_is_better") -> pd.DataFrame:
+def main_effects(
+    results: pd.DataFrame,
+    metric: str,
+    direction: MetricDirection = MetricDirection.SMALLER_IS_BETTER,
+) -> pd.DataFrame:
     """For each factor × level: mean metric and S/N ratio."""
     factor_cols = [c for c in results.columns if c not in _NON_FACTOR_COLS]
     rows = []
@@ -95,7 +101,7 @@ def main_effects(results: pd.DataFrame, metric: str,
             rows.append({
                 "factor": f, "level": level,
                 "mean": sub[metric].mean(),
-                "sn": signal_to_noise(sub[metric].tolist(), kind),
+                "sn": signal_to_noise(sub[metric].tolist(), direction),
             })
     return pd.DataFrame(rows)
 

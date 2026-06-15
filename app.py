@@ -420,7 +420,7 @@ if ss.results is not None:
             [tab_cycle, tab_cost, tab_rework], _me_metrics
         ):
             with _tab:
-                me = analysis.main_effects(ss.results, _col)
+                me = analysis.main_effects(ss.results, _col, direction=_metric.per_case.mean.direction)
                 st.plotly_chart(
                     main_effects_chart(me, label_map, _metric.per_case.mean.display_name),
                     use_container_width=True,

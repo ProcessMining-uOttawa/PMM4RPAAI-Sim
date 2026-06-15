@@ -12,6 +12,7 @@ from core.analysis import (
     signal_to_noise,
     rank,
 )
+from core.metrics import MetricDirection
 from core.constants import (
     COL_CYCLE_H, COL_COST, COL_CYCLE_H_MEAN, COL_COST_MEAN,
     COL_TOTAL_CYCLE_S, COL_TOTAL_COST, COL_TOTAL_CYCLE_S_MEAN, COL_TOTAL_COST_MEAN,
@@ -42,7 +43,7 @@ class TestSignalToNoise:
     def test_larger_is_better(self):
         vals = [2.0, 4.0]
         expected = -10 * math.log10(sum(1 / (v * v) for v in vals) / len(vals))
-        assert signal_to_noise(vals, kind="larger_is_better") == pytest.approx(expected)
+        assert signal_to_noise(vals, direction=MetricDirection.LARGER_IS_BETTER) == pytest.approx(expected)
 
     def test_empty_returns_nan(self):
         assert math.isnan(signal_to_noise([]))
@@ -59,9 +60,9 @@ class TestSignalToNoise:
             signal_to_noise([2.0, 4.0])
         )
 
-    def test_invalid_kind_raises(self):
+    def test_invalid_direction_raises(self):
         with pytest.raises(ValueError):
-            signal_to_noise([1.0], kind="invalid")
+            signal_to_noise([1.0], direction="invalid")  # type: ignore[arg-type]
 
 
 # ── aggregate ─────────────────────────────────────────────────────────────────
