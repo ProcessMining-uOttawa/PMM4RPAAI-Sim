@@ -12,6 +12,7 @@ from core.analysis import (
     signal_to_noise,
     rank,
 )
+from core.metrics import MetricDirection
 from core.constants import (
     COL_CYCLE_H, COL_COST, COL_CYCLE_H_MEAN, COL_COST_MEAN,
     COL_TOTAL_CYCLE_S, COL_TOTAL_COST, COL_TOTAL_CYCLE_S_MEAN, COL_TOTAL_COST_MEAN,
@@ -42,7 +43,7 @@ class TestSignalToNoise:
     def test_larger_is_better(self):
         vals = [2.0, 4.0]
         expected = -10 * math.log10(sum(1 / (v * v) for v in vals) / len(vals))
-        assert signal_to_noise(vals, kind="larger_is_better") == pytest.approx(expected)
+        assert signal_to_noise(vals, direction=MetricDirection.LARGER_IS_BETTER) == pytest.approx(expected)
 
     def test_empty_returns_nan(self):
         assert math.isnan(signal_to_noise([]))
@@ -50,18 +51,28 @@ class TestSignalToNoise:
     def test_all_none_returns_nan(self):
         assert math.isnan(signal_to_noise([None, None]))
 
-    def test_zeros_return_nan(self):
-        # known limitation: v > 0 excludes zero costs (e.g. all-bot scenarios)
+    def test_zeros_return_nan_without_floor(self):
         assert math.isnan(signal_to_noise([0.0, 0.0]))
+
+    def test_floor_prevents_nan_for_zeros(self):
+        result = signal_to_noise([0.0, 0.0], floor=0.01)
+        assert not math.isnan(result)
+        expected = -10 * math.log10(sum(v * v for v in [0.01, 0.01]) / 2)
+        assert result == pytest.approx(expected)
+
+    def test_floor_applied_to_nonzero_values(self):
+        result = signal_to_noise([2.0, 4.0], floor=0.01)
+        expected = -10 * math.log10(sum(v * v for v in [2.01, 4.01]) / 2)
+        assert result == pytest.approx(expected)
 
     def test_none_values_ignored(self):
         assert signal_to_noise([None, 2.0, None, 4.0]) == pytest.approx(
             signal_to_noise([2.0, 4.0])
         )
 
-    def test_invalid_kind_raises(self):
+    def test_invalid_direction_raises(self):
         with pytest.raises(ValueError):
-            signal_to_noise([1.0], kind="invalid")
+            signal_to_noise([1.0], direction="invalid")  # type: ignore[arg-type]
 
 
 # ── aggregate ─────────────────────────────────────────────────────────────────
