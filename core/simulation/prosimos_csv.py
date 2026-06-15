@@ -37,18 +37,6 @@ def _parse_section(rows: list, header: str) -> tuple[list[str], list[list[str]]]
     return [], []
 
 
-def _cost_from_rows(rows: list, n_cases: int) -> float | None:
-    """Lenient: returns None if cost data is missing or unparseable."""
-    try:
-        task_hdr, task_data = _parse_section(rows, PROSIMOS_SECTION_TASK_STATS)
-        if task_hdr and task_data:
-            total = sum(float(r[task_hdr.index(PROSIMOS_COL_TOTAL_COST)]) for r in task_data)
-            return total / n_cases
-    except (ValueError, IndexError):
-        pass
-    return None
-
-
 def _totals_from_rows(rows: list, source: Path) -> dict:
     """Strict: raises ValueError if any total metric is missing or unparseable."""
     overall_hdr, overall_data = _parse_section(rows, PROSIMOS_SECTION_OVERALL)
@@ -115,25 +103,6 @@ def _rework_metrics(df: pd.DataFrame,
     }
 
 
-def per_log_metrics(log_csv: Path, stats_csv: Path | None = None) -> dict:
-    """Summary metrics for one Prosimos replication.
-
-    cycle_h: median per-case cycle time in hours (last end − first start).
-    cost: average cost per case — None if stats unavailable or unparseable.
-    """
-    df = pd.read_csv(log_csv, parse_dates=["start_time", "end_time"])
-    per_case = df.groupby("case_id").agg(
-        start=("start_time", "min"), end=("end_time", "max"))
-    cycle_h = (per_case["end"] - per_case["start"]).dt.total_seconds().div(3600)
-
-    cost: float | None = None
-    if stats_csv and Path(stats_csv).exists():
-        with open(stats_csv) as f:
-            rows = list(csv.reader(f))
-        cost = _cost_from_rows(rows, len(per_case))
-    return {COL_CYCLE_H: float(cycle_h.mean()), COL_COST: cost}
-
-
 def total_metrics(stats_csv: Path) -> dict:
     """Run-total metrics for one Prosimos replication. Raises ValueError on missing data."""
     with open(stats_csv) as f:
@@ -148,7 +117,8 @@ def replication_metrics(log_csv: Path, stats_csv: Path,
 
     Returns COL_CYCLE_H, COL_COST, COL_TOTAL_CYCLE_S, COL_TOTAL_COST,
     COL_REWORK_COUNT, COL_REWORK_RATE.
-    Raises ValueError if total metrics are missing (delegates to _totals_from_rows).
+    Raises ValueError if stats are missing or malformed.
+    Raises FileNotFoundError if stats_csv does not exist.
     """
     df = pd.read_csv(log_csv, parse_dates=["start_time", "end_time"])
     per_case = df.groupby("case_id").agg(
@@ -156,9 +126,10 @@ def replication_metrics(log_csv: Path, stats_csv: Path,
     cycle_h = (per_case["end"] - per_case["start"]).dt.total_seconds().div(3600)
     with open(stats_csv) as f:
         rows = list(csv.reader(f))
+    totals = _totals_from_rows(rows, stats_csv)
     return {
         COL_CYCLE_H: float(cycle_h.mean()),
-        COL_COST: _cost_from_rows(rows, len(per_case)),
-        **_totals_from_rows(rows, stats_csv),
+        COL_COST: totals[COL_TOTAL_COST] / len(per_case),
+        **totals,
         **_rework_metrics(df, bot_task_name, original_task_name),
     }

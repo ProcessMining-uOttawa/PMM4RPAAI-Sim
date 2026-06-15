@@ -7,7 +7,6 @@ import pytest
 
 from core.simulation.prosimos_csv import (
     _parse_section,
-    per_log_metrics,
     total_metrics,
     replication_metrics,
     PROSIMOS_SECTION_TASK_STATS, PROSIMOS_COL_TOTAL_COST,
@@ -93,47 +92,6 @@ class TestParseSection:
         assert hdrs == [] and data == []
 
 
-# ── per_log_metrics ───────────────────────────────────────────────────────────
-
-class TestPerLogMetrics:
-
-    def test_cycle_time_mean(self, tmp_path):
-        log = tmp_path / "log.csv"
-        _write_log(log, [
-            ("c1", "2025-01-01T08:00:00", "2025-01-01T10:00:00"),  # 2 h
-            ("c2", "2025-01-01T08:00:00", "2025-01-01T12:00:00"),  # 4 h
-        ])
-        assert per_log_metrics(log)[COL_CYCLE_H] == pytest.approx(3.0)
-
-    def test_cost_from_stats(self, tmp_path):
-        log = tmp_path / "log.csv"
-        stats = tmp_path / "stats.csv"
-        _write_log(log, [
-            ("c1", "2025-01-01T08:00:00", "2025-01-01T09:00:00"),
-            ("c2", "2025-01-01T08:00:00", "2025-01-01T09:00:00"),
-        ])
-        _write_stats(stats, [("task_a", 100.0), ("task_b", 50.0)])
-        # total 150 / 2 cases = 75.0 per case
-        assert per_log_metrics(log, stats)[COL_COST] == pytest.approx(75.0)
-
-    def test_cost_none_without_stats(self, tmp_path):
-        log = tmp_path / "log.csv"
-        _write_log(log, [("c1", "2025-01-01T08:00:00", "2025-01-01T09:00:00")])
-        assert per_log_metrics(log)[COL_COST] is None
-
-    def test_cost_none_when_stats_file_missing(self, tmp_path):
-        log = tmp_path / "log.csv"
-        _write_log(log, [("c1", "2025-01-01T08:00:00", "2025-01-01T09:00:00")])
-        assert per_log_metrics(log, tmp_path / "nonexistent.csv")[COL_COST] is None
-
-    def test_cost_none_when_stats_malformed(self, tmp_path):
-        log = tmp_path / "log.csv"
-        stats = tmp_path / "stats.csv"
-        _write_log(log, [("c1", "2025-01-01T08:00:00", "2025-01-01T09:00:00")])
-        stats.write_text("no recognisable sections here\n")
-        assert per_log_metrics(log, stats)[COL_COST] is None
-
-
 # ── total_metrics ─────────────────────────────────────────────────────────────
 
 class TestTotalMetrics:
@@ -184,7 +142,28 @@ class TestReplicationMetrics:
         assert COL_TOTAL_CYCLE_S in m and COL_TOTAL_COST in m
         assert COL_REWORK_COUNT in m and COL_REWORK_RATE in m
 
-    def test_matches_separate_calls(self, tmp_path):
+    def test_cycle_time_mean(self, tmp_path):
+        log = tmp_path / "log.csv"
+        stats = tmp_path / "stats.csv"
+        _write_log(log, [
+            ("c1", "2025-01-01T08:00:00", "2025-01-01T10:00:00"),  # 2 h
+            ("c2", "2025-01-01T08:00:00", "2025-01-01T12:00:00"),  # 4 h
+        ])
+        _write_full_stats(stats, [("task_a", 0.0)], accumulated_cycle_s=1.0)
+        assert replication_metrics(log, stats)[COL_CYCLE_H] == pytest.approx(3.0)
+
+    def test_cost_per_case(self, tmp_path):
+        log = tmp_path / "log.csv"
+        stats = tmp_path / "stats.csv"
+        _write_log(log, [
+            ("c1", "2025-01-01T08:00:00", "2025-01-01T09:00:00"),
+            ("c2", "2025-01-01T08:00:00", "2025-01-01T09:00:00"),
+        ])
+        _write_full_stats(stats, [("task_a", 100.0), ("task_b", 50.0)], accumulated_cycle_s=1.0)
+        # total 150 / 2 cases = 75.0 per case
+        assert replication_metrics(log, stats)[COL_COST] == pytest.approx(75.0)
+
+    def test_totals_consistent_with_total_metrics(self, tmp_path):
         log = tmp_path / "log.csv"
         stats = tmp_path / "stats.csv"
         _write_log(log, [
@@ -193,9 +172,20 @@ class TestReplicationMetrics:
         ])
         _write_full_stats(stats, [("task_a", 100.0), ("task_b", 50.0)], accumulated_cycle_s=7200.0)
         combined = replication_metrics(log, stats)
-        per = per_log_metrics(log, stats)
         total = total_metrics(stats)
-        assert combined[COL_CYCLE_H] == pytest.approx(per[COL_CYCLE_H])
-        assert combined[COL_COST] == pytest.approx(per[COL_COST])
         assert combined[COL_TOTAL_CYCLE_S] == pytest.approx(total[COL_TOTAL_CYCLE_S])
         assert combined[COL_TOTAL_COST] == pytest.approx(total[COL_TOTAL_COST])
+
+    def test_missing_stats_file_raises(self, tmp_path):
+        log = tmp_path / "log.csv"
+        _write_log(log, [("c1", "2025-01-01T08:00:00", "2025-01-01T09:00:00")])
+        with pytest.raises(FileNotFoundError):
+            replication_metrics(log, tmp_path / "nonexistent.csv")
+
+    def test_malformed_stats_raises(self, tmp_path):
+        log = tmp_path / "log.csv"
+        stats = tmp_path / "stats.csv"
+        _write_log(log, [("c1", "2025-01-01T08:00:00", "2025-01-01T09:00:00")])
+        stats.write_text("no recognisable sections here\n")
+        with pytest.raises(ValueError, match="Overall Scenario Statistics"):
+            replication_metrics(log, stats)
