@@ -6,10 +6,6 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Callable
 
-
-class ExperimentCancelledError(RuntimeError):
-    """Raised when a running experiment is stopped by the caller."""
-
 import pandas as pd
 
 from .simulation import prosimos_csv, store
@@ -29,6 +25,10 @@ from .constants import (
 )
 from .parameters import Scenario
 from .transformations import Transformation
+
+
+class ExperimentCancelledError(RuntimeError):
+    """Raised when a running experiment is stopped by the caller."""
 
 
 @dataclass

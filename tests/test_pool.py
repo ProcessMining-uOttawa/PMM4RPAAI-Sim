@@ -1,8 +1,6 @@
 """Tests for pool.run_all() — stop_check predicate and completion flag."""
 from __future__ import annotations
 
-import pytest
-
 from core.simulation import pool, runner
 
 
