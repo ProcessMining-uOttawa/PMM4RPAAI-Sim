@@ -41,6 +41,8 @@ class ExperimentResult:
     experiment_bpmn_path: Path | None = None
     scenario_json_paths: dict[str, Path] = field(default_factory=dict)
     baseline_agg: dict[int, dict] | None = None  # {n_cases: mean totals}
+    scenario_log_paths: dict[str, list[Path]] = field(default_factory=dict)
+    baseline_log_paths: dict[int, list[Path]] = field(default_factory=dict)
 
 
 def run_experiment(
@@ -87,6 +89,8 @@ def run_experiment(
     done = 0
     rows: list[dict] = []
     baseline_reps: dict[int, list[dict]] = {n: [] for n in cases_levels}
+    scenario_log_paths: dict[str, list[Path]] = {s.id: [] for s in scenarios}
+    baseline_log_paths: dict[int, list[Path]] = {n: [] for n in cases_levels}
 
     tasks: list[SimulationTask] = []
     for n_cases in cases_levels:
@@ -127,6 +131,7 @@ def run_experiment(
             baseline_reps[n_cases].append(
                 prosimos_csv.replication_metrics(task.out_log, task.out_stat)
             )
+            baseline_log_paths[n_cases].append(task.out_log)
             label = "baseline"
         else:
             _, sid, rep, values = task.metadata
@@ -150,6 +155,7 @@ def run_experiment(
                     **values,
                 }
             )
+            scenario_log_paths[sid].append(task.out_log)
             label = sid
         done += 1
         if on_progress:
@@ -175,4 +181,6 @@ def run_experiment(
         experiment_bpmn_path=experiment_bpmn_path,
         scenario_json_paths=scenario_json_paths,
         baseline_agg=baseline_agg,
+        scenario_log_paths=scenario_log_paths,
+        baseline_log_paths=baseline_log_paths,
     )
