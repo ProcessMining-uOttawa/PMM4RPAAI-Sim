@@ -290,7 +290,6 @@ Feature work:
 
 - **Cancel mid-run — cancellation latency in the real pipeline**: cancellation is implemented (`threading.Event` checked via `stop_check` predicate in `pool.run_all()`; demo mode checks at each replication). In the real pipeline, cancellation latency equals the duration of the longest currently-running Prosimos replication: `as_completed` only yields between task completions, and `cancel_futures=True` only cancels pending (not in-flight) tasks. Fixing this requires tracking Prosimos subprocess PIDs in `SimulationTask` and calling `process.kill()` on cancel — left as future work because it also requires cleanup of partial output files.
 - **Simulation failure recovery**: if one replication fails, the whole run currently fails fast and results are lost. A future recovery method would serialize completed `SimulationTask` results to disk and allow re-runs to skip already-completed tasks. When implemented, `SimulationTask.metadata` should be formalized as typed dataclasses (currently opaque `Any` tuples — adequate while recovery doesn't exist).
-- **Parallel simulation — configurable worker count**: `pool.run_all()` accepts `max_workers` (defaults to `os.cpu_count()`). Exposing this in the UI (e.g. a sidebar slider) is a future feature — the parameter is already injectable without touching `orchestrator.py`.
 - **Real BPMN preview**: replace the activity dropdown with a clickable
   BPMN canvas (Mockup C had this idea). `bpmn-js` via a Streamlit custom
   component would do it.

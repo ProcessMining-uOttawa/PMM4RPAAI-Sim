@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 import json
+import os
 import time
 import xml.etree.ElementTree as ET
 import streamlit as st
@@ -213,6 +214,10 @@ with st.sidebar:
     st.divider()
     st.subheader("Run config")
     n_reps = st.number_input("Replications (N)", 1, 100, 5)
+    max_workers = st.number_input(
+        "Parallel workers", min_value=1, max_value=os.cpu_count(), value=1, step=1,
+        help="Number of Prosimos simulations to run in parallel. Higher values use more CPU.",
+    )
     bot_cost_per_hour = st.number_input("Bot cost ($/hr)", min_value=0.0, value=0.0, step=1.0)
 
 # --- gate: need a log first --------------------------------------------------
@@ -405,6 +410,7 @@ def _panel3() -> None:
                             selected_resource_id=selected_resource_id,
                             bot_cost_per_hour=bot_cost_per_hour,
                             stop_event=stop_ev,
+                            max_workers=max_workers,
                         )
 
                 start_experiment(ss, _fn)
