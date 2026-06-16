@@ -44,6 +44,8 @@ ss.setdefault(
     "experiment_bpmn_path", None
 )  # single transformed BPMN, shared across scenarios
 ss.setdefault("scenario_json_paths", {})  # sid -> Path, one params.json per scenario
+ss.setdefault("scenario_log_paths", {})   # sid -> list[Path], one log per replication
+ss.setdefault("baseline_log_paths", {})   # n_cases -> list[Path], one log per replication
 ss.setdefault("array_name", None)
 ss.setdefault("scenarios", [])
 ss.setdefault("baseline_agg", None)
@@ -174,6 +176,8 @@ with st.sidebar:
             ss.experiment_bpmn_path = None
             ss.scenario_json_paths = {}
             ss.baseline_agg = None
+            ss.scenario_log_paths = {}
+            ss.baseline_log_paths = {}
             st.rerun()
 
     _goal_specs: list[tuple[str, float, float]] = []  # (col, pct, weight)
@@ -377,6 +381,8 @@ def _panel3() -> None:
                     ss.experiment_bpmn_path = _result.experiment_bpmn_path
                     ss.scenario_json_paths = _result.scenario_json_paths
                     ss.baseline_agg = _result.baseline_agg
+                    ss.scenario_log_paths = _result.scenario_log_paths
+                    ss.baseline_log_paths = _result.baseline_log_paths
                     st.toast(f"Completed {total_runs} simulations.", icon="✅")
                 clear_run(ss)
                 st.rerun(scope="app")  # full rerun: Panel 4 needs to appear
@@ -477,9 +483,9 @@ if ss.results is not None:
 
         st.markdown("###### Export")
         stats_csv = ranked.to_csv(index=False)
-        col_bpmn, col_json, col_stats, col_all = st.columns(4)
+        col_bpmn, col_json, col_stats, col_logs, col_all = st.columns(5)
         col_json.download_button(
-            "⬇ Scenarios (JSON zip)",
+            "⬇ Params (ZIP)",
             data=store.json_zip(json_paths),
             file_name="scenarios.zip",
             mime="application/zip",
@@ -501,8 +507,21 @@ if ss.results is not None:
             use_container_width=True,
             disabled=not bpmn_exists,
         )
+        _has_logs = not demo_mode and bool(
+            ss.get("scenario_log_paths") or ss.get("baseline_log_paths")
+        )
+        col_logs.download_button(
+            "⬇ Event logs (ZIP)",
+            data=store.event_logs_zip(
+                ss.get("scenario_log_paths", {}), ss.get("baseline_log_paths", {})
+            ) if _has_logs else b"",
+            file_name="event_logs.zip",
+            mime="application/zip",
+            use_container_width=True,
+            disabled=not _has_logs,
+        )
         col_all.download_button(
-            "⬇ All (ZIP)",
+            "⬇ Model (ZIP)",
             data=store.group_zip(Path(bpmn_path), json_paths, stats_csv) if (bpmn_exists and json_paths) else b"",
             file_name="export.zip",
             mime="application/zip",

@@ -90,3 +90,23 @@ def group_zip(bpmn_path: Path, json_paths: dict[str, Path], stats_csv: str) -> b
         for sid, p in sorted(json_paths.items()):
             z.writestr(f"scenarios/{sid}_params.json", p.read_text())
     return buf.getvalue()
+
+
+def event_logs_zip(
+    scenario_log_paths: dict[str, list[Path]],
+    baseline_log_paths: dict[int, list[Path]],
+) -> bytes:
+    """Pack Prosimos event log CSVs into a ZIP archive. Returns b"" if both are empty."""
+    if not scenario_log_paths and not baseline_log_paths:
+        return b""
+    buf = io.BytesIO()
+    with zipfile.ZipFile(buf, "w", zipfile.ZIP_DEFLATED) as z:
+        for sid, paths in sorted(scenario_log_paths.items()):
+            for p in paths:
+                if p.exists():
+                    z.write(p, arcname=f"scenarios/{sid}/{p.name}")
+        for n_cases, paths in sorted(baseline_log_paths.items()):
+            for p in paths:
+                if p.exists():
+                    z.write(p, arcname=f"baseline/cases_{n_cases}/{p.name}")
+    return buf.getvalue()
