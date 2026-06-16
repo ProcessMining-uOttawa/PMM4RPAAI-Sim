@@ -1,6 +1,7 @@
 """Demo-mode stand-ins for Simod + Prosimos so the UI is usable offline."""
 from __future__ import annotations
 import random
+import threading
 from dataclasses import dataclass
 from typing import Callable
 
@@ -16,7 +17,7 @@ from .constants import (
     COL_REWORK_COUNT, COL_REWORK_RATE,
     COL_TOTAL_CYCLE_S_MEAN, COL_TOTAL_COST_MEAN, COL_REWORK_RATE_MEAN,
 )
-from .orchestrator import ExperimentResult
+from .orchestrator import ExperimentCancelledError, ExperimentResult
 
 
 DEMO_ACTIVITIES = [
@@ -106,6 +107,7 @@ def run_experiment(
     n_reps: int,
     on_progress: Callable[[int, int, str, int], None] | None = None,
     bot_cost_per_hour: float = 0.0,
+    stop_event: threading.Event | None = None,
 ) -> ExperimentResult:
     """Synthetic stand-in for orchestrator.run_experiment — no Simod/Prosimos needed."""
     total = len(scenarios) * n_reps
@@ -114,6 +116,8 @@ def run_experiment(
 
     for s in scenarios:
         for rep in range(n_reps):
+            if stop_event is not None and stop_event.is_set():
+                raise ExperimentCancelledError()
             r = _fake_simulate(s, rep, bot_cost_per_hour)
             rows.append({
                 "scenario_id":     s.id,

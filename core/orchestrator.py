@@ -1,6 +1,7 @@
 """Simulation run loop — pure business logic, no Streamlit dependency."""
 
 from __future__ import annotations
+import threading
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Callable
@@ -26,6 +27,10 @@ from .parameters import Scenario
 from .transformations import Transformation
 
 
+class ExperimentCancelledError(RuntimeError):
+    """Raised when a running experiment is stopped by the caller."""
+
+
 @dataclass
 class ExperimentResult:
     results: pd.DataFrame
@@ -45,6 +50,7 @@ def run_experiment(
     on_progress: Callable[[int, int, str, int], None] | None = None,
     selected_resource_id: str | None = None,
     bot_cost_per_hour: float = 0.0,
+    stop_event: threading.Event | None = None,
 ) -> ExperimentResult:
     """Run all scenario replications and return aggregated results.
 
@@ -144,7 +150,10 @@ def run_experiment(
         if on_progress:
             on_progress(done, total, label, rep)
 
-    run_all(tasks, _on_complete)
+    stop_check = (lambda: stop_event.is_set()) if stop_event is not None else None
+    completed = run_all(tasks, _on_complete, stop_check=stop_check)
+    if not completed:
+        raise ExperimentCancelledError()
 
     baseline_agg: dict[int, dict] = {}
     for n_cases, rep_list in baseline_reps.items():
