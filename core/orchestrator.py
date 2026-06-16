@@ -55,6 +55,7 @@ def run_experiment(
     selected_resource_id: str | None = None,
     bot_cost_per_hour: float = 0.0,
     stop_event: threading.Event | None = None,
+    max_workers: int = 1,
 ) -> ExperimentResult:
     """Run all scenario replications and return aggregated results.
 
@@ -155,7 +156,7 @@ def run_experiment(
             on_progress(done, total, label, rep)
 
     stop_check = (lambda: stop_event.is_set()) if stop_event is not None else None
-    completed = run_all(tasks, _on_complete, stop_check=stop_check)
+    completed = run_all(tasks, _on_complete, max_workers=max_workers, stop_check=stop_check)
     if not completed:
         raise ExperimentCancelledError()
 
