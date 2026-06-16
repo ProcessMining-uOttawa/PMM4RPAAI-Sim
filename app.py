@@ -50,6 +50,26 @@ ss.setdefault("array_name", None)
 ss.setdefault("scenarios", [])
 ss.setdefault("baseline_agg", None)
 
+
+def _clear_results() -> None:
+    ss.results = None
+    ss.experiment_bpmn_path = None
+    ss.scenario_json_paths = {}
+    ss.baseline_agg = None
+    ss.scenario_log_paths = {}
+    ss.baseline_log_paths = {}
+
+
+def _clear_log() -> None:
+    _clear_results()
+    ss.log_name = None
+    ss.log_path = None
+    ss.activities = []
+    ss.bpmn_path = None
+    ss.json_path = None
+    ss.log_fingerprint = None
+
+
 # --- header ------------------------------------------------------------------
 st.markdown(
     "<h2 style='margin-bottom:0'>⚙ Automation What-If Simulator</h2>"
@@ -163,21 +183,8 @@ with st.sidebar:
     if ss.log_name:
         st.caption(f"📄 Loaded: **{ss.log_name}** · {len(ss.activities)} activities")
         if st.button("Reset log", use_container_width=True):
-            for k in (
-                "log_name",
-                "log_path",
-                "activities",
-                "bpmn_path",
-                "json_path",
-                "log_fingerprint",
-                "results",
-            ):
-                ss[k] = None if k != "activities" else []
-            ss.experiment_bpmn_path = None
-            ss.scenario_json_paths = {}
-            ss.baseline_agg = None
-            ss.scenario_log_paths = {}
-            ss.baseline_log_paths = {}
+            cancel_experiment(ss)
+            _clear_log()
             st.rerun()
 
     _goal_specs: list[tuple[str, float, float]] = []  # (col, pct, weight)
@@ -419,6 +426,7 @@ def _panel3() -> None:
                             max_workers=max_workers,
                         )
 
+                _clear_results()
                 start_experiment(ss, _fn)
                 st.rerun()  # fragment-scoped: switches Panel 3 to progress view
 
