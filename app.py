@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 import json
+import time
 import xml.etree.ElementTree as ET
 import streamlit as st
 
@@ -15,6 +16,7 @@ from core.goals import Goal, baseline_per_case
 from core.metrics import MetricRegistry
 from ui.goals import GOAL_OPTIONS
 from ui.plots import factor_label_map, main_effects_chart
+from ui.runner import start_experiment, cancel_experiment, clear_run, current_run, is_running
 from ui.table import prepare_ranked_display
 from ui.widgets import level_input_kwargs
 from core.bpmn.utils import (
@@ -337,53 +339,78 @@ array_name, scenarios = build_scenarios(params, transformation.id, target)
 ss.array_name, ss.scenarios = array_name, scenarios
 total_runs = len(scenarios) * n_reps
 
-with st.container(border=True):
-    left, right = st.columns([3, 1])
-    left.markdown(
-        f"##### 3 · Execution  "
-        f"<span style='background:#eef2ff;color:#3b6cf2;font-size:11px;"
-        f"padding:2px 8px;border-radius:10px'>{array_name} · "
-        f"{len(scenarios)} scenarios × {n_reps} reps = {total_runs} runs</span>",
-        unsafe_allow_html=True,
-    )
-    run_clicked = right.button(
-        "▶ Run all scenarios", type="primary", use_container_width=True
-    )
+@st.fragment
+def _panel3() -> None:
+    with st.container(border=True):
+        left, right = st.columns([3, 1])
+        left.markdown(
+            f"##### 3 · Execution  "
+            f"<span style='background:#eef2ff;color:#3b6cf2;font-size:11px;"
+            f"padding:2px 8px;border-radius:10px'>{array_name} · "
+            f"{len(scenarios)} scenarios × {n_reps} reps = {total_runs} runs</span>",
+            unsafe_allow_html=True,
+        )
 
-    if run_clicked:
-        if not demo_mode and (not ss.bpmn_path or not ss.json_path):
-            st.error("No discovered model — upload a log first.")
-            st.stop()
-        progress = st.progress(0.0, text="Starting…")
+        _rs = current_run(ss)
+        if _rs is not None:
+            _pct = _rs.done / _rs.total if _rs.total > 0 else 0.0
+            st.progress(_pct, text=f"Scenario {_rs.label} · rep {_rs.rep + 1}/{n_reps}")
+            if right.button("✕ Cancel", use_container_width=True):
+                cancel_experiment(ss)
 
-        def _on_progress(done: int, total: int, sid: str, rep: int) -> None:
-            progress.progress(
-                done / total, text=f"Scenario {sid} · rep {rep + 1}/{n_reps}"
-            )
-
-        if demo_mode:
-            result = demo.run_experiment(scenarios, n_reps, _on_progress,
-                                         bot_cost_per_hour=bot_cost_per_hour)
+            if is_running(ss):
+                time.sleep(0.5)
+                st.rerun()  # fragment-scoped: only Panel 3 re-renders during polling
+            else:
+                if _rs.cancelled:
+                    st.toast("Run cancelled.", icon="⚠️")
+                elif _rs.error is not None:
+                    st.toast(f"Simulation failed: {_rs.error}", icon="❌")
+                else:
+                    _result = _rs.result
+                    ss.results = _result.results
+                    ss.experiment_bpmn_path = _result.experiment_bpmn_path
+                    ss.scenario_json_paths = _result.scenario_json_paths
+                    ss.baseline_agg = _result.baseline_agg
+                    st.toast(f"Completed {total_runs} simulations.", icon="✅")
+                clear_run(ss)
+                st.rerun(scope="app")  # full rerun: Panel 4 needs to appear
         else:
-            exp_dir = store.new_experiment(ss.log_name or "run")
-            result = orchestrator.run_experiment(
-                transformation=transformation,
-                bpmn_path=ss.bpmn_path,
-                json_path=ss.json_path,
-                target=target,
-                scenarios=scenarios,
-                n_reps=n_reps,
-                exp_dir=exp_dir,
-                on_progress=_on_progress,
-                selected_resource_id=selected_resource_id,
-                bot_cost_per_hour=bot_cost_per_hour,
-            )
-        ss.results = result.results
-        ss.experiment_bpmn_path = result.experiment_bpmn_path
-        ss.scenario_json_paths = result.scenario_json_paths
-        ss.baseline_agg = result.baseline_agg
-        progress.empty()
-        st.success(f"Completed {total_runs} simulations.")
+            if right.button("▶ Run all scenarios", type="primary", use_container_width=True):
+                if not demo_mode and (not ss.bpmn_path or not ss.json_path):
+                    st.error("No discovered model — upload a log first.")
+                    st.stop()
+
+                if demo_mode:
+                    def _fn(progress_cb, stop_ev):
+                        return demo.run_experiment(
+                            scenarios, n_reps, progress_cb,
+                            bot_cost_per_hour=bot_cost_per_hour,
+                            stop_event=stop_ev,
+                        )
+                else:
+                    _exp_dir = store.new_experiment(ss.log_name or "run")
+                    _bpmn_path = ss.bpmn_path
+                    _json_path = ss.json_path
+                    def _fn(progress_cb, stop_ev):
+                        return orchestrator.run_experiment(
+                            transformation=transformation,
+                            bpmn_path=_bpmn_path,
+                            json_path=_json_path,
+                            target=target,
+                            scenarios=scenarios,
+                            n_reps=n_reps,
+                            exp_dir=_exp_dir,
+                            on_progress=progress_cb,
+                            selected_resource_id=selected_resource_id,
+                            bot_cost_per_hour=bot_cost_per_hour,
+                            stop_event=stop_ev,
+                        )
+
+                start_experiment(ss, _fn)
+                st.rerun()  # fragment-scoped: switches Panel 3 to progress view
+
+_panel3()
 
 # --- Results panel -----------------------------------------------------------
 if ss.results is not None:

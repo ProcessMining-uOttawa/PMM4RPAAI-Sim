@@ -27,12 +27,14 @@ def run_all(
     tasks: list[SimulationTask],
     on_complete: Callable[[SimulationTask], None],
     max_workers: int | None = None,
-) -> None:
+    stop_check: Callable[[], bool] | None = None,
+) -> bool:
     """Run all simulation tasks in parallel and call on_complete after each.
 
     on_complete is always called on the calling thread (via as_completed),
     so callers can safely mutate shared state without locks.
 
+    Returns True if all tasks completed, False if stop_check() fired first.
     Raises on the first simulation failure after cancelling pending tasks.
     max_workers defaults to os.cpu_count() when None.
     """
@@ -50,8 +52,13 @@ def run_all(
 
         try:
             for f in as_completed(future_to_task):
+                if stop_check is not None and stop_check():
+                    pool.shutdown(wait=False, cancel_futures=True)
+                    return False
                 f.result()  # re-raises CalledProcessError on simulation failure
                 on_complete(future_to_task[f])
         except Exception:
             pool.shutdown(wait=False, cancel_futures=True)
             raise
+
+    return True
