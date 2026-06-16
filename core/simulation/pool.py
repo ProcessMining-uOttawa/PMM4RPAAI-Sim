@@ -8,9 +8,6 @@ from typing import Any, Callable
 
 from . import runner
 
-TASK_BASELINE = "baseline"
-TASK_SCENARIO = "scenario"
-
 
 @dataclass
 class SimulationTask:

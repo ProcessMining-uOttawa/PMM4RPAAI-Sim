@@ -9,7 +9,7 @@ from typing import Callable
 import pandas as pd
 
 from .simulation import prosimos_csv, store
-from .simulation.pool import SimulationTask, run_all, TASK_BASELINE, TASK_SCENARIO
+from .simulation.pool import SimulationTask, run_all
 from .constants import (
     COL_CYCLE_H,
     COL_COST,
@@ -25,6 +25,10 @@ from .constants import (
 )
 from .parameters import Scenario
 from .transformations import Transformation
+
+
+TASK_BASELINE = "baseline"
+TASK_SCENARIO = "scenario"
 
 
 class ExperimentCancelledError(RuntimeError):
