@@ -191,16 +191,15 @@ with st.sidebar:
     if ss.activities:
         st.divider()
         st.subheader("Goals")
-        _all_metrics = list(GOAL_OPTIONS.keys())
         _selected = st.multiselect(
             "Active goals",
-            options=_all_metrics,
-            default=_all_metrics,
+            options=list(GOAL_OPTIONS),
+            default=list(GOAL_OPTIONS),
             format_func=lambda m: m.per_case_display_name,
             label_visibility="collapsed",
         )
         # Re-sort by GOAL_OPTIONS key order — multiselect returns items in click order.
-        _active = [m for m in GOAL_OPTIONS if m in set(_selected)]
+        _active = [m for m in GOAL_OPTIONS if m in _selected]
         if _active:
             _hdr = st.columns([3, 2, 1.5])
             _hdr[1].caption("Reduction (%)")
@@ -529,14 +528,12 @@ if ss.results is not None:
             use_container_width=True,
             disabled=not bpmn_exists,
         )
-        _has_logs = not demo_mode and bool(
-            ss.get("scenario_log_paths") or ss.get("baseline_log_paths")
-        )
+        _slp = ss.scenario_log_paths
+        _blp = ss.baseline_log_paths
+        _has_logs = not demo_mode and bool(_slp or _blp)
         col_logs.download_button(
             "⬇ Event logs (ZIP)",
-            data=store.event_logs_zip(
-                ss.get("scenario_log_paths", {}), ss.get("baseline_log_paths", {})
-            ) if _has_logs else b"",
+            data=store.event_logs_zip(_slp, _blp) if _has_logs else b"",
             file_name="event_logs.zip",
             mime="application/zip",
             use_container_width=True,

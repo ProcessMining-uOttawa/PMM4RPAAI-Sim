@@ -60,19 +60,20 @@ def start_experiment(
 
 def current_run(ss: Any) -> RunState | None:
     """Return the active RunState, or None if no run is in progress."""
-    return getattr(ss, "run_state", None)
+    return ss.get("run_state")
 
 
 def is_running(ss: Any) -> bool:
     """True while the background thread is still alive."""
-    thread = getattr(ss, "run_thread", None)
+    thread = ss.get("run_thread")
     return thread is not None and thread.is_alive()
 
 
 def cancel_experiment(ss: Any) -> None:
     """Signal the running experiment to stop after its next completed task."""
-    if getattr(ss, "stop_event", None) is not None:
-        ss.stop_event.set()
+    ev = ss.get("stop_event")
+    if ev is not None:
+        ev.set()
 
 
 def clear_run(ss: Any) -> None:
