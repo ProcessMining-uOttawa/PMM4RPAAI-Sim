@@ -17,7 +17,7 @@ from core.goals import Goal, baseline_per_case
 from core.metrics import MetricRegistry
 from ui.goals import GOAL_OPTIONS
 from ui.plots import factor_label_map, main_effects_chart
-from ui.runner import start_experiment, cancel_experiment, clear_run, current_run, is_running
+from ui.runner import start_experiment, cancel_experiment, clear_run, current_run, commit_result
 from ui.table import prepare_ranked_display
 from ui.widgets import level_input_kwargs
 from core.bpmn.utils import (
@@ -387,22 +387,16 @@ def _panel3() -> None:
             if right.button("✕ Cancel", use_container_width=True):
                 cancel_experiment(ss)
 
-            if is_running(ss):
+            if _rs.outcome is None:
                 time.sleep(0.5)
                 st.rerun()  # fragment-scoped: only Panel 3 re-renders during polling
             else:
-                if _rs.cancelled:
+                if _rs.outcome.cancelled:
                     st.toast("Run cancelled.", icon="⚠️")
-                elif _rs.error is not None:
-                    st.toast(f"Simulation failed: {_rs.error}", icon="❌")
+                elif _rs.outcome.error is not None:
+                    st.toast(f"Simulation failed: {_rs.outcome.error}", icon="❌")
                 else:
-                    _result = _rs.result
-                    ss.results = _result.results
-                    ss.experiment_bpmn_path = _result.experiment_bpmn_path
-                    ss.scenario_json_paths = _result.scenario_json_paths
-                    ss.baseline_agg = _result.baseline_agg
-                    ss.scenario_log_paths = _result.scenario_log_paths
-                    ss.baseline_log_paths = _result.baseline_log_paths
+                    commit_result(ss, _rs.outcome.result)
                     st.toast(f"Completed {total_runs} simulations.", icon="✅")
                 clear_run(ss)
                 st.rerun(scope="app")  # full rerun: Panel 4 needs to appear
@@ -423,17 +417,19 @@ def _panel3() -> None:
                     _exp_dir = store.new_experiment(ss.log_name or "run")
                     _bpmn_path = ss.bpmn_path
                     _json_path = ss.json_path
+                    _target = target
+                    _selected_resource_id = selected_resource_id
                     def _fn(progress_cb, stop_ev):
                         return orchestrator.run_experiment(
                             transformation=transformation,
                             bpmn_path=_bpmn_path,
                             json_path=_json_path,
-                            target=target,
+                            target=_target,
                             scenarios=scenarios,
                             n_reps=n_reps,
                             exp_dir=_exp_dir,
                             on_progress=progress_cb,
-                            selected_resource_id=selected_resource_id,
+                            selected_resource_id=_selected_resource_id,
                             bot_cost_per_hour=bot_cost_per_hour,
                             stop_event=stop_ev,
                             max_workers=max_workers,

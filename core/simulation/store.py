@@ -82,10 +82,10 @@ def json_zip(json_paths: dict[str, Path]) -> bytes:
     """Pack scenario params.json files into a ZIP archive. Returns b"" if empty."""
     if not json_paths:
         return b""
-    return _build_zip(lambda z: [
-        z.writestr(f"scenarios/{sid}_params.json", p.read_text())
-        for sid, p in sorted(json_paths.items())
-    ])
+    def _populate(z: zipfile.ZipFile) -> None:
+        for sid, p in sorted(json_paths.items()):
+            z.writestr(f"scenarios/{sid}_params.json", p.read_text())
+    return _build_zip(_populate)
 
 
 def group_zip(bpmn_path: Path, json_paths: dict[str, Path], stats_csv: str) -> bytes:
