@@ -9,7 +9,11 @@ from pathlib import Path
 
 from core.simulation.runner import SIMOD_EXE, PROSIMOS_EXE
 
+SIMOD_PYTHON_VERSION = "3.9"
+REQUIRED_JAVA_MAJOR = 8
 
+# Windows-only: on other platforms these dirs won't exist and _detect_corretto8()
+# returns None, falling through to the system-Java check via PATH (correct behaviour).
 CORRETTO_ROOTS = [
     Path(r"C:\Program Files\Amazon Corretto"),
     Path(r"C:\Program Files (x86)\Amazon Corretto"),
@@ -20,7 +24,7 @@ def _detect_corretto8() -> str | None:
     for root in CORRETTO_ROOTS:
         if root.is_dir():
             for d in sorted(root.iterdir()):
-                if d.is_dir() and d.name.startswith("jdk1.8") and (d/"bin"/"java.exe").exists():
+                if d.is_dir() and d.name.startswith("jdk1.8") and (d / "bin" / "java.exe").exists():
                     return str(d)
     return None
 
@@ -33,16 +37,18 @@ class Check:
     fix: str = ""
 
 
-def _which_python39() -> str | None:
+def _which_simod_python() -> str | None:
     # Windows py launcher
     for cand in ("py", "py.exe"):
         if shutil.which(cand):
-            r = subprocess.run([cand, "-3.9", "-c", "import sys;print(sys.version)"],
-                               capture_output=True, text=True)
+            r = subprocess.run(
+                [cand, f"-{SIMOD_PYTHON_VERSION}", "-c", "import sys;print(sys.version)"],
+                capture_output=True, text=True,
+            )
             if r.returncode == 0:
-                return f"{cand} -3.9"
-    # Plain python3.9
-    for cand in ("python3.9", "python3.9.exe"):
+                return f"{cand} -{SIMOD_PYTHON_VERSION}"
+    # Plain python3.x
+    for cand in (f"python{SIMOD_PYTHON_VERSION}", f"python{SIMOD_PYTHON_VERSION}.exe"):
         if shutil.which(cand):
             return cand
     return None
@@ -71,18 +77,18 @@ def run_checks() -> tuple[list[Check], str | None]:
     """
     out: list[Check] = []
 
-    py39 = _which_python39()
+    py = _which_simod_python()
     out.append(Check(
-        "Python 3.9", py39 is not None,
-        f"found via `{py39}`" if py39 else "not installed",
-        "Install Python 3.9.13 from python.org and tick 'Add to PATH'.",
+        f"Python {SIMOD_PYTHON_VERSION}", py is not None,
+        f"found via `{py}`" if py else "not installed",
+        f"Install Python {SIMOD_PYTHON_VERSION} from python.org and tick 'Add to PATH'.",
     ))
 
     corretto = _detect_corretto8()
     if corretto:
         out.append(Check(
-            "Java 8 (for SplitMiner)", True,
-            f"Corretto 8 found at {corretto} — will be used for Simod",
+            f"Java {REQUIRED_JAVA_MAJOR} (for SplitMiner)", True,
+            f"Corretto {REQUIRED_JAVA_MAJOR} found at {corretto} — will be used for Simod",
         ))
     else:
         java_home = os.environ.get("JAVA_HOME")
@@ -91,24 +97,23 @@ def run_checks() -> tuple[list[Check], str | None]:
                     else "java")
         major = _java_major(java_exe)
         out.append(Check(
-            "Java 8 (for SplitMiner)", major == 8,
+            f"Java {REQUIRED_JAVA_MAJOR} (for SplitMiner)", major == REQUIRED_JAVA_MAJOR,
             f"system java is version {major}" if major else "java not found",
-            "Install Amazon Corretto 8 (winget install Amazon.Corretto.8.JDK).",
+            f"Install Amazon Corretto {REQUIRED_JAVA_MAJOR} (winget install Amazon.Corretto.{REQUIRED_JAVA_MAJOR}.JDK).",
         ))
 
+    py_cmd = py or f"py -{SIMOD_PYTHON_VERSION}"
     simod_ok = _venv_has_simod()
     out.append(Check(
         "Simod venv", simod_ok,
-        f"simod.exe at {SIMOD_EXE}" if simod_ok
-        else f"missing {SIMOD_EXE}",
-        f"Create it: `{py39 or 'py -3.9'} -m venv tools\\simod-venv && "
+        f"simod.exe at {SIMOD_EXE}" if simod_ok else f"missing {SIMOD_EXE}",
+        f"Create it: `{py_cmd} -m venv tools\\simod-venv && "
         f"tools\\simod-venv\\Scripts\\pip install simod`.",
     ))
     out.append(Check(
         "Prosimos venv", PROSIMOS_EXE.exists(),
-        f"prosimos.exe at {PROSIMOS_EXE}" if PROSIMOS_EXE.exists()
-        else f"missing {PROSIMOS_EXE}",
-        f"Create it: `{py39 or 'py -3.9'} -m venv tools\\prosimos-venv && "
+        f"prosimos.exe at {PROSIMOS_EXE}" if PROSIMOS_EXE.exists() else f"missing {PROSIMOS_EXE}",
+        f"Create it: `{py_cmd} -m venv tools\\prosimos-venv && "
         f"tools\\prosimos-venv\\Scripts\\pip install prosimos`.",
     ))
     return out, corretto
