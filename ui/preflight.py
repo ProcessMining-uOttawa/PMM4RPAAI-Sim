@@ -7,10 +7,8 @@ import subprocess
 from dataclasses import dataclass
 from pathlib import Path
 
-from .simulation.runner import SIMOD_EXE, PROSIMOS_EXE
+from core.simulation.runner import SIMOD_EXE, PROSIMOS_EXE
 
-
-SIMOD_VENV_PY = Path("tools/simod-venv/Scripts/python.exe")
 
 CORRETTO_ROOTS = [
     Path(r"C:\Program Files\Amazon Corretto"),
@@ -18,8 +16,7 @@ CORRETTO_ROOTS = [
 ]
 
 
-def detect_corretto8() -> str | None:
-    """Return JAVA_HOME for an installed Corretto 8, or None."""
+def _detect_corretto8() -> str | None:
     for root in CORRETTO_ROOTS:
         if root.is_dir():
             for d in sorted(root.iterdir()):
@@ -67,7 +64,11 @@ def _venv_has_simod() -> bool:
     return SIMOD_EXE.exists()
 
 
-def run_checks() -> list[Check]:
+def run_checks() -> tuple[list[Check], str | None]:
+    """Return (checks, suggested_java_home).
+
+    suggested_java_home is the Corretto 8 path when auto-detected, or None.
+    """
     out: list[Check] = []
 
     py39 = _which_python39()
@@ -77,7 +78,7 @@ def run_checks() -> list[Check]:
         "Install Python 3.9.13 from python.org and tick 'Add to PATH'.",
     ))
 
-    corretto = detect_corretto8()
+    corretto = _detect_corretto8()
     if corretto:
         out.append(Check(
             "Java 8 (for SplitMiner)", True,
@@ -110,7 +111,7 @@ def run_checks() -> list[Check]:
         f"Create it: `{py39 or 'py -3.9'} -m venv tools\\prosimos-venv && "
         f"tools\\prosimos-venv\\Scripts\\pip install prosimos`.",
     ))
-    return out
+    return out, corretto
 
 
 def all_ok(checks: list[Check]) -> bool:
