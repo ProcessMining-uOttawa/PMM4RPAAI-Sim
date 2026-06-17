@@ -1,6 +1,7 @@
 """Simulation run loop — pure business logic, no Streamlit dependency."""
 
 from __future__ import annotations
+import dataclasses
 import threading
 from dataclasses import dataclass, field
 from pathlib import Path
@@ -77,10 +78,10 @@ def run_experiment(
     transformation: Transformation,
     bpmn_path: Path,
     json_path: Path,
-    target: str,
+    target_activity: str,
     scenarios: list[Scenario],
     n_reps: int,
-    exp_dir: Path,
+    experiment_dir: Path,
     on_progress: Callable[[int, int, str, int], None] | None = None,
     selected_resource_id: str | None = None,
     bot_cost_per_hour: float = 0.0,
@@ -94,7 +95,7 @@ def run_experiment(
     if provided — lets the caller update a progress bar without a Streamlit import here.
     """
     bpmn_tr = transformation.prepare_experiment(
-        bpmn_path, json_path, target, exp_dir,
+        bpmn_path, json_path, target_activity, experiment_dir,
         bot_cost_per_hour=bot_cost_per_hour,
         selected_resource_id=selected_resource_id,
     )
@@ -110,7 +111,7 @@ def run_experiment(
             bpmn_tr.scenario_template,
             bpmn_tr.ids,
             params,
-            store.scenario_dir(exp_dir, s.id) / "params.json",
+            store.scenario_dir(experiment_dir, s.id) / "params.json",
         )
         scenario_json_paths[s.id] = s_json
 
@@ -129,9 +130,9 @@ def run_experiment(
                     bpmn_path=bpmn_path,
                     json_path=json_path,
                     n_cases=n_cases,
-                    out_log=store.baseline_log(exp_dir, rep, n_cases),
-                    out_stat=store.baseline_stats(exp_dir, rep, n_cases),
-                    proc_log=store.baseline_subprocess_log(exp_dir, rep, n_cases),
+                    out_log=store.baseline_log(experiment_dir, rep, n_cases),
+                    out_stat=store.baseline_stats(experiment_dir, rep, n_cases),
+                    proc_log=store.baseline_subprocess_log(experiment_dir, rep, n_cases),
                     metadata=BaselineMeta(n_cases=n_cases, rep=rep),
                     max_retries=max_retries,
                 )
@@ -145,9 +146,9 @@ def run_experiment(
                     bpmn_path=bpmn_tr.bpmn_path,
                     json_path=s_json,
                     n_cases=n_cases,
-                    out_log=store.replication_log(exp_dir, s.id, rep),
-                    out_stat=store.replication_stats(exp_dir, s.id, rep),
-                    proc_log=store.replication_subprocess_log(exp_dir, s.id, rep),
+                    out_log=store.replication_log(experiment_dir, s.id, rep),
+                    out_stat=store.replication_stats(experiment_dir, s.id, rep),
+                    proc_log=store.replication_subprocess_log(experiment_dir, s.id, rep),
                     metadata=ScenarioMeta(scenario_id=s.id, rep=rep, values=s.values),
                     max_retries=max_retries,
                 )
@@ -168,17 +169,17 @@ def run_experiment(
         assert task.out_stat is not None
         if isinstance(meta, BaselineMeta):
             baseline_reps[meta.n_cases].append(
-                prosimos_csv.replication_metrics(task.out_log, task.out_stat)
+                dataclasses.asdict(prosimos_csv.replication_metrics(task.out_log, task.out_stat))
             )
             baseline_log_paths[meta.n_cases].append(task.out_log)
             _tick("baseline", meta.rep)
         else:  # ScenarioMeta
-            m = prosimos_csv.replication_metrics(
+            m = dataclasses.asdict(prosimos_csv.replication_metrics(
                 task.out_log,
                 task.out_stat,
                 bot_task_name=_bot_task_name,
                 original_task_name=_original_task_name,
-            )
+            ))
             rows.append({"scenario_id": meta.scenario_id, "replication": meta.rep, **m, **meta.values})
             scenario_log_paths[meta.scenario_id].append(task.out_log)
             _tick(meta.scenario_id, meta.rep)

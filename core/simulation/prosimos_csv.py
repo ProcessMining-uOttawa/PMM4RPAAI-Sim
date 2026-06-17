@@ -1,14 +1,26 @@
 """Prosimos simulation output reader — parses event-log CSV and stats CSV."""
 from __future__ import annotations
 import csv
+from dataclasses import dataclass
 from pathlib import Path
 
 import pandas as pd
 
 from ..constants import (
-    COL_CYCLE_H, COL_COST, COL_TOTAL_CYCLE_S, COL_TOTAL_COST,
+    COL_TOTAL_CYCLE_S, COL_TOTAL_COST,
     COL_REWORK_COUNT, COL_REWORK_RATE,
 )
+
+
+@dataclass(frozen=True)
+class ReplicationMetrics:
+    """All per-replication metrics for one Prosimos simulation run."""
+    cycle_h: float
+    cost: float
+    total_cycle_s: float
+    total_cost: float
+    rework_count: float
+    rework_rate: float
 
 # ── Prosimos stats CSV: section header names ───────────────────────────────────
 PROSIMOS_SECTION_TASK_STATS = "Individual Task Statistics"
@@ -112,11 +124,9 @@ def total_metrics(stats_csv: Path) -> dict:
 
 def replication_metrics(log_csv: Path, stats_csv: Path,
                         bot_task_name: str | None = None,
-                        original_task_name: str | None = None) -> dict:
+                        original_task_name: str | None = None) -> ReplicationMetrics:
     """All per-replication metrics in a single pass.
 
-    Returns COL_CYCLE_H, COL_COST, COL_TOTAL_CYCLE_S, COL_TOTAL_COST,
-    COL_REWORK_COUNT, COL_REWORK_RATE.
     Raises ValueError if stats are missing or malformed.
     Raises FileNotFoundError if stats_csv does not exist.
     """
@@ -127,9 +137,12 @@ def replication_metrics(log_csv: Path, stats_csv: Path,
     with open(stats_csv) as f:
         rows = list(csv.reader(f))
     totals = _totals_from_rows(rows, stats_csv)
-    return {
-        COL_CYCLE_H: float(cycle_h.mean()),
-        COL_COST: totals[COL_TOTAL_COST] / len(per_case),
-        **totals,
-        **_rework_metrics(df, bot_task_name, original_task_name),
-    }
+    rework = _rework_metrics(df, bot_task_name, original_task_name)
+    return ReplicationMetrics(
+        cycle_h=float(cycle_h.mean()),
+        cost=totals[COL_TOTAL_COST] / len(per_case),
+        total_cycle_s=totals[COL_TOTAL_CYCLE_S],
+        total_cost=totals[COL_TOTAL_COST],
+        rework_count=rework[COL_REWORK_COUNT],
+        rework_rate=rework[COL_REWORK_RATE],
+    )
