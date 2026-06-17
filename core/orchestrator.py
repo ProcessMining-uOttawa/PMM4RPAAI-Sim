@@ -161,7 +161,7 @@ def run_experiment(
         if on_progress:
             on_progress(done, total, label, rep)
 
-    stop_check = (lambda: stop_event.is_set()) if stop_event is not None else None
+    stop_check = stop_event.is_set if stop_event is not None else None
     completed = run_all(tasks, _on_complete, max_workers=max_workers, stop_check=stop_check)
     if not completed:
         raise ExperimentCancelledError()

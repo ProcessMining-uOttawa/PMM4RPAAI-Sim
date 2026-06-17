@@ -6,6 +6,7 @@ import time
 import uuid
 import zipfile
 from pathlib import Path
+from typing import Callable
 
 ROOT = Path("runs")
 
@@ -70,26 +71,31 @@ def baseline_subprocess_log(exp: Path, replication: int, n_cases: int) -> Path:
 
 # ── Export packaging ──────────────────────────────────────────────────────────
 
+def _build_zip(populate: Callable[[zipfile.ZipFile], None]) -> bytes:
+    buf = io.BytesIO()
+    with zipfile.ZipFile(buf, "w", zipfile.ZIP_DEFLATED) as z:
+        populate(z)
+    return buf.getvalue()
+
+
 def json_zip(json_paths: dict[str, Path]) -> bytes:
     """Pack scenario params.json files into a ZIP archive. Returns b"" if empty."""
     if not json_paths:
         return b""
-    buf = io.BytesIO()
-    with zipfile.ZipFile(buf, "w", zipfile.ZIP_DEFLATED) as z:
+    def _populate(z: zipfile.ZipFile) -> None:
         for sid, p in sorted(json_paths.items()):
             z.writestr(f"scenarios/{sid}_params.json", p.read_text())
-    return buf.getvalue()
+    return _build_zip(_populate)
 
 
 def group_zip(bpmn_path: Path, json_paths: dict[str, Path], stats_csv: str) -> bytes:
     """Pack BPMN, scenario params, and statistics CSV into a single ZIP archive."""
-    buf = io.BytesIO()
-    with zipfile.ZipFile(buf, "w", zipfile.ZIP_DEFLATED) as z:
+    def _populate(z: zipfile.ZipFile) -> None:
         z.write(str(bpmn_path), arcname="model.bpmn")
         z.writestr("statistics.csv", stats_csv)
         for sid, p in sorted(json_paths.items()):
             z.writestr(f"scenarios/{sid}_params.json", p.read_text())
-    return buf.getvalue()
+    return _build_zip(_populate)
 
 
 def event_logs_zip(
@@ -99,8 +105,7 @@ def event_logs_zip(
     """Pack Prosimos event log CSVs into a ZIP archive. Returns b"" if both are empty."""
     if not scenario_log_paths and not baseline_log_paths:
         return b""
-    buf = io.BytesIO()
-    with zipfile.ZipFile(buf, "w", zipfile.ZIP_DEFLATED) as z:
+    def _populate(z: zipfile.ZipFile) -> None:
         for sid, paths in sorted(scenario_log_paths.items()):
             for p in paths:
                 if p.exists():
@@ -109,4 +114,4 @@ def event_logs_zip(
             for p in paths:
                 if p.exists():
                     z.write(p, arcname=f"baseline/cases_{n_cases}/{p.name}")
-    return buf.getvalue()
+    return _build_zip(_populate)

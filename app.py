@@ -17,7 +17,7 @@ from core.goals import Goal, baseline_per_case
 from core.metrics import MetricRegistry
 from ui.goals import GOAL_OPTIONS
 from ui.plots import factor_label_map, main_effects_chart
-from ui.runner import start_experiment, cancel_experiment, clear_run, current_run, is_running
+from ui.runner import start_experiment, cancel_experiment, clear_run, current_run, commit_result
 from ui.table import prepare_ranked_display
 from ui.widgets import level_input_kwargs
 from core.bpmn.utils import (
@@ -191,16 +191,15 @@ with st.sidebar:
     if ss.activities:
         st.divider()
         st.subheader("Goals")
-        _all_metrics = list(GOAL_OPTIONS.keys())
         _selected = st.multiselect(
             "Active goals",
-            options=_all_metrics,
-            default=_all_metrics,
+            options=list(GOAL_OPTIONS),
+            default=list(GOAL_OPTIONS),
             format_func=lambda m: m.per_case_display_name,
             label_visibility="collapsed",
         )
         # Re-sort by GOAL_OPTIONS key order — multiselect returns items in click order.
-        _active = [m for m in GOAL_OPTIONS if m in set(_selected)]
+        _active = [m for m in GOAL_OPTIONS if m in _selected]
         if _active:
             _hdr = st.columns([3, 2, 1.5])
             _hdr[1].caption("Reduction (%)")
@@ -388,22 +387,16 @@ def _panel3() -> None:
             if right.button("✕ Cancel", use_container_width=True):
                 cancel_experiment(ss)
 
-            if is_running(ss):
+            if _rs.outcome is None:
                 time.sleep(0.5)
                 st.rerun()  # fragment-scoped: only Panel 3 re-renders during polling
             else:
-                if _rs.cancelled:
+                if _rs.outcome.cancelled:
                     st.toast("Run cancelled.", icon="⚠️")
-                elif _rs.error is not None:
-                    st.toast(f"Simulation failed: {_rs.error}", icon="❌")
+                elif _rs.outcome.error is not None:
+                    st.toast(f"Simulation failed: {_rs.outcome.error}", icon="❌")
                 else:
-                    _result = _rs.result
-                    ss.results = _result.results
-                    ss.experiment_bpmn_path = _result.experiment_bpmn_path
-                    ss.scenario_json_paths = _result.scenario_json_paths
-                    ss.baseline_agg = _result.baseline_agg
-                    ss.scenario_log_paths = _result.scenario_log_paths
-                    ss.baseline_log_paths = _result.baseline_log_paths
+                    commit_result(ss, _rs.outcome.result)
                     st.toast(f"Completed {total_runs} simulations.", icon="✅")
                 clear_run(ss)
                 st.rerun(scope="app")  # full rerun: Panel 4 needs to appear
@@ -424,17 +417,19 @@ def _panel3() -> None:
                     _exp_dir = store.new_experiment(ss.log_name or "run")
                     _bpmn_path = ss.bpmn_path
                     _json_path = ss.json_path
+                    _target = target
+                    _selected_resource_id = selected_resource_id
                     def _fn(progress_cb, stop_ev):
                         return orchestrator.run_experiment(
                             transformation=transformation,
                             bpmn_path=_bpmn_path,
                             json_path=_json_path,
-                            target=target,
+                            target=_target,
                             scenarios=scenarios,
                             n_reps=n_reps,
                             exp_dir=_exp_dir,
                             on_progress=progress_cb,
-                            selected_resource_id=selected_resource_id,
+                            selected_resource_id=_selected_resource_id,
                             bot_cost_per_hour=bot_cost_per_hour,
                             stop_event=stop_ev,
                             max_workers=max_workers,
@@ -529,14 +524,12 @@ if ss.results is not None:
             use_container_width=True,
             disabled=not bpmn_exists,
         )
-        _has_logs = not demo_mode and bool(
-            ss.get("scenario_log_paths") or ss.get("baseline_log_paths")
-        )
+        _slp = ss.scenario_log_paths
+        _blp = ss.baseline_log_paths
+        _has_logs = not demo_mode and bool(_slp or _blp)
         col_logs.download_button(
             "⬇ Event logs (ZIP)",
-            data=store.event_logs_zip(
-                ss.get("scenario_log_paths", {}), ss.get("baseline_log_paths", {})
-            ) if _has_logs else b"",
+            data=store.event_logs_zip(_slp, _blp) if _has_logs else b"",
             file_name="event_logs.zip",
             mime="application/zip",
             use_container_width=True,

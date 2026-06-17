@@ -1,6 +1,6 @@
 """Background experiment runner for the Streamlit UI.
 
-Encapsulates the threading primitives so app.py sees only start/cancel/clear.
+Encapsulates the threading primitives so app.py sees only start/cancel/clear/commit.
 The background thread communicates exclusively through the RunState object,
 which is pre-allocated in session state before the thread starts — no Streamlit
 API calls are made from the background thread.
@@ -15,14 +15,21 @@ from core.orchestrator import ExperimentCancelledError, ExperimentResult
 
 
 @dataclass
+class RunOutcome:
+    """Terminal state of a finished run. Exactly one of result/error/cancelled is set."""
+    result: ExperimentResult | None = None
+    error: Exception | None = None
+    cancelled: bool = False
+
+
+@dataclass
 class RunState:
+    """Mutable run state written by the background thread via on_progress/worker."""
     done: int = 0
     total: int = 0
     label: str = "starting"
     rep: int = 0
-    result: ExperimentResult | None = None
-    error: Exception | None = None
-    cancelled: bool = False
+    outcome: RunOutcome | None = None  # None = still running; set atomically when done
 
 
 def start_experiment(
@@ -47,11 +54,11 @@ def start_experiment(
 
     def worker() -> None:
         try:
-            run_state.result = fn(on_progress, stop_event)
+            run_state.outcome = RunOutcome(result=fn(on_progress, stop_event))
         except ExperimentCancelledError:
-            run_state.cancelled = True
+            run_state.outcome = RunOutcome(cancelled=True)
         except Exception as exc:
-            run_state.error = exc
+            run_state.outcome = RunOutcome(error=exc)
 
     thread = threading.Thread(target=worker, daemon=True)
     thread.start()
@@ -59,20 +66,25 @@ def start_experiment(
 
 
 def current_run(ss: Any) -> RunState | None:
-    """Return the active RunState, or None if no run is in progress."""
-    return getattr(ss, "run_state", None)
-
-
-def is_running(ss: Any) -> bool:
-    """True while the background thread is still alive."""
-    thread = getattr(ss, "run_thread", None)
-    return thread is not None and thread.is_alive()
+    """Return the active RunState, or None if no run has been started."""
+    return ss.get("run_state")
 
 
 def cancel_experiment(ss: Any) -> None:
     """Signal the running experiment to stop after its next completed task."""
-    if getattr(ss, "stop_event", None) is not None:
-        ss.stop_event.set()
+    ev = ss.get("stop_event")
+    if ev is not None:
+        ev.set()
+
+
+def commit_result(ss: Any, result: ExperimentResult) -> None:
+    """Write an ExperimentResult's fields into session state. Counterpart to _clear_results()."""
+    ss.results = result.results
+    ss.experiment_bpmn_path = result.experiment_bpmn_path
+    ss.scenario_json_paths = result.scenario_json_paths
+    ss.baseline_agg = result.baseline_agg
+    ss.scenario_log_paths = result.scenario_log_paths
+    ss.baseline_log_paths = result.baseline_log_paths
 
 
 def clear_run(ss: Any) -> None:
