@@ -143,6 +143,6 @@ class TestDemoMonotonicity:
                 },
                 "t_id", "Act",
             )
-            return sum(fake_simulate(s, r).cycle_h for r in range(n_reps)) / n_reps
+            return sum(fake_simulate(s, r).mean_cycle_h for r in range(n_reps)) / n_reps
 
         assert _mean_cycle(3, 3) < _mean_cycle(1, 1)

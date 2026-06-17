@@ -3,8 +3,8 @@ from __future__ import annotations
 
 from core import demo
 from core.constants import (
-    COL_CYCLE_H, COL_COST, COL_TOTAL_CYCLE_S, COL_TOTAL_COST,
-    COL_REWORK_COUNT, COL_REWORK_RATE,
+    COL_MEAN_CYCLE_H, COL_MEAN_COST, COL_TOTAL_CYCLE_S, COL_TOTAL_COST,
+    COL_TOTAL_REWORK_COUNT, COL_REWORK_RATE,
 )
 from core.experiment import build_scenarios
 from core.orchestrator import ExperimentResult
@@ -34,9 +34,9 @@ class TestDemoRunExperiment:
         result = demo.run_experiment(_scenarios(), n_reps=1)
         required = {
             "scenario_id", "replication",
-            COL_CYCLE_H, COL_COST,
+            COL_MEAN_CYCLE_H, COL_MEAN_COST,
             COL_TOTAL_CYCLE_S, COL_TOTAL_COST,
-            COL_REWORK_COUNT, COL_REWORK_RATE,
+            COL_TOTAL_REWORK_COUNT, COL_REWORK_RATE,
         }
         assert required <= set(result.results.columns)
 
@@ -66,9 +66,9 @@ class TestDemoRunExperiment:
     def test_metric_values_finite_and_nonnegative(self):
         result = demo.run_experiment(_scenarios(), n_reps=1)
         df = result.results
-        for col in (COL_CYCLE_H, COL_COST, COL_TOTAL_CYCLE_S, COL_TOTAL_COST):
+        for col in (COL_MEAN_CYCLE_H, COL_MEAN_COST, COL_TOTAL_CYCLE_S, COL_TOTAL_COST):
             assert (df[col] > 0).all(), f"{col} should be positive"
-        assert (df[COL_REWORK_COUNT] >= 0).all()
+        assert (df[COL_TOTAL_REWORK_COUNT] >= 0).all()
         assert (df[COL_REWORK_RATE] >= 0).all()
         assert (df[COL_REWORK_RATE] <= 100.0).all()
 
@@ -76,7 +76,7 @@ class TestDemoRunExperiment:
         scenarios = _scenarios()
         free   = demo.run_experiment(scenarios, n_reps=1, bot_cost_per_hour=0.0)
         costly = demo.run_experiment(scenarios, n_reps=1, bot_cost_per_hour=500.0)
-        assert costly.results[COL_COST].mean() > free.results[COL_COST].mean()
+        assert costly.results[COL_MEAN_COST].mean() > free.results[COL_MEAN_COST].mean()
 
     def test_failed_replications_empty_in_demo(self):
         result = demo.run_experiment(_scenarios(), n_reps=1)

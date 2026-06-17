@@ -6,9 +6,9 @@ from enum import Enum
 from typing import Callable, NamedTuple
 
 from .constants import (
-    COL_CYCLE_H, COL_COST, COL_REWORK_RATE,
-    COL_CYCLE_H_MEAN, COL_COST_MEAN, COL_REWORK_RATE_MEAN,
-    COL_TOTAL_CYCLE_S_MEAN, COL_TOTAL_COST_MEAN, COL_REWORK_COUNT_MEAN,
+    COL_MEAN_CYCLE_H, COL_MEAN_COST, COL_REWORK_RATE,
+    COL_MEAN_CYCLE_H_MEAN, COL_MEAN_COST_MEAN, COL_REWORK_RATE_MEAN,
+    COL_TOTAL_CYCLE_S_MEAN, COL_TOTAL_COST_MEAN, COL_TOTAL_REWORK_COUNT_MEAN,
 )
 
 
@@ -62,15 +62,15 @@ class Metric:
 class MetricRegistry:
     CYCLE_TIME: Metric = Metric(
         per_case=PerCaseMetric(
-            results_column=COL_CYCLE_H,
+            results_column=COL_MEAN_CYCLE_H,
             mean=MetricSpec(
-                column=COL_CYCLE_H_MEAN,
+                column=COL_MEAN_CYCLE_H_MEAN,
                 display_name="Cycle Time (h/case)",
                 decimal_places=2,
                 short_label="Cycle Time",
             ),
             std=MetricSpec(
-                column="cycle_h_std",
+                column="mean_cycle_h_std",
                 display_name="Cycle Time Std Dev (h)",
                 decimal_places=2,
             ),
@@ -88,15 +88,15 @@ class MetricRegistry:
 
     COST: Metric = Metric(
         per_case=PerCaseMetric(
-            results_column=COL_COST,
+            results_column=COL_MEAN_COST,
             mean=MetricSpec(
-                column=COL_COST_MEAN,
+                column=COL_MEAN_COST_MEAN,
                 display_name="Cost ($/case)",
                 decimal_places=2,
                 short_label="Cost",
             ),
             std=MetricSpec(
-                column="cost_std",
+                column="mean_cost_std",
                 display_name="Cost Std Dev ($)",
                 decimal_places=2,
             ),
@@ -114,7 +114,7 @@ class MetricRegistry:
     REWORK_COUNT: Metric = Metric(
         per_case=None,
         aggregate=MetricSpec(
-            column=COL_REWORK_COUNT_MEAN,
+            column=COL_TOTAL_REWORK_COUNT_MEAN,
             display_name="Rework Count",
             decimal_places=2,
             delta_name="Δ Rework Count",

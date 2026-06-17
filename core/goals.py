@@ -4,7 +4,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 
 from .constants import (
-    COL_CYCLE_H_MEAN, COL_COST_MEAN, COL_REWORK_RATE_MEAN,
+    COL_MEAN_CYCLE_H_MEAN, COL_MEAN_COST_MEAN, COL_REWORK_RATE_MEAN,
     COL_TOTAL_CYCLE_S_MEAN, COL_TOTAL_COST_MEAN,
 )
 
@@ -32,7 +32,7 @@ def baseline_per_case(baseline_agg: dict[int, dict]) -> dict[str, float]:
     n_ref = sorted(baseline_agg)[0]
     b_ref = baseline_agg[n_ref]
     return {
-        COL_CYCLE_H_MEAN:    b_ref[COL_TOTAL_CYCLE_S_MEAN] / 3600 / n_ref,
-        COL_COST_MEAN:       b_ref[COL_TOTAL_COST_MEAN] / n_ref,
-        COL_REWORK_RATE_MEAN: b_ref[COL_REWORK_RATE_MEAN],
+        COL_MEAN_CYCLE_H_MEAN: b_ref[COL_TOTAL_CYCLE_S_MEAN] / 3600 / n_ref,
+        COL_MEAN_COST_MEAN:    b_ref[COL_TOTAL_COST_MEAN] / n_ref,
+        COL_REWORK_RATE_MEAN:  b_ref[COL_REWORK_RATE_MEAN],
     }

@@ -12,7 +12,7 @@ from core.transformations import REGISTRY
 from core.experiment import build_scenarios
 from core import analysis, demo, orchestrator, preflight
 from core.simulation import runner, store
-from core.constants import COL_COST
+from core.constants import COL_MEAN_COST
 from core.goals import Goal, baseline_per_case
 from core.metrics import MetricRegistry
 from ui.goals import GOAL_OPTIONS
@@ -457,20 +457,20 @@ def _panel3() -> None:
                             stop_event=stop_ev,
                         )
                 else:
-                    _exp_dir = store.new_experiment(ss.log_name or "run")
+                    _experiment_dir = store.new_experiment(ss.log_name or "run")
                     _bpmn_path = ss.bpmn_path
                     _json_path = ss.json_path
-                    _target = target
+                    _target_activity = target
                     _selected_resource_id = selected_resource_id
                     def _fn(progress_cb, stop_ev):
                         return orchestrator.run_experiment(
                             transformation=transformation,
                             bpmn_path=_bpmn_path,
                             json_path=_json_path,
-                            target=_target,
+                            target_activity=_target_activity,
                             scenarios=scenarios,
                             n_reps=n_reps,
-                            exp_dir=_exp_dir,
+                            experiment_dir=_experiment_dir,
                             on_progress=progress_cb,
                             selected_resource_id=_selected_resource_id,
                             bot_cost_per_hour=bot_cost_per_hour,
@@ -497,7 +497,7 @@ if ss.results is not None:
                 "Check the run logs for details.",
                 icon="⚠️",
             )
-        if ss.results[COL_COST].isna().any():
+        if ss.results[COL_MEAN_COST].isna().any():
             st.warning(
                 "Cost data is unavailable for one or more runs — Prosimos did not "
                 "produce a stats CSV with a parseable 'Individual Task Statistics' section. "

@@ -9,13 +9,11 @@ from core.simulation.prosimos_csv import (
     _parse_section,
     total_metrics,
     replication_metrics,
+    ReplicationMetrics,
     PROSIMOS_SECTION_TASK_STATS, PROSIMOS_COL_TOTAL_COST,
     PROSIMOS_SECTION_OVERALL, PROSIMOS_COL_ACCUMULATED, PROSIMOS_KPI_CYCLE_TIME,
 )
-from core.constants import (
-    COL_CYCLE_H, COL_COST, COL_TOTAL_CYCLE_S, COL_TOTAL_COST,
-    COL_REWORK_COUNT, COL_REWORK_RATE,
-)
+from core.constants import COL_TOTAL_CYCLE_S, COL_TOTAL_COST
 
 
 # ── Helpers ───────────────────────────────────────────────────────────────────
@@ -132,15 +130,12 @@ class TestTotalMetrics:
 
 class TestReplicationMetrics:
 
-    def test_returns_all_keys(self, tmp_path):
+    def test_returns_replication_metrics(self, tmp_path):
         log = tmp_path / "log.csv"
         stats = tmp_path / "stats.csv"
         _write_log(log, [("c1", "2025-01-01T08:00:00", "2025-01-01T10:00:00")])
         _write_full_stats(stats, [("task_a", 100.0)], accumulated_cycle_s=3600.0)
-        m = replication_metrics(log, stats)
-        assert COL_CYCLE_H in m and COL_COST in m
-        assert COL_TOTAL_CYCLE_S in m and COL_TOTAL_COST in m
-        assert COL_REWORK_COUNT in m and COL_REWORK_RATE in m
+        assert isinstance(replication_metrics(log, stats), ReplicationMetrics)
 
     def test_cycle_time_mean(self, tmp_path):
         log = tmp_path / "log.csv"
@@ -150,7 +145,7 @@ class TestReplicationMetrics:
             ("c2", "2025-01-01T08:00:00", "2025-01-01T12:00:00"),  # 4 h
         ])
         _write_full_stats(stats, [("task_a", 0.0)], accumulated_cycle_s=1.0)
-        assert replication_metrics(log, stats)[COL_CYCLE_H] == pytest.approx(3.0)
+        assert replication_metrics(log, stats).mean_cycle_h == pytest.approx(3.0)
 
     def test_cost_per_case(self, tmp_path):
         log = tmp_path / "log.csv"
@@ -161,7 +156,7 @@ class TestReplicationMetrics:
         ])
         _write_full_stats(stats, [("task_a", 100.0), ("task_b", 50.0)], accumulated_cycle_s=1.0)
         # total 150 / 2 cases = 75.0 per case
-        assert replication_metrics(log, stats)[COL_COST] == pytest.approx(75.0)
+        assert replication_metrics(log, stats).mean_cost == pytest.approx(75.0)
 
     def test_totals_consistent_with_total_metrics(self, tmp_path):
         log = tmp_path / "log.csv"
@@ -173,8 +168,8 @@ class TestReplicationMetrics:
         _write_full_stats(stats, [("task_a", 100.0), ("task_b", 50.0)], accumulated_cycle_s=7200.0)
         combined = replication_metrics(log, stats)
         total = total_metrics(stats)
-        assert combined[COL_TOTAL_CYCLE_S] == pytest.approx(total[COL_TOTAL_CYCLE_S])
-        assert combined[COL_TOTAL_COST] == pytest.approx(total[COL_TOTAL_COST])
+        assert combined.total_cycle_s == pytest.approx(total[COL_TOTAL_CYCLE_S])
+        assert combined.total_cost == pytest.approx(total[COL_TOTAL_COST])
 
     def test_missing_stats_file_raises(self, tmp_path):
         log = tmp_path / "log.csv"

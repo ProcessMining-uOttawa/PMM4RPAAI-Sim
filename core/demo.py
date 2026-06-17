@@ -13,8 +13,8 @@ from .constants import (
     F_NUM_BOTS, F_NUM_MANUAL_RESOURCES, F_NUM_CASES,
 )
 from .constants import (
-    COL_CYCLE_H, COL_COST, COL_TOTAL_CYCLE_S, COL_TOTAL_COST,
-    COL_REWORK_COUNT, COL_REWORK_RATE,
+    COL_MEAN_CYCLE_H, COL_MEAN_COST, COL_TOTAL_CYCLE_S, COL_TOTAL_COST,
+    COL_TOTAL_REWORK_COUNT, COL_REWORK_RATE,
     COL_TOTAL_CYCLE_S_MEAN, COL_TOTAL_COST_MEAN, COL_REWORK_RATE_MEAN,
 )
 from .orchestrator import ExperimentCancelledError, ExperimentResult
@@ -35,11 +35,11 @@ BASELINE_REWORK_RATE = 5.0  # percentage (0–100), matches COL_REWORK_RATE stor
 
 @dataclass
 class _SimResult:
-    cycle_h: float
-    cost: float
+    mean_cycle_h: float
+    mean_cost: float
     total_cycle_s: float
     total_cost: float
-    rework_count: float
+    total_rework_count: float
     rework_rate: float
 
 
@@ -93,11 +93,11 @@ def _fake_simulate(scenario: Scenario, replication: int,
     )
 
     return _SimResult(
-        cycle_h=round(cycle, 2),
-        cost=round(cost, 2),
+        mean_cycle_h=round(cycle, 2),
+        mean_cost=round(cost, 2),
         total_cycle_s=round(cycle * 3600 * n_cases, 2),
         total_cost=round(cost * n_cases, 2),
-        rework_count=round(rework_rate / 100 * n_cases, 2),
+        total_rework_count=round(rework_rate / 100 * n_cases, 2),
         rework_rate=round(rework_rate, 2),
     )
 
@@ -120,14 +120,14 @@ def run_experiment(
                 raise ExperimentCancelledError()
             r = _fake_simulate(s, rep, bot_cost_per_hour)
             rows.append({
-                "scenario_id":     s.id,
-                "replication":     rep,
-                COL_CYCLE_H:       r.cycle_h,
-                COL_COST:          r.cost,
-                COL_TOTAL_CYCLE_S: r.total_cycle_s,
-                COL_TOTAL_COST:    r.total_cost,
-                COL_REWORK_COUNT:  r.rework_count,
-                COL_REWORK_RATE:   r.rework_rate,
+                "scenario_id":          s.id,
+                "replication":          rep,
+                COL_MEAN_CYCLE_H:       r.mean_cycle_h,
+                COL_MEAN_COST:          r.mean_cost,
+                COL_TOTAL_CYCLE_S:      r.total_cycle_s,
+                COL_TOTAL_COST:         r.total_cost,
+                COL_TOTAL_REWORK_COUNT: r.total_rework_count,
+                COL_REWORK_RATE:        r.rework_rate,
                 **s.values,
             })
             done += 1
