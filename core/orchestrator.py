@@ -16,9 +16,9 @@ from .constants import (
     COL_TOTAL_COST,
     COL_TOTAL_CYCLE_S_MEAN,
     COL_TOTAL_COST_MEAN,
-    COL_REWORK_COUNT,
+    COL_TOTAL_REWORK_COUNT,
     COL_REWORK_RATE,
-    COL_REWORK_COUNT_MEAN,
+    COL_TOTAL_REWORK_COUNT_MEAN,
     COL_REWORK_RATE_MEAN,
     F_NUM_CASES,
 )
@@ -209,10 +209,10 @@ def run_experiment(
             continue  # all baseline replications for this n_cases level failed
         means = pd.DataFrame(rep_list).mean()
         baseline_agg[n_cases] = {
-            COL_TOTAL_CYCLE_S_MEAN: means[COL_TOTAL_CYCLE_S],
-            COL_TOTAL_COST_MEAN: means[COL_TOTAL_COST],
-            COL_REWORK_COUNT_MEAN: means[COL_REWORK_COUNT],
-            COL_REWORK_RATE_MEAN: means[COL_REWORK_RATE],
+            COL_TOTAL_CYCLE_S_MEAN:      means[COL_TOTAL_CYCLE_S],
+            COL_TOTAL_COST_MEAN:         means[COL_TOTAL_COST],
+            COL_TOTAL_REWORK_COUNT_MEAN: means[COL_TOTAL_REWORK_COUNT],
+            COL_REWORK_RATE_MEAN:        means[COL_REWORK_RATE],
         }
 
     return ExperimentResult(

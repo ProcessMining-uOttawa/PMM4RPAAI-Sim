@@ -145,7 +145,7 @@ class TestReplicationMetrics:
             ("c2", "2025-01-01T08:00:00", "2025-01-01T12:00:00"),  # 4 h
         ])
         _write_full_stats(stats, [("task_a", 0.0)], accumulated_cycle_s=1.0)
-        assert replication_metrics(log, stats).cycle_h == pytest.approx(3.0)
+        assert replication_metrics(log, stats).mean_cycle_h == pytest.approx(3.0)
 
     def test_cost_per_case(self, tmp_path):
         log = tmp_path / "log.csv"
@@ -156,7 +156,7 @@ class TestReplicationMetrics:
         ])
         _write_full_stats(stats, [("task_a", 100.0), ("task_b", 50.0)], accumulated_cycle_s=1.0)
         # total 150 / 2 cases = 75.0 per case
-        assert replication_metrics(log, stats).cost == pytest.approx(75.0)
+        assert replication_metrics(log, stats).mean_cost == pytest.approx(75.0)
 
     def test_totals_consistent_with_total_metrics(self, tmp_path):
         log = tmp_path / "log.csv"

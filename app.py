@@ -12,7 +12,7 @@ from core.transformations import REGISTRY
 from core.experiment import build_scenarios
 from core import analysis, demo, orchestrator, preflight
 from core.simulation import runner, store
-from core.constants import COL_COST
+from core.constants import COL_MEAN_COST
 from core.goals import Goal, baseline_per_case
 from core.metrics import MetricRegistry
 from ui.goals import GOAL_OPTIONS
@@ -497,7 +497,7 @@ if ss.results is not None:
                 "Check the run logs for details.",
                 icon="⚠️",
             )
-        if ss.results[COL_COST].isna().any():
+        if ss.results[COL_MEAN_COST].isna().any():
             st.warning(
                 "Cost data is unavailable for one or more runs — Prosimos did not "
                 "produce a stats CSV with a parseable 'Individual Task Statistics' section. "
