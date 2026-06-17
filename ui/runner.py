@@ -85,6 +85,7 @@ def commit_result(ss: Any, result: ExperimentResult) -> None:
     ss.baseline_agg = result.baseline_agg
     ss.scenario_log_paths = result.scenario_log_paths
     ss.baseline_log_paths = result.baseline_log_paths
+    ss.failed_replications = result.failed_replications
 
 
 def clear_run(ss: Any) -> None:

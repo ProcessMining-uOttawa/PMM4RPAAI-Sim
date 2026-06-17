@@ -49,6 +49,7 @@ ss.setdefault("baseline_log_paths", {})   # n_cases -> list[Path], one log per r
 ss.setdefault("array_name", None)
 ss.setdefault("scenarios", [])
 ss.setdefault("baseline_agg", None)
+ss.setdefault("failed_replications", [])
 
 
 def _clear_results() -> None:
@@ -58,6 +59,7 @@ def _clear_results() -> None:
     ss.baseline_agg = None
     ss.scenario_log_paths = {}
     ss.baseline_log_paths = {}
+    ss.failed_replications = []
 
 
 def _clear_log() -> None:
@@ -488,6 +490,13 @@ if ss.results is not None:
 
     with st.container(border=True):
         st.markdown("##### 4 · Ranked scenarios")
+        if ss.failed_replications:
+            st.warning(
+                f"{len(ss.failed_replications)} replication(s) failed and were excluded from results. "
+                "Results are based on the remaining successful replications. "
+                "Check the run logs for details.",
+                icon="⚠️",
+            )
         if ss.results[COL_COST].isna().any():
             st.warning(
                 "Cost data is unavailable for one or more runs — Prosimos did not "
@@ -495,7 +504,9 @@ if ss.results is not None:
                 "Cost goals are marked unmet.",
                 icon="⚠️",
             )
-        _baseline = baseline_per_case(ss.baseline_agg or demo.demo_baseline_agg())
+        _baseline = baseline_per_case(
+            ss.baseline_agg if ss.baseline_agg is not None else demo.demo_baseline_agg()
+        )
         goals = [
             Goal.from_pct_reduction(col, wt, pct, _baseline[col])
             for col, pct, wt in _goal_specs
@@ -597,4 +608,12 @@ if ss.results is not None:
                 analysis.compare_to_baseline(agg, baseline_agg),
                 use_container_width=True,
                 hide_index=True,
+            )
+    elif not demo_mode:
+        with st.container(border=True):
+            st.markdown("##### 5 · Baseline comparison")
+            st.warning(
+                "All baseline replications failed — baseline comparison is unavailable. "
+                "Check the run logs for details.",
+                icon="⚠️",
             )

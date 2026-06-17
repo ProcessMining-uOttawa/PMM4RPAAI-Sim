@@ -77,3 +77,7 @@ class TestDemoRunExperiment:
         free   = demo.run_experiment(scenarios, n_reps=1, bot_cost_per_hour=0.0)
         costly = demo.run_experiment(scenarios, n_reps=1, bot_cost_per_hour=500.0)
         assert costly.results[COL_COST].mean() > free.results[COL_COST].mean()
+
+    def test_failed_replications_empty_in_demo(self):
+        result = demo.run_experiment(_scenarios(), n_reps=1)
+        assert result.failed_replications == []
