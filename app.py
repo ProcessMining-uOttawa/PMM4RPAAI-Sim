@@ -191,25 +191,63 @@ with st.sidebar:
     if ss.activities:
         st.divider()
         st.subheader("Goals")
-        _selected = st.multiselect(
-            "Active goals",
-            options=list(GOAL_OPTIONS),
-            default=list(GOAL_OPTIONS),
-            format_func=lambda m: m.per_case_display_name,
+        _all_metrics = list(GOAL_OPTIONS.keys())
+        _n_goals = st.radio(
+            "Goals", [1, 2, 3], index=0, horizontal=True, key="goal_count",
             label_visibility="collapsed",
         )
-        # Re-sort by GOAL_OPTIONS key order — multiselect returns items in click order.
-        _active = [m for m in GOAL_OPTIONS if m in _selected]
-        if _active:
-            _hdr = st.columns([3, 2, 1.5])
-            _hdr[1].caption("Reduction (%)")
-            _hdr[2].caption("Weight")
-            for _m in _active:
+
+        if _n_goals == 1:
+            _k = "goal_metric_0"
+            if ss.get(_k) not in _all_metrics:
+                ss[_k] = _all_metrics[0]
+            _m = st.selectbox(
+                "Metric",
+                options=_all_metrics,
+                format_func=lambda m: m.per_case_display_name,
+                key=_k,
+                label_visibility="collapsed",
+            )
+            _opt = GOAL_OPTIONS[_m]
+            _pct = st.number_input(
+                "Reduction (%)",
+                value=_opt.default_pct,
+                min_value=0.0,
+                max_value=99.0,
+                step=_opt.step,
+                key=f"goal_pct_{_m.per_case_column}",
+            )
+            _goal_specs.append((_m.per_case_column, _pct, 1.0))
+
+        else:  # 2 or 3 goals
+            if _n_goals == 2:
+                _w = st.slider(
+                    "Goal 1 weight",
+                    min_value=0.0, max_value=1.0, value=0.5, step=0.05,
+                    key="goal_weight_2",
+                )
+            _cols_hdr = st.columns([3, 2, 1.5])
+            _cols_hdr[0].caption("Metric")
+            _cols_hdr[1].caption("Reduction (%)")
+            _cols_hdr[2].caption("Weight")
+            _chosen: list = []
+            for _i in range(_n_goals):
+                _avail = [m for m in _all_metrics if m not in _chosen]
+                _k = f"goal_metric_{_i}"
+                if ss.get(_k) not in _avail:
+                    ss[_k] = _avail[0]
+                _row = st.columns([3, 2, 1.5])
+                _m = _row[0].selectbox(
+                    f"Goal {_i + 1}",
+                    options=_avail,
+                    format_func=lambda m: m.per_case_display_name,
+                    key=_k,
+                    label_visibility="collapsed",
+                )
+                _chosen.append(_m)
                 _opt = GOAL_OPTIONS[_m]
                 _gcol = _m.per_case_column
-                _grow = st.columns([3, 2, 1.5])
-                _grow[0].markdown(_m.per_case_display_name)
-                _pct = _grow[1].number_input(
+                _pct = _row[1].number_input(
                     f"pct_{_gcol}",
                     value=_opt.default_pct,
                     min_value=0.0,
@@ -218,22 +256,25 @@ with st.sidebar:
                     key=f"goal_pct_{_gcol}",
                     label_visibility="collapsed",
                 )
-                _wt = _grow[2].number_input(
-                    f"wt_{_gcol}",
-                    value=_opt.default_weight,
-                    min_value=0.0,
-                    max_value=1.0,
-                    step=0.05,
-                    key=f"goal_weight_{_gcol}",
-                    label_visibility="collapsed",
-                )
-                _goal_specs.append((_gcol, _pct, _wt))
+                if _n_goals == 2:
+                    _this_wt = _w if _i == 0 else round(1.0 - _w, 2)
+                    _row[2].markdown(f"**{_this_wt:.2f}**")
+                else:
+                    _this_wt = _row[2].number_input(
+                        f"wt_{_gcol}",
+                        value=_opt.default_weight,
+                        min_value=0.0,
+                        max_value=1.0,
+                        step=0.05,
+                        key=f"goal_weight_{_gcol}",
+                        label_visibility="collapsed",
+                    )
+                _goal_specs.append((_gcol, _pct, _this_wt))
 
-            _weight_sum = sum(wt for _, _, wt in _goal_specs)
-            if abs(_weight_sum - 1.0) > 0.01:
-                st.warning(f"Weights sum to {_weight_sum:.2f} — scores will be skewed unless they sum to 1.")
-        else:
-            st.caption("No goals selected — scenarios will not be ranked.")
+            if _n_goals == 3:
+                _weight_sum = sum(wt for _, _, wt in _goal_specs)
+                if abs(_weight_sum - 1.0) > 0.01:
+                    st.warning(f"Weights sum to {_weight_sum:.2f} — scores will be skewed unless they sum to 1.")
 
     st.divider()
     st.subheader("Run config")
