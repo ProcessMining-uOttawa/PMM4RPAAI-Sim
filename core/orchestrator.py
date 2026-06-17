@@ -27,12 +27,41 @@ from .parameters import Scenario
 from .transformations import Transformation
 
 
-TASK_BASELINE = "baseline"
-TASK_SCENARIO = "scenario"
-
-
 class ExperimentCancelledError(RuntimeError):
     """Raised when a running experiment is stopped by the caller."""
+
+
+class SimulationError(RuntimeError):
+    """Raised when all simulation replications fail with no results to return."""
+
+
+@dataclass(frozen=True)
+class BaselineMeta:
+    n_cases: int
+    rep: int
+
+
+@dataclass
+class ScenarioMeta:
+    scenario_id: str
+    rep: int
+    values: dict[str, object]
+
+
+@dataclass
+class FailedReplication:
+    scenario_id: str    # scenario id, or "baseline" for baseline tasks
+    rep: int
+    error: str          # str(exception)
+
+
+def _unpack_meta(meta: object) -> tuple[str, int]:
+    """Extract (label, rep) from task metadata; raises TypeError for unknown types."""
+    if isinstance(meta, BaselineMeta):
+        return "baseline", meta.rep
+    if isinstance(meta, ScenarioMeta):
+        return meta.scenario_id, meta.rep
+    raise TypeError(f"Unexpected metadata type: {type(meta)}")
 
 
 @dataclass
@@ -43,6 +72,7 @@ class ExperimentResult:
     baseline_agg: dict[int, dict] | None = None  # {n_cases: mean totals}
     scenario_log_paths: dict[str, list[Path]] = field(default_factory=dict)
     baseline_log_paths: dict[int, list[Path]] = field(default_factory=dict)
+    failed_replications: list[FailedReplication] = field(default_factory=list)
 
 
 def run_experiment(
@@ -58,6 +88,7 @@ def run_experiment(
     bot_cost_per_hour: float = 0.0,
     stop_event: threading.Event | None = None,
     max_workers: int = 1,
+    max_retries: int = 2,
 ) -> ExperimentResult:
     """Run all scenario replications and return aggregated results.
 
@@ -103,7 +134,8 @@ def run_experiment(
                     out_log=store.baseline_log(exp_dir, rep, n_cases),
                     out_stat=store.baseline_stats(exp_dir, rep, n_cases),
                     proc_log=store.baseline_subprocess_log(exp_dir, rep, n_cases),
-                    metadata=(TASK_BASELINE, n_cases, rep),
+                    metadata=BaselineMeta(n_cases=n_cases, rep=rep),
+                    max_retries=max_retries,
                 )
             )
     for s in scenarios:
@@ -118,56 +150,64 @@ def run_experiment(
                     out_log=store.replication_log(exp_dir, s.id, rep),
                     out_stat=store.replication_stats(exp_dir, s.id, rep),
                     proc_log=store.replication_subprocess_log(exp_dir, s.id, rep),
-                    metadata=(TASK_SCENARIO, s.id, rep, s.values),
+                    metadata=ScenarioMeta(scenario_id=s.id, rep=rep, values=s.values),
+                    max_retries=max_retries,
                 )
             )
 
-    def _on_complete(task: SimulationTask) -> None:
+    _bot_task_name = bpmn_tr.ids.bot_task_name
+    _original_task_name = bpmn_tr.ids.task_name
+    failures: list[FailedReplication] = []
+
+    def _tick(label: str, rep: int) -> None:
         nonlocal done
-        kind = task.metadata[0]
-        if kind == TASK_BASELINE:
-            _, n_cases, rep = task.metadata
-            assert task.out_stat is not None
-            baseline_reps[n_cases].append(
-                prosimos_csv.replication_metrics(task.out_log, task.out_stat)
-            )
-            baseline_log_paths[n_cases].append(task.out_log)
-            label = "baseline"
-        else:
-            _, sid, rep, values = task.metadata
-            assert task.out_stat is not None
-            m = prosimos_csv.replication_metrics(
-                task.out_log,
-                task.out_stat,
-                bot_task_name=bpmn_tr.ids.bot_task_name,
-                original_task_name=bpmn_tr.ids.task_name,
-            )
-            rows.append(
-                {
-                    "scenario_id": sid,
-                    "replication": rep,
-                    COL_CYCLE_H: m[COL_CYCLE_H],
-                    COL_COST: m[COL_COST],
-                    COL_TOTAL_CYCLE_S: m[COL_TOTAL_CYCLE_S],
-                    COL_TOTAL_COST: m[COL_TOTAL_COST],
-                    COL_REWORK_COUNT: m[COL_REWORK_COUNT],
-                    COL_REWORK_RATE: m[COL_REWORK_RATE],
-                    **values,
-                }
-            )
-            scenario_log_paths[sid].append(task.out_log)
-            label = sid
         done += 1
         if on_progress:
             on_progress(done, total, label, rep)
 
+    def _on_complete(task: SimulationTask) -> None:
+        meta = task.metadata
+        assert task.out_stat is not None
+        if isinstance(meta, BaselineMeta):
+            baseline_reps[meta.n_cases].append(
+                prosimos_csv.replication_metrics(task.out_log, task.out_stat)
+            )
+            baseline_log_paths[meta.n_cases].append(task.out_log)
+            _tick("baseline", meta.rep)
+        else:  # ScenarioMeta
+            m = prosimos_csv.replication_metrics(
+                task.out_log,
+                task.out_stat,
+                bot_task_name=_bot_task_name,
+                original_task_name=_original_task_name,
+            )
+            rows.append({"scenario_id": meta.scenario_id, "replication": meta.rep, **m, **meta.values})
+            scenario_log_paths[meta.scenario_id].append(task.out_log)
+            _tick(meta.scenario_id, meta.rep)
+
+    def _on_error(task: SimulationTask, exc: BaseException) -> None:
+        label, rep = _unpack_meta(task.metadata)
+        failures.append(FailedReplication(scenario_id=label, rep=rep, error=str(exc)))
+        _tick(label, rep)
+
     stop_check = stop_event.is_set if stop_event is not None else None
-    completed = run_all(tasks, _on_complete, max_workers=max_workers, stop_check=stop_check)
+    completed = run_all(
+        tasks, _on_complete, on_error=_on_error,
+        max_workers=max_workers, stop_check=stop_check,
+    )
     if not completed:
         raise ExperimentCancelledError()
 
+    if not rows and failures:
+        raise SimulationError(
+            f"All {len(failures)} simulation replications failed. "
+            f"First error: {failures[0].error}"
+        )
+
     baseline_agg: dict[int, dict] = {}
     for n_cases, rep_list in baseline_reps.items():
+        if not rep_list:
+            continue  # all baseline replications for this n_cases level failed
         means = pd.DataFrame(rep_list).mean()
         baseline_agg[n_cases] = {
             COL_TOTAL_CYCLE_S_MEAN: means[COL_TOTAL_CYCLE_S],
@@ -180,7 +220,8 @@ def run_experiment(
         results=pd.DataFrame(rows),
         experiment_bpmn_path=experiment_bpmn_path,
         scenario_json_paths=scenario_json_paths,
-        baseline_agg=baseline_agg,
+        baseline_agg=baseline_agg or None,  # {} → None when all baseline reps failed
         scenario_log_paths=scenario_log_paths,
         baseline_log_paths=baseline_log_paths,
+        failed_replications=failures,
     )
