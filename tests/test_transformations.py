@@ -10,7 +10,7 @@ from core.transformations import (
     AutomationParams, BpmnTransformResult,
 )
 from core.simulation.prosimos_edit import KEY_RESOURCE_CALENDARS, KEY_GATEWAY_BRANCHING_PROBS
-from core.bpmn.utils import resource_pool_size
+from core.bpmn.query import resource_pool_size
 from core.bpmn import BPMN_NS
 from core.constants import (
     KEY_RESOURCE_PROFILES, KEY_TASK_RESOURCE_DISTRIBUTION,

@@ -1,7 +1,7 @@
-"""Tests for core/bpmn/utils.py — resource_selector_config."""
+"""Tests for core/bpmn/query.py — resource_selector_config."""
 from __future__ import annotations
 
-from core.bpmn.utils import resource_selector_config
+from core.bpmn.query import resource_selector_config
 
 
 # ── Minimal Prosimos JSON fixture helpers ──────────────────────────────────────

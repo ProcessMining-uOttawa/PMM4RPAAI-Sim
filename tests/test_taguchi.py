@@ -1,8 +1,8 @@
-"""Tests for core/experiment.py, AutomationParams.from_taguchi_values, and demo monotonicity."""
+"""Tests for core/taguchi.py, AutomationParams.from_taguchi_values, and demo monotonicity."""
 from __future__ import annotations
 import pytest
 
-from core.experiment import build_scenarios, pick_array
+from core.taguchi import build_scenarios, pick_array
 from core.parameters import Parameter
 from core.transformations import AutomationParams
 

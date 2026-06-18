@@ -1,10 +1,10 @@
-"""Tests for core/bpmn/utils.py — no external tools required."""
+"""Tests for core/bpmn/query.py — no external tools required."""
 from __future__ import annotations
 import xml.etree.ElementTree as ET
 
 import pytest
 
-from core.bpmn.utils import (
+from core.bpmn.query import (
     find_task_by_name,
     task_resources,
     shared_resource_ids,
