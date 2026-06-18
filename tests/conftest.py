@@ -1,10 +1,14 @@
 """Shared pytest fixtures available to all test modules."""
+
 from __future__ import annotations
 import json
 import pytest
 
 from core.transformations import XORSplitAutomation
-from core.simulation.prosimos_edit import KEY_RESOURCE_CALENDARS, KEY_GATEWAY_BRANCHING_PROBS
+from core.simulation.prosimos_edit import (
+    KEY_RESOURCE_CALENDARS,
+    KEY_GATEWAY_BRANCHING_PROBS,
+)
 from core.constants import KEY_RESOURCE_PROFILES, KEY_TASK_RESOURCE_DISTRIBUTION
 
 # ── Minimal synthetic BPMN ────────────────────────────────────────────────────
@@ -58,34 +62,42 @@ MINIMAL_PARAMS = {
         {
             "id": "cal_human",
             "name": "9-5 Weekdays",
-            "time_periods": [{
-                "from": "MONDAY", "to": "FRIDAY",
-                "beginTime": "09:00:00.000", "endTime": "17:00:00.000",
-            }],
+            "time_periods": [
+                {
+                    "from": "MONDAY",
+                    "to": "FRIDAY",
+                    "beginTime": "09:00:00.000",
+                    "endTime": "17:00:00.000",
+                }
+            ],
         }
     ],
     KEY_RESOURCE_PROFILES: [
         {
             "id": "profile_human",
             "name": "Human Workers",
-            "resource_list": [{
-                "id": "res_human_1",
-                "name": "Worker",
-                "cost_per_hour": "10",
-                "amount": 1,
-                "calendar": "cal_human",
-                "assignedTasks": ["task_1"],
-            }],
+            "resource_list": [
+                {
+                    "id": "res_human_1",
+                    "name": "Worker",
+                    "cost_per_hour": "10",
+                    "amount": 1,
+                    "calendar": "cal_human",
+                    "assignedTasks": ["task_1"],
+                }
+            ],
         }
     ],
     KEY_TASK_RESOURCE_DISTRIBUTION: [
         {
             "task_id": "task_1",
-            "resources": [{
-                "resource_id": "res_human_1",
-                "distribution_name": "fix",
-                "distribution_params": [{"value": 3600.0}],
-            }],
+            "resources": [
+                {
+                    "resource_id": "res_human_1",
+                    "distribution_name": "fix",
+                    "distribution_params": [{"value": 3600.0}],
+                }
+            ],
         }
     ],
     KEY_GATEWAY_BRANCHING_PROBS: [],

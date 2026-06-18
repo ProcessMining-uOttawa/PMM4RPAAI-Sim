@@ -1,4 +1,5 @@
 """Tests for rework metric computation in core/simulation/prosimos_csv.py."""
+
 from __future__ import annotations
 
 import pandas as pd
@@ -7,7 +8,7 @@ import pytest
 from core.simulation.prosimos_csv import _rework_metrics
 from core.constants import COL_TOTAL_REWORK_COUNT, COL_REWORK_RATE
 
-BOT  = "Auto Fix Bug"
+BOT = "Auto Fix Bug"
 ORIG = "Fix Bug"
 
 
@@ -17,7 +18,6 @@ def _df(*rows: tuple[str, str]) -> pd.DataFrame:
 
 
 class TestReworkMetrics:
-
     # ── no rework ─────────────────────────────────────────────────────────────
 
     def test_no_rework_count_zero(self):
@@ -108,10 +108,12 @@ class TestReworkMetrics:
     def test_rework_count_sums_across_cases(self):
         # C1: ORIG twice (+1), C2: bot failure (+1), C3: clean
         df = _df(
-            ("C1", ORIG), ("C1", ORIG),
-            ("C2", BOT),  ("C2", ORIG),
+            ("C1", ORIG),
+            ("C1", ORIG),
+            ("C2", BOT),
+            ("C2", ORIG),
             ("C3", ORIG),
         )
         r = _rework_metrics(df, bot_task_name=BOT, original_task_name=ORIG)
         assert r[COL_TOTAL_REWORK_COUNT] == 2.0
-        assert r[COL_REWORK_RATE]  == pytest.approx(200 / 3)
+        assert r[COL_REWORK_RATE] == pytest.approx(200 / 3)

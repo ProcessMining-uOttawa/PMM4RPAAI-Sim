@@ -1,4 +1,5 @@
 """Metric definitions — single source of truth for display names, units, and ranking config."""
+
 from __future__ import annotations
 
 from dataclasses import dataclass
@@ -6,15 +7,21 @@ from enum import Enum
 from typing import Callable, NamedTuple
 
 from .constants import (
-    COL_MEAN_CYCLE_H, COL_MEAN_COST, COL_REWORK_RATE,
-    COL_MEAN_CYCLE_H_MEAN, COL_MEAN_COST_MEAN, COL_REWORK_RATE_MEAN,
-    COL_TOTAL_CYCLE_S_MEAN, COL_TOTAL_COST_MEAN, COL_TOTAL_REWORK_COUNT_MEAN,
+    COL_MEAN_CYCLE_H,
+    COL_MEAN_COST,
+    COL_REWORK_RATE,
+    COL_MEAN_CYCLE_H_MEAN,
+    COL_MEAN_COST_MEAN,
+    COL_REWORK_RATE_MEAN,
+    COL_TOTAL_CYCLE_S_MEAN,
+    COL_TOTAL_COST_MEAN,
+    COL_TOTAL_REWORK_COUNT_MEAN,
 )
 
 
 class MetricDirection(str, Enum):
     SMALLER_IS_BETTER = "smaller_is_better"
-    LARGER_IS_BETTER  = "larger_is_better"
+    LARGER_IS_BETTER = "larger_is_better"
 
 
 def _id(v: float) -> float:

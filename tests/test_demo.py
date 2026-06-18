@@ -1,10 +1,15 @@
 """Tests for demo.run_experiment — synthetic simulation (no Simod/Prosimos)."""
+
 from __future__ import annotations
 
 from core import demo
 from core.constants import (
-    COL_MEAN_CYCLE_H, COL_MEAN_COST, COL_TOTAL_CYCLE_S, COL_TOTAL_COST,
-    COL_TOTAL_REWORK_COUNT, COL_REWORK_RATE,
+    COL_MEAN_CYCLE_H,
+    COL_MEAN_COST,
+    COL_TOTAL_CYCLE_S,
+    COL_TOTAL_COST,
+    COL_TOTAL_REWORK_COUNT,
+    COL_REWORK_RATE,
 )
 from core.taguchi import build_scenarios
 from core.orchestrator import ExperimentResult
@@ -19,7 +24,6 @@ def _scenarios():
 
 
 class TestDemoRunExperiment:
-
     def test_returns_experiment_result(self):
         result = demo.run_experiment(_scenarios(), n_reps=2)
         assert isinstance(result, ExperimentResult)
@@ -33,10 +37,14 @@ class TestDemoRunExperiment:
     def test_dataframe_required_columns(self):
         result = demo.run_experiment(_scenarios(), n_reps=1)
         required = {
-            "scenario_id", "replication",
-            COL_MEAN_CYCLE_H, COL_MEAN_COST,
-            COL_TOTAL_CYCLE_S, COL_TOTAL_COST,
-            COL_TOTAL_REWORK_COUNT, COL_REWORK_RATE,
+            "scenario_id",
+            "replication",
+            COL_MEAN_CYCLE_H,
+            COL_MEAN_COST,
+            COL_TOTAL_CYCLE_S,
+            COL_TOTAL_COST,
+            COL_TOTAL_REWORK_COUNT,
+            COL_REWORK_RATE,
         }
         assert required <= set(result.results.columns)
 
@@ -55,7 +63,8 @@ class TestDemoRunExperiment:
         calls: list[tuple] = []
 
         demo.run_experiment(
-            scenarios, n_reps=n_reps,
+            scenarios,
+            n_reps=n_reps,
             on_progress=lambda done, total, sid, rep: calls.append((done, total)),
         )
 
@@ -74,7 +83,7 @@ class TestDemoRunExperiment:
 
     def test_nonzero_bot_cost_increases_cost(self):
         scenarios = _scenarios()
-        free   = demo.run_experiment(scenarios, n_reps=1, bot_cost_per_hour=0.0)
+        free = demo.run_experiment(scenarios, n_reps=1, bot_cost_per_hour=0.0)
         costly = demo.run_experiment(scenarios, n_reps=1, bot_cost_per_hour=500.0)
         assert costly.results[COL_MEAN_COST].mean() > free.results[COL_MEAN_COST].mean()
 

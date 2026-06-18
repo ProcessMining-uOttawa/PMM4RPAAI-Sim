@@ -1,4 +1,5 @@
 """Read-only helpers for BPMN files and Prosimos JSON."""
+
 from __future__ import annotations
 import xml.etree.ElementTree as ET
 from collections import Counter
@@ -43,7 +44,10 @@ def task_resources(prosimos_json: dict, task_id: str) -> list[dict]:
     for entry in prosimos_json.get(KEY_TASK_RESOURCE_DISTRIBUTION, []):
         if entry.get("task_id") == task_id:
             return [
-                {"id": r["resource_id"], "name": name_by_id.get(r["resource_id"], r["resource_id"])}
+                {
+                    "id": r["resource_id"],
+                    "name": name_by_id.get(r["resource_id"], r["resource_id"]),
+                }
                 for r in entry.get("resources", [])
             ]
     return []
@@ -71,12 +75,15 @@ def resource_pool_size(prosimos_json: dict, resource_id: str) -> int | None:
 @dataclass
 class ResourceSelectorConfig:
     """Classification of a task's resources for the UI resource selector."""
-    selectable: list[dict]        # [{id, name}] — resources the user can choose from
-    frozen: list[dict]            # [{id, name}] — shared resources (displayed but not pickable)
+
+    selectable: list[dict]  # [{id, name}] — resources the user can choose from
+    frozen: list[dict]  # [{id, name}] — shared resources (displayed but not pickable)
     frozen_pool_size: int | None  # current pool size when all resources are shared
 
 
-def resource_selector_config(prosimos_json: dict, task_id: str) -> ResourceSelectorConfig:
+def resource_selector_config(
+    prosimos_json: dict, task_id: str
+) -> ResourceSelectorConfig:
     """Classify task resources into selectable vs. shared-frozen.
 
     Returns a config the UI can render directly; no domain decisions need to
@@ -84,14 +91,18 @@ def resource_selector_config(prosimos_json: dict, task_id: str) -> ResourceSelec
     """
     resources = task_resources(prosimos_json, task_id)
     if len(resources) <= 1:
-        return ResourceSelectorConfig(selectable=resources, frozen=[], frozen_pool_size=None)
+        return ResourceSelectorConfig(
+            selectable=resources, frozen=[], frozen_pool_size=None
+        )
     shared = shared_resource_ids(prosimos_json)
     selectable = [r for r in resources if r["id"] not in shared]
     frozen = [r for r in resources if r["id"] in shared]
     frozen_pool_size: int | None = None
     if not selectable:
         frozen_pool_size = resource_pool_size(prosimos_json, resources[0]["id"])
-    return ResourceSelectorConfig(selectable=selectable, frozen=frozen, frozen_pool_size=frozen_pool_size)
+    return ResourceSelectorConfig(
+        selectable=selectable, frozen=frozen, frozen_pool_size=frozen_pool_size
+    )
 
 
 def task_mean_duration_s(prosimos_json: dict, task_id: str) -> float | None:

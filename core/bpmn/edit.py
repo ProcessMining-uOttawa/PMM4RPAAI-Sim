@@ -8,25 +8,33 @@ Covers two concerns:
 Callers are responsible for deciding where elements are placed; coordinates
 are passed explicitly to add_task_el and add_xor_el rather than computed here.
 """
+
 from __future__ import annotations
 import xml.etree.ElementTree as ET
 
-from . import BPMN_NS as _BPMN, BPMNDI_NS as _BPMNDI, DC_NS as _DC, DI_NS as _DI, BPMN_TASK_TAGS
+from . import (
+    BPMN_NS as _BPMN,
+    BPMNDI_NS as _BPMNDI,
+    DC_NS as _DC,
+    DI_NS as _DI,
+    BPMN_TASK_TAGS,
+)
 
-ET.register_namespace("bpmn",   _BPMN)
+ET.register_namespace("bpmn", _BPMN)
 ET.register_namespace("bpmndi", _BPMNDI)
-ET.register_namespace("dc",     _DC)
-ET.register_namespace("di",     _DI)
+ET.register_namespace("dc", _DC)
+ET.register_namespace("di", _DI)
 
 # ── Shape dimensions (public — used by layout functions in sibling modules) ────
 TASK_W, TASK_H = 100, 80
-GW_W,   GW_H   = 50,  50
+GW_W, GW_H = 50, 50
 
 # ── Task element tags ──────────────────────────────────────────────────────────
 _TASK_TAGS = frozenset(f"{{{_BPMN}}}{t}" for t in BPMN_TASK_TAGS)
 
 
 # ── DI helpers ─────────────────────────────────────────────────────────────────
+
 
 def get_plane(root: ET.Element) -> ET.Element | None:
     return root.find(f".//{{{_BPMNDI}}}BPMNPlane")
@@ -65,18 +73,28 @@ def diagram_extents(root: ET.Element) -> tuple[float, float, float, float]:
     return min(xs), min(ys), max(xs2), max(ys2)
 
 
-def waypoints_between(root: ET.Element,
-                      src_id: str, tgt_id: str) -> list[tuple[float, float]]:
+def waypoints_between(
+    root: ET.Element, src_id: str, tgt_id: str
+) -> list[tuple[float, float]]:
     s = get_shape_bounds(root, src_id)
     t = get_shape_bounds(root, tgt_id)
     if s and t:
-        return [(s["x"] + s["width"], s["y"] + s["height"] / 2),
-                (t["x"],              t["y"] + t["height"] / 2)]
+        return [
+            (s["x"] + s["width"], s["y"] + s["height"] / 2),
+            (t["x"], t["y"] + t["height"] / 2),
+        ]
     return [(300.0, 120.0), (400.0, 120.0)]
 
 
-def add_shape(plane: ET.Element, element_id: str,
-              x: int, y: int, w: int, h: int, marker: bool = False) -> None:
+def add_shape(
+    plane: ET.Element,
+    element_id: str,
+    x: int,
+    y: int,
+    w: int,
+    h: int,
+    marker: bool = False,
+) -> None:
     shape = ET.SubElement(plane, f"{{{_BPMNDI}}}BPMNShape")
     shape.set("id", f"{element_id}_di")
     shape.set("bpmnElement", element_id)
@@ -90,8 +108,7 @@ def add_shape(plane: ET.Element, element_id: str,
     ET.SubElement(shape, f"{{{_BPMNDI}}}BPMNLabel")
 
 
-def add_edge(plane: ET.Element,
-             flow_id: str, pts: list[tuple[float, float]]) -> None:
+def add_edge(plane: ET.Element, flow_id: str, pts: list[tuple[float, float]]) -> None:
     edge = ET.SubElement(plane, f"{{{_BPMNDI}}}BPMNEdge")
     edge.set("id", f"{flow_id}_di")
     edge.set("bpmnElement", flow_id)
@@ -102,6 +119,7 @@ def add_edge(plane: ET.Element,
 
 
 # ── Process helpers ────────────────────────────────────────────────────────────
+
 
 def find_process(root: ET.Element) -> ET.Element | None:
     return root.find(f".//{{{_BPMN}}}process")
@@ -125,8 +143,9 @@ def flows_from(process: ET.Element, source_id: str) -> list[ET.Element]:
     return [el for el in process if el.tag == tag and el.get("sourceRef") == source_id]
 
 
-def add_task_el(root: ET.Element, process: ET.Element,
-                task_id: str, name: str, x: int, y: int) -> None:
+def add_task_el(
+    root: ET.Element, process: ET.Element, task_id: str, name: str, x: int, y: int
+) -> None:
     el = ET.SubElement(process, f"{{{_BPMN}}}task")
     el.set("id", task_id)
     el.set("name", name)
@@ -135,8 +154,9 @@ def add_task_el(root: ET.Element, process: ET.Element,
         add_shape(plane, task_id, x, y, TASK_W, TASK_H)
 
 
-def add_xor_el(root: ET.Element, process: ET.Element,
-               gw_id: str, name: str, x: int, y: int) -> None:
+def add_xor_el(
+    root: ET.Element, process: ET.Element, gw_id: str, name: str, x: int, y: int
+) -> None:
     el = ET.SubElement(process, f"{{{_BPMN}}}exclusiveGateway")
     el.set("id", gw_id)
     if name:
@@ -146,8 +166,14 @@ def add_xor_el(root: ET.Element, process: ET.Element,
         add_shape(plane, gw_id, x, y, GW_W, GW_H, marker=True)
 
 
-def add_flow_el(root: ET.Element, process: ET.Element,
-                flow_id: str, src: str, tgt: str, name: str = "") -> None:
+def add_flow_el(
+    root: ET.Element,
+    process: ET.Element,
+    flow_id: str,
+    src: str,
+    tgt: str,
+    name: str = "",
+) -> None:
     flow = ET.SubElement(process, f"{{{_BPMN}}}sequenceFlow")
     flow.set("id", flow_id)
     flow.set("sourceRef", src)
@@ -159,18 +185,27 @@ def add_flow_el(root: ET.Element, process: ET.Element,
         add_edge(plane, flow_id, waypoints_between(root, src, tgt))
 
 
-def update_flow_target(root: ET.Element, process: ET.Element,
-                       flow_id: str, new_target: str) -> None:
+def update_flow_target(
+    root: ET.Element, process: ET.Element, flow_id: str, new_target: str
+) -> None:
     tag = f"{{{_BPMN}}}sequenceFlow"
-    flow = next((el for el in process if el.tag == tag and el.get("id") == flow_id), None)
+    flow = next(
+        (el for el in process if el.tag == tag and el.get("id") == flow_id), None
+    )
     if flow is None:
         raise ValueError(f"sequenceFlow '{flow_id}' not found")
     src = flow.get("sourceRef", "")
     flow.set("targetRef", new_target)
     plane = get_plane(root)
     if plane is not None:
-        edge = next((e for e in plane.findall(f"{{{_BPMNDI}}}BPMNEdge")
-                     if e.get("bpmnElement") == flow_id), None)
+        edge = next(
+            (
+                e
+                for e in plane.findall(f"{{{_BPMNDI}}}BPMNEdge")
+                if e.get("bpmnElement") == flow_id
+            ),
+            None,
+        )
         if edge is not None:
             wp_tag = f"{{{_DI}}}waypoint"
             for wp in edge.findall(wp_tag):

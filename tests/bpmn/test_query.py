@@ -1,4 +1,5 @@
 """Tests for core/bpmn/query.py — no external tools required."""
+
 from __future__ import annotations
 import xml.etree.ElementTree as ET
 
@@ -26,31 +27,52 @@ _BPMN_XML = f"""\
 
 # res_b appears in task_1 and task_2 → shared; res_a only in task_1 → exclusive
 _PROSIMOS_JSON = {
-    KEY_RESOURCE_PROFILES: [{
-        "id": "profile_1",
-        "name": "Workers",
-        "resource_list": [
-            {"id": "res_a", "name": "Alice", "amount": 2,
-             "cost_per_hour": "10", "calendar": "cal_1"},
-            {"id": "res_b", "name": "Bob",   "amount": 1,
-             "cost_per_hour": "10", "calendar": "cal_1"},
-        ],
-    }],
+    KEY_RESOURCE_PROFILES: [
+        {
+            "id": "profile_1",
+            "name": "Workers",
+            "resource_list": [
+                {
+                    "id": "res_a",
+                    "name": "Alice",
+                    "amount": 2,
+                    "cost_per_hour": "10",
+                    "calendar": "cal_1",
+                },
+                {
+                    "id": "res_b",
+                    "name": "Bob",
+                    "amount": 1,
+                    "cost_per_hour": "10",
+                    "calendar": "cal_1",
+                },
+            ],
+        }
+    ],
     KEY_TASK_RESOURCE_DISTRIBUTION: [
         {
             "task_id": "task_1",
             "resources": [
-                {"resource_id": "res_a", "distribution_name": "uniform",
-                 "distribution_params": [{"value": 100.0}, {"value": 200.0}]},
-                {"resource_id": "res_b", "distribution_name": "fix",
-                 "distribution_params": [{"value": 300.0}]},
+                {
+                    "resource_id": "res_a",
+                    "distribution_name": "uniform",
+                    "distribution_params": [{"value": 100.0}, {"value": 200.0}],
+                },
+                {
+                    "resource_id": "res_b",
+                    "distribution_name": "fix",
+                    "distribution_params": [{"value": 300.0}],
+                },
             ],
         },
         {
             "task_id": "task_2",
             "resources": [
-                {"resource_id": "res_b", "distribution_name": "uniform",
-                 "distribution_params": [{"value": 50.0}, {"value": 150.0}]},
+                {
+                    "resource_id": "res_b",
+                    "distribution_name": "uniform",
+                    "distribution_params": [{"value": 50.0}, {"value": 150.0}],
+                },
             ],
         },
     ],
@@ -59,8 +81,8 @@ _PROSIMOS_JSON = {
 
 # ── find_task_by_name ─────────────────────────────────────────────────────────
 
-class TestFindTaskByName:
 
+class TestFindTaskByName:
     @pytest.fixture
     def tree(self):
         return ET.ElementTree(ET.fromstring(_BPMN_XML))
@@ -79,8 +101,8 @@ class TestFindTaskByName:
 
 # ── task_resources ────────────────────────────────────────────────────────────
 
-class TestTaskResources:
 
+class TestTaskResources:
     def test_returns_resources_in_order(self):
         resources = task_resources(_PROSIMOS_JSON, "task_1")
         assert [r["id"] for r in resources] == ["res_a", "res_b"]
@@ -96,8 +118,8 @@ class TestTaskResources:
 
 # ── shared_resource_ids ───────────────────────────────────────────────────────
 
-class TestSharedResourceIds:
 
+class TestSharedResourceIds:
     def test_shared_resource_detected(self):
         assert "res_b" in shared_resource_ids(_PROSIMOS_JSON)
 
@@ -107,8 +129,8 @@ class TestSharedResourceIds:
 
 # ── resource_pool_size ────────────────────────────────────────────────────────
 
-class TestResourcePoolSize:
 
+class TestResourcePoolSize:
     def test_returns_correct_amount(self):
         assert resource_pool_size(_PROSIMOS_JSON, "res_a") == 2
 
@@ -118,8 +140,8 @@ class TestResourcePoolSize:
 
 # ── task_mean_duration_s ──────────────────────────────────────────────────────
 
-class TestTaskMeanDurationS:
 
+class TestTaskMeanDurationS:
     def test_averages_across_resources(self):
         # res_a: uniform [100, 200] → mean 150
         # res_b: fix [300]          → mean 300

@@ -1,4 +1,5 @@
 """Ranked-scenario table preparation for Panel 4."""
+
 from __future__ import annotations
 
 import pandas as pd

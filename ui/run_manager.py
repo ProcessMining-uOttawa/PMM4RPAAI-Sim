@@ -5,6 +5,7 @@ The background thread communicates exclusively through the RunState object,
 which is pre-allocated in session state before the thread starts — no Streamlit
 API calls are made from the background thread.
 """
+
 from __future__ import annotations
 
 import threading
@@ -17,6 +18,7 @@ from core.orchestrator import ExperimentCancelledError, ExperimentResult
 @dataclass
 class RunOutcome:
     """Terminal state of a finished run. Exactly one of result/error/cancelled is set."""
+
     result: ExperimentResult | None = None
     error: Exception | None = None
     cancelled: bool = False
@@ -25,6 +27,7 @@ class RunOutcome:
 @dataclass
 class RunState:
     """Mutable run state written by the background thread via on_progress/worker."""
+
     done: int = 0
     total: int = 0
     label: str = "starting"

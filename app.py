@@ -26,7 +26,13 @@ from core.transformations import REGISTRY
 from ui import preflight
 from ui.goals import GOAL_OPTIONS
 from ui.plots import factor_label_map, main_effects_chart
-from ui.run_manager import start_experiment, cancel_experiment, clear_run, current_run, commit_result
+from ui.run_manager import (
+    start_experiment,
+    cancel_experiment,
+    clear_run,
+    current_run,
+    commit_result,
+)
 from ui.table import prepare_ranked_display
 from ui.widgets import level_input_kwargs
 
@@ -47,8 +53,10 @@ ss.setdefault(
     "experiment_bpmn_path", None
 )  # single transformed BPMN, shared across scenarios
 ss.setdefault("scenario_json_paths", {})  # sid -> Path, one params.json per scenario
-ss.setdefault("scenario_log_paths", {})   # sid -> list[Path], one log per replication
-ss.setdefault("baseline_log_paths", {})   # n_cases -> list[Path], one log per replication
+ss.setdefault("scenario_log_paths", {})  # sid -> list[Path], one log per replication
+ss.setdefault(
+    "baseline_log_paths", {}
+)  # n_cases -> list[Path], one log per replication
 ss.setdefault("array_name", None)
 ss.setdefault("scenarios", [])
 ss.setdefault("baseline_agg", None)
@@ -197,7 +205,11 @@ with st.sidebar:
         st.subheader("Goals")
         _all_metrics = list(GOAL_OPTIONS.keys())
         _n_goals = st.radio(
-            "Goals", [1, 2, 3], index=0, horizontal=True, key="goal_count",
+            "Goals",
+            [1, 2, 3],
+            index=0,
+            horizontal=True,
+            key="goal_count",
             label_visibility="collapsed",
         )
 
@@ -227,7 +239,10 @@ with st.sidebar:
             if _n_goals == 2:
                 _w = st.slider(
                     "Goal 1 weight",
-                    min_value=0.0, max_value=1.0, value=0.5, step=0.05,
+                    min_value=0.0,
+                    max_value=1.0,
+                    value=0.5,
+                    step=0.05,
                     key="goal_weight_2",
                 )
             _cols_hdr = st.columns([3, 2, 1.5])
@@ -278,16 +293,24 @@ with st.sidebar:
             if _n_goals == 3:
                 _weight_sum = sum(wt for _, _, wt in _goal_specs)
                 if abs(_weight_sum - 1.0) > 0.01:
-                    st.warning(f"Weights sum to {_weight_sum:.2f} — scores will be skewed unless they sum to 1.")
+                    st.warning(
+                        f"Weights sum to {_weight_sum:.2f} — scores will be skewed unless they sum to 1."
+                    )
 
     st.divider()
     st.subheader("Run config")
     n_reps = st.number_input("Replications (N)", 1, 100, 5)
     max_workers = st.number_input(
-        "Parallel workers", min_value=1, max_value=os.cpu_count(), value=os.cpu_count(), step=1,
+        "Parallel workers",
+        min_value=1,
+        max_value=os.cpu_count(),
+        value=os.cpu_count(),
+        step=1,
         help="Number of Prosimos simulations to run in parallel. Higher values use more CPU.",
     )
-    bot_cost_per_hour = st.number_input("Bot cost ($/hr)", min_value=0.0, value=0.0, step=1.0)
+    bot_cost_per_hour = st.number_input(
+        "Bot cost ($/hr)", min_value=0.0, value=0.0, step=1.0
+    )
 
 # --- gate: need a log first --------------------------------------------------
 if not ss.activities:
@@ -413,6 +436,7 @@ array_name, scenarios = build_scenarios(params, transformation.id, target)
 ss.array_name, ss.scenarios = array_name, scenarios
 total_runs = len(scenarios) * n_reps
 
+
 @st.fragment
 def _panel3() -> None:
     with st.container(border=True):
@@ -446,15 +470,20 @@ def _panel3() -> None:
                 clear_run(ss)
                 st.rerun(scope="app")  # full rerun: Panel 4 needs to appear
         else:
-            if right.button("▶ Run all scenarios", type="primary", use_container_width=True):
+            if right.button(
+                "▶ Run all scenarios", type="primary", use_container_width=True
+            ):
                 if not demo_mode and (not ss.bpmn_path or not ss.json_path):
                     st.error("No discovered model — upload a log first.")
                     st.stop()
 
                 if demo_mode:
+
                     def _fn(progress_cb, stop_ev):
                         return demo.run_experiment(
-                            scenarios, n_reps, progress_cb,
+                            scenarios,
+                            n_reps,
+                            progress_cb,
                             bot_cost_per_hour=bot_cost_per_hour,
                             stop_event=stop_ev,
                         )
@@ -464,6 +493,7 @@ def _panel3() -> None:
                     _json_path = ss.json_path
                     _target_activity = target
                     _selected_resource_id = selected_resource_id
+
                     def _fn(progress_cb, stop_ev):
                         return orchestrator.run_experiment(
                             transformation=transformation,
@@ -483,6 +513,7 @@ def _panel3() -> None:
                 _clear_results()
                 start_experiment(ss, _fn)
                 st.rerun()  # fragment-scoped: switches Panel 3 to progress view
+
 
 _panel3()
 
@@ -514,7 +545,9 @@ if ss.results is not None:
             for col, pct, wt in _goal_specs
         ]
         ranked = analysis.rank(agg, goals)
-        show_factors = st.checkbox("Show Taguchi factors", value=False, key="show_factors")
+        show_factors = st.checkbox(
+            "Show Taguchi factors", value=False, key="show_factors"
+        )
         st.dataframe(
             prepare_ranked_display(ranked, goals, params, show_factors),
             use_container_width=True,
@@ -591,7 +624,9 @@ if ss.results is not None:
         )
         col_all.download_button(
             "⬇ Model (ZIP)",
-            data=store.group_zip(Path(bpmn_path), json_paths, stats_csv) if (bpmn_exists and json_paths) else b"",
+            data=store.group_zip(Path(bpmn_path), json_paths, stats_csv)
+            if (bpmn_exists and json_paths)
+            else b"",
             file_name="export.zip",
             mime="application/zip",
             use_container_width=True,

@@ -1,4 +1,5 @@
 """Regression tests for XORSplitAutomation — no external tools required."""
+
 from __future__ import annotations
 import json
 import xml.etree.ElementTree as ET
@@ -6,16 +7,27 @@ import pytest
 
 from core.transformations import (
     _make_ids,
-    BOT_CALENDAR_ID, BOT_PROFILE_ID,
-    AutomationParams, BpmnTransformResult,
+    BOT_CALENDAR_ID,
+    BOT_PROFILE_ID,
+    AutomationParams,
+    BpmnTransformResult,
 )
-from core.simulation.prosimos_edit import KEY_RESOURCE_CALENDARS, KEY_GATEWAY_BRANCHING_PROBS
+from core.simulation.prosimos_edit import (
+    KEY_RESOURCE_CALENDARS,
+    KEY_GATEWAY_BRANCHING_PROBS,
+)
 from core.bpmn.query import resource_pool_size
 from core.bpmn import BPMN_NS
 from core.constants import (
-    KEY_RESOURCE_PROFILES, KEY_TASK_RESOURCE_DISTRIBUTION,
-    F_PCT_AUTO, F_PCT_OK, F_T_AUTO, F_T_MANUAL,
-    F_NUM_BOTS, F_NUM_MANUAL_RESOURCES, F_NUM_CASES,
+    KEY_RESOURCE_PROFILES,
+    KEY_TASK_RESOURCE_DISTRIBUTION,
+    F_PCT_AUTO,
+    F_PCT_OK,
+    F_T_AUTO,
+    F_T_MANUAL,
+    F_NUM_BOTS,
+    F_NUM_MANUAL_RESOURCES,
+    F_NUM_CASES,
 )
 
 
@@ -54,8 +66,8 @@ MULTI_OUTGOING_BPMN = """\
 
 # ── TestMultiFlowNotImplemented ───────────────────────────────────────────────
 
-class TestMultiFlowNotImplemented:
 
+class TestMultiFlowNotImplemented:
     def test_multi_incoming_raises(self, pattern, tmp_path):
         bpmn = tmp_path / "multi_in.bpmn"
         bpmn.write_text(MULTI_INCOMING_BPMN, encoding="utf-8")
@@ -71,8 +83,8 @@ class TestMultiFlowNotImplemented:
 
 # ── TestApplyPattern ──────────────────────────────────────────────────────────
 
-class TestApplyPattern:
 
+class TestApplyPattern:
     def test_output_file_exists(self, applied):
         bpmn_out, _ = applied
         assert bpmn_out.exists()
@@ -93,30 +105,49 @@ class TestApplyPattern:
     def test_four_gateways_added(self, applied):
         bpmn_out, ids = applied
         tree = ET.parse(str(bpmn_out))
-        gw_ids = {gw.get("id") for gw in tree.findall(f".//{{{BPMN_NS}}}exclusiveGateway")}
-        assert {ids.automation_gate, ids.bot_result_gate,
-                ids.fallback_merge, ids.final_join_gate} <= gw_ids
+        gw_ids = {
+            gw.get("id") for gw in tree.findall(f".//{{{BPMN_NS}}}exclusiveGateway")
+        }
+        assert {
+            ids.automation_gate,
+            ids.bot_result_gate,
+            ids.fallback_merge,
+            ids.final_join_gate,
+        } <= gw_ids
 
     def test_seven_internal_flows_added(self, applied):
         bpmn_out, ids = applied
         tree = ET.parse(str(bpmn_out))
         flow_ids = {f.get("id") for f in tree.findall(f".//{{{BPMN_NS}}}sequenceFlow")}
-        internal = {ids.automation_branch, ids.manual_branch, ids.bot_output,
-                    ids.bot_success, ids.bot_failure, ids.to_human, ids.exit_flow}
+        internal = {
+            ids.automation_branch,
+            ids.manual_branch,
+            ids.bot_output,
+            ids.bot_success,
+            ids.bot_failure,
+            ids.to_human,
+            ids.exit_flow,
+        }
         assert internal <= flow_ids
 
     def test_incoming_flow_redirected_to_automation_gate(self, applied):
         bpmn_out, ids = applied
         tree = ET.parse(str(bpmn_out))
-        flow = next(f for f in tree.findall(f".//{{{BPMN_NS}}}sequenceFlow")
-                    if f.get("id") == "flow_in")
+        flow = next(
+            f
+            for f in tree.findall(f".//{{{BPMN_NS}}}sequenceFlow")
+            if f.get("id") == "flow_in"
+        )
         assert flow.get("targetRef") == ids.automation_gate
 
     def test_outgoing_flow_redirected_to_final_join(self, applied):
         bpmn_out, ids = applied
         tree = ET.parse(str(bpmn_out))
-        flow = next(f for f in tree.findall(f".//{{{BPMN_NS}}}sequenceFlow")
-                    if f.get("id") == "flow_out")
+        flow = next(
+            f
+            for f in tree.findall(f".//{{{BPMN_NS}}}sequenceFlow")
+            if f.get("id") == "flow_out"
+        )
         assert flow.get("targetRef") == ids.final_join_gate
 
     def test_missing_activity_raises(self, pattern, bpmn_file, tmp_path):
@@ -126,8 +157,8 @@ class TestApplyPattern:
 
 # ── TestBuildBaseJson ─────────────────────────────────────────────────────────
 
-class TestBuildBaseJson:
 
+class TestBuildBaseJson:
     @pytest.fixture
     def scenario_template(self, pattern, params_file, applied):
         _, ids = applied
@@ -143,25 +174,38 @@ class TestBuildBaseJson:
 
     def test_bot_resource_in_profile(self, scenario_template, applied):
         _, ids = applied
-        bot_profile = next(p for p in scenario_template[KEY_RESOURCE_PROFILES]
-                           if p["id"] == BOT_PROFILE_ID)
+        bot_profile = next(
+            p
+            for p in scenario_template[KEY_RESOURCE_PROFILES]
+            if p["id"] == BOT_PROFILE_ID
+        )
         resource_ids = {r["id"] for r in bot_profile["resource_list"]}
         assert ids.bot_resource_id in resource_ids
 
     def test_bot_task_distribution_added(self, scenario_template, applied):
         _, ids = applied
-        task_ids = {e["task_id"] for e in scenario_template[KEY_TASK_RESOURCE_DISTRIBUTION]}
+        task_ids = {
+            e["task_id"] for e in scenario_template[KEY_TASK_RESOURCE_DISTRIBUTION]
+        }
         assert ids.bot_id in task_ids
 
     def test_original_task_preserved(self, scenario_template):
-        task_ids = {e["task_id"] for e in scenario_template[KEY_TASK_RESOURCE_DISTRIBUTION]}
+        task_ids = {
+            e["task_id"] for e in scenario_template[KEY_TASK_RESOURCE_DISTRIBUTION]
+        }
         assert "task_1" in task_ids
 
     def test_bot_cost_written_to_profile(self, pattern, params_file, applied):
         _, ids = applied
-        template = pattern.build_scenario_template(params_file, ids, bot_cost_per_hour=15.0)
-        bot_profile = next(p for p in template[KEY_RESOURCE_PROFILES] if p["id"] == BOT_PROFILE_ID)
-        bot_resource = next(r for r in bot_profile["resource_list"] if r["id"] == ids.bot_resource_id)
+        template = pattern.build_scenario_template(
+            params_file, ids, bot_cost_per_hour=15.0
+        )
+        bot_profile = next(
+            p for p in template[KEY_RESOURCE_PROFILES] if p["id"] == BOT_PROFILE_ID
+        )
+        bot_resource = next(
+            r for r in bot_profile["resource_list"] if r["id"] == ids.bot_resource_id
+        )
         assert bot_resource["cost_per_hour"] == "15.0"
 
     def test_missing_task_in_params_raises(self, pattern, params_file):
@@ -172,12 +216,18 @@ class TestBuildBaseJson:
     def test_empty_resources_in_params_raises(self, pattern, applied, tmp_path):
         _, ids = applied
         params_empty = tmp_path / "empty_resources.json"
-        params_empty.write_text(json.dumps({
-            KEY_RESOURCE_CALENDARS: [],
-            KEY_RESOURCE_PROFILES: [],
-            KEY_TASK_RESOURCE_DISTRIBUTION: [{"task_id": ids.task_id, "resources": []}],
-            KEY_GATEWAY_BRANCHING_PROBS: [],
-        }))
+        params_empty.write_text(
+            json.dumps(
+                {
+                    KEY_RESOURCE_CALENDARS: [],
+                    KEY_RESOURCE_PROFILES: [],
+                    KEY_TASK_RESOURCE_DISTRIBUTION: [
+                        {"task_id": ids.task_id, "resources": []}
+                    ],
+                    KEY_GATEWAY_BRANCHING_PROBS: [],
+                }
+            )
+        )
         with pytest.raises(RuntimeError, match="no resources assigned"):
             pattern.build_scenario_template(params_empty, ids)
 
@@ -197,7 +247,6 @@ _SCENARIO = AutomationParams(
 
 
 class TestApplyParams:
-
     @pytest.fixture
     def result(self, pattern, params_file, applied, tmp_path):
         """Returns (output_data, ids, scenario_template) for _SCENARIO."""
@@ -215,25 +264,30 @@ class TestApplyParams:
         data, ids, _ = result
         probs = _gbp_probs(data, ids.automation_gate)
         assert probs[ids.automation_branch] == pytest.approx(0.75)
-        assert probs[ids.manual_branch]     == pytest.approx(0.25)
-        assert sum(probs.values())          == pytest.approx(1.0)
+        assert probs[ids.manual_branch] == pytest.approx(0.25)
+        assert sum(probs.values()) == pytest.approx(1.0)
 
     def test_bot_result_gate_probabilities(self, result):
         data, ids, _ = result
         probs = _gbp_probs(data, ids.bot_result_gate)
         assert probs[ids.bot_success] == pytest.approx(0.90)
         assert probs[ids.bot_failure] == pytest.approx(0.10)
-        assert sum(probs.values())    == pytest.approx(1.0)
+        assert sum(probs.values()) == pytest.approx(1.0)
 
     def test_merge_gates_have_probability_one(self, result):
         data, ids, _ = result
-        assert _gbp_probs(data, ids.fallback_merge)[ids.to_human]  == pytest.approx(1.0)
-        assert _gbp_probs(data, ids.final_join_gate)[ids.exit_flow] == pytest.approx(1.0)
+        assert _gbp_probs(data, ids.fallback_merge)[ids.to_human] == pytest.approx(1.0)
+        assert _gbp_probs(data, ids.final_join_gate)[ids.exit_flow] == pytest.approx(
+            1.0
+        )
 
     def test_bot_duration_set_fixed(self, result):
         data, ids, _ = result
-        entry = next(e for e in data[KEY_TASK_RESOURCE_DISTRIBUTION]
-                     if e["task_id"] == ids.bot_id)
+        entry = next(
+            e
+            for e in data[KEY_TASK_RESOURCE_DISTRIBUTION]
+            if e["task_id"] == ids.bot_id
+        )
         r = entry["resources"][0]
         assert r["distribution_name"] == "fix"
         assert r["distribution_params"] == [{"value": 60.0}]
@@ -258,13 +312,19 @@ class TestApplyParams:
         _, _, scenario_template = result
         assert len(scenario_template[KEY_GATEWAY_BRANCHING_PROBS]) == 0
 
-    def test_selected_resource_none_skips_pool_resize(self, pattern, params_file, applied, tmp_path):
+    def test_selected_resource_none_skips_pool_resize(
+        self, pattern, params_file, applied, tmp_path
+    ):
         _, ids = applied
         scenario_template = pattern.build_scenario_template(params_file, ids)
         scenario = AutomationParams(
-            automation_rate=0.5, bot_failure_rate=0.1,
-            bot_execution_time=60.0, manual_execution_time=1800.0,
-            num_bots=1, num_manual_resources=3, num_cases=100,
+            automation_rate=0.5,
+            bot_failure_rate=0.1,
+            bot_execution_time=60.0,
+            manual_execution_time=1800.0,
+            num_bots=1,
+            num_manual_resources=3,
+            num_cases=100,
             selected_resource_id=None,
         )
         json_out = tmp_path / "scenario_none" / "params.json"
@@ -276,11 +336,16 @@ class TestApplyParams:
 
 # ── AutomationParams validation ────────────────────────────────────────────
 
+
 class TestAutomationParamsValidation:
     _base = dict(
-        automation_rate=0.5, bot_failure_rate=0.1,
-        bot_execution_time=60.0, manual_execution_time=1800.0,
-        num_bots=1, num_manual_resources=1, num_cases=100,
+        automation_rate=0.5,
+        bot_failure_rate=0.1,
+        bot_execution_time=60.0,
+        manual_execution_time=1800.0,
+        num_bots=1,
+        num_manual_resources=1,
+        num_cases=100,
     )
 
     def _make(self, **overrides):
@@ -325,19 +390,25 @@ class TestAutomationParamsValidation:
 # ── TestParamsFromValues ──────────────────────────────────────────────────────
 
 _VALUES = {
-    F_PCT_AUTO: 50, F_PCT_OK: 90, F_T_AUTO: 60.0, F_T_MANUAL: 1800.0,
-    F_NUM_BOTS: 2, F_NUM_MANUAL_RESOURCES: 3, F_NUM_CASES: 500,
+    F_PCT_AUTO: 50,
+    F_PCT_OK: 90,
+    F_T_AUTO: 60.0,
+    F_T_MANUAL: 1800.0,
+    F_NUM_BOTS: 2,
+    F_NUM_MANUAL_RESOURCES: 3,
+    F_NUM_CASES: 500,
 }
 
 
 class TestParamsFromValues:
-
     @pytest.fixture
     def bpmn_result(self, pattern, bpmn_file, params_file, tmp_path):
         bpmn_out, ids = pattern.apply_pattern(bpmn_file, "Test Task", tmp_path / "out")
         template = pattern.build_scenario_template(params_file, ids)
         return BpmnTransformResult(
-            bpmn_path=bpmn_out, scenario_template=template, ids=ids,
+            bpmn_path=bpmn_out,
+            scenario_template=template,
+            ids=ids,
             selected_resource_id="res_human_1",
         )
 
@@ -356,11 +427,15 @@ class TestParamsFromValues:
         params = pattern.params_from_values(_VALUES, bpmn_result)
         assert params.selected_resource_id == "res_human_1"
 
-    def test_none_selected_resource_propagated(self, pattern, bpmn_file, params_file, tmp_path):
+    def test_none_selected_resource_propagated(
+        self, pattern, bpmn_file, params_file, tmp_path
+    ):
         bpmn_out, ids = pattern.apply_pattern(bpmn_file, "Test Task", tmp_path / "out2")
         template = pattern.build_scenario_template(params_file, ids)
         result_none = BpmnTransformResult(
-            bpmn_path=bpmn_out, scenario_template=template, ids=ids,
+            bpmn_path=bpmn_out,
+            scenario_template=template,
+            ids=ids,
             selected_resource_id=None,
         )
         params = pattern.params_from_values(_VALUES, result_none)
@@ -369,16 +444,19 @@ class TestParamsFromValues:
 
 # ── Helpers used by multiple test classes ─────────────────────────────────────
 
+
 def _gbp_probs(data: dict, gateway_id: str) -> dict:
     """Return {path_id: value} for a gateway in gateway_branching_probabilities."""
-    entry = next(g for g in data[KEY_GATEWAY_BRANCHING_PROBS]
-                 if g["gateway_id"] == gateway_id)
+    entry = next(
+        g for g in data[KEY_GATEWAY_BRANCHING_PROBS] if g["gateway_id"] == gateway_id
+    )
     return {p["path_id"]: p["value"] for p in entry["probabilities"]}
 
 
 def _task_dist_bounds(data: dict, task_id: str) -> tuple[float, float]:
     """Return (lo, hi) uniform bounds for the first resource of a task."""
-    entry = next(e for e in data[KEY_TASK_RESOURCE_DISTRIBUTION]
-                 if e["task_id"] == task_id)
+    entry = next(
+        e for e in data[KEY_TASK_RESOURCE_DISTRIBUTION] if e["task_id"] == task_id
+    )
     params = entry["resources"][0]["distribution_params"]
     return params[0]["value"], params[1]["value"]

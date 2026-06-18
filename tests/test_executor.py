@@ -1,4 +1,5 @@
 """Tests for executor.run_all() — stop_check predicate, completion flag, and on_error callback."""
+
 from __future__ import annotations
 
 from core.simulation import executor, runner
@@ -20,7 +21,6 @@ def _tasks(tmp_path, n: int, max_retries: int = 0) -> list[executor.SimulationTa
 
 
 class TestRunAllStopCheck:
-
     def test_returns_true_without_stop_check(self, monkeypatch, tmp_path):
         monkeypatch.setattr(runner, "simulate", lambda *a, **kw: None)
         completed = executor.run_all(_tasks(tmp_path, 3), lambda t: None)
@@ -50,7 +50,9 @@ class TestRunAllStopCheck:
         )
         assert len(completed_tasks) == 0
 
-    def test_on_complete_called_for_all_tasks_without_stop_check(self, monkeypatch, tmp_path):
+    def test_on_complete_called_for_all_tasks_without_stop_check(
+        self, monkeypatch, tmp_path
+    ):
         monkeypatch.setattr(runner, "simulate", lambda *a, **kw: None)
         completed_tasks: list = []
         executor.run_all(_tasks(tmp_path, 4), lambda t: completed_tasks.append(t))
@@ -74,17 +76,19 @@ class _FailNTimes:
 
 
 class TestRunAllOnError:
-
     def test_on_error_called_when_simulate_raises(self, monkeypatch, tmp_path):
         monkeypatch.setattr(runner, "simulate", _always_fail)
         errors: list = []
-        executor.run_all(_tasks(tmp_path, 2), lambda t: None, on_error=lambda t, e: errors.append(t))
+        executor.run_all(
+            _tasks(tmp_path, 2), lambda t: None, on_error=lambda t, e: errors.append(t)
+        )
         assert len(errors) == 2
 
     def test_on_complete_not_called_for_failed_tasks(self, monkeypatch, tmp_path):
         def _mixed(bpmn_path, *a, **kw) -> None:
             if bpmn_path.name == "0.bpmn":
                 raise RuntimeError("simfail")
+
         monkeypatch.setattr(runner, "simulate", _mixed)
         completed: list = []
         executor.run_all(
@@ -101,14 +105,15 @@ class TestRunAllOnError:
         )
         assert result is True
 
-    def test_no_on_error_provided_failures_silently_skipped(self, monkeypatch, tmp_path):
+    def test_no_on_error_provided_failures_silently_skipped(
+        self, monkeypatch, tmp_path
+    ):
         monkeypatch.setattr(runner, "simulate", _always_fail)
         result = executor.run_all(_tasks(tmp_path, 2), lambda t: None)
         assert result is True
 
 
 class TestRunAllRetry:
-
     def test_transient_failure_recovered_via_retry(self, monkeypatch, tmp_path):
         """Task fails once then succeeds — on_complete called, on_error not called."""
         monkeypatch.setattr(runner, "simulate", _FailNTimes(1))

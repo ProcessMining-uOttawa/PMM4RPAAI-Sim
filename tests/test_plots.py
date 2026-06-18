@@ -1,4 +1,5 @@
 """Tests for ui/plots — factor_label_map and main_effects_chart."""
+
 from __future__ import annotations
 
 import pandas as pd
@@ -7,10 +8,18 @@ import plotly.graph_objects as go
 from core.parameters import Parameter
 from ui.plots import factor_label_map, main_effects_chart
 
+
 def _params() -> list[Parameter]:
     return [
-        Parameter(id="pct_auto", label="Automation rate (%)", levels=[25, 50, 75], kind="percentage"),
-        Parameter(id="num_bots", label="Bot pool size",        levels=[1, 2, 3],   kind="categorical"),
+        Parameter(
+            id="pct_auto",
+            label="Automation rate (%)",
+            levels=[25, 50, 75],
+            kind="percentage",
+        ),
+        Parameter(
+            id="num_bots", label="Bot pool size", levels=[1, 2, 3], kind="categorical"
+        ),
     ]
 
 
@@ -21,7 +30,9 @@ def _me(params: list[Parameter] | None = None) -> pd.DataFrame:
     rows = []
     for p in params:
         for level in p.levels:
-            rows.append({"factor": p.id, "level": level, "mean": float(level), "sn": -10.0})
+            rows.append(
+                {"factor": p.id, "level": level, "mean": float(level), "sn": -10.0}
+            )
     return pd.DataFrame(rows)
 
 
@@ -30,7 +41,6 @@ def _fig() -> go.Figure:
 
 
 class TestFactorLabelMap:
-
     def test_maps_param_ids_to_labels(self):
         m = factor_label_map(_params())
         assert m == {
@@ -43,7 +53,6 @@ class TestFactorLabelMap:
 
 
 class TestMainEffectsChart:
-
     def test_returns_figure(self):
         assert isinstance(_fig(), go.Figure)
 
@@ -63,16 +72,21 @@ class TestMainEffectsChart:
                 assert not x.endswith(".0"), f"level {x!r} has spurious .0 suffix"
 
     def test_integer_levels_strip_decimal(self):
-        me = pd.DataFrame([
-            {"factor": "pct_auto", "level": 25.0, "mean": 10.0, "sn": -5.0},
-            {"factor": "pct_auto", "level": 50.0, "mean": 12.0, "sn": -5.0},
-            {"factor": "pct_auto", "level": 75.0, "mean": 14.0, "sn": -5.0},
-        ])
+        me = pd.DataFrame(
+            [
+                {"factor": "pct_auto", "level": 25.0, "mean": 10.0, "sn": -5.0},
+                {"factor": "pct_auto", "level": 50.0, "mean": 12.0, "sn": -5.0},
+                {"factor": "pct_auto", "level": 75.0, "mean": 14.0, "sn": -5.0},
+            ]
+        )
         fig = main_effects_chart(me, factor_label_map(_params()), "Cycle time (h)")
         assert list(fig.data[0].x) == ["25", "50", "75"]
 
     def test_unknown_factor_kept_as_raw_id(self):
-        annotation_texts = {a.text for a in main_effects_chart(_me(), {}, "Cycle time (h)").layout.annotations}
+        annotation_texts = {
+            a.text
+            for a in main_effects_chart(_me(), {}, "Cycle time (h)").layout.annotations
+        }
         assert any("pct_auto" in t for t in annotation_texts)
 
     def test_yaxes_independent(self):
@@ -84,9 +98,20 @@ class TestMainEffectsChart:
     def test_height_scales_with_factor_count(self):
         # 2 factors → 1 row; 5 factors → 2 rows (facet_col_wrap=4)
         extra_params = _params() + [
-            Parameter(id="t_auto",    label="Auto time",   levels=[60, 120, 180], kind="duration_s"),
-            Parameter(id="t_manual",  label="Manual time", levels=[60, 120, 180], kind="duration_s"),
-            Parameter(id="num_bots2", label="Extra bots",  levels=[1, 2, 3],      kind="categorical"),
+            Parameter(
+                id="t_auto", label="Auto time", levels=[60, 120, 180], kind="duration_s"
+            ),
+            Parameter(
+                id="t_manual",
+                label="Manual time",
+                levels=[60, 120, 180],
+                kind="duration_s",
+            ),
+            Parameter(
+                id="num_bots2", label="Extra bots", levels=[1, 2, 3], kind="categorical"
+            ),
         ]
-        fig_5 = main_effects_chart(_me(extra_params), factor_label_map(extra_params), "Cycle time (h)")
+        fig_5 = main_effects_chart(
+            _me(extra_params), factor_label_map(extra_params), "Cycle time (h)"
+        )
         assert fig_5.layout.height > _fig().layout.height

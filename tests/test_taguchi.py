@@ -1,4 +1,5 @@
 """Tests for core/taguchi.py, AutomationParams.from_taguchi_values, and demo monotonicity."""
+
 from __future__ import annotations
 import pytest
 
@@ -9,8 +10,8 @@ from core.transformations import AutomationParams
 
 # ── pick_array ────────────────────────────────────────────────────────────────
 
-class TestPickArray:
 
+class TestPickArray:
     def test_one_factor_gives_l9(self):
         assert pick_array(1)[0] == "L9"
 
@@ -36,8 +37,8 @@ class TestPickArray:
 
 # ── build_scenarios ───────────────────────────────────────────────────────────
 
-class TestBuildScenarios:
 
+class TestBuildScenarios:
     def _params(self, n: int) -> list[Parameter]:
         return [Parameter(f"p{i}", f"P{i}", [10, 20, 30]) for i in range(n)]
 
@@ -82,35 +83,35 @@ class TestBuildScenarios:
 
 # ── AutomationParams.from_taguchi_values ────────────────────────────────────
 
-class TestFromTaguchiValues:
 
+class TestFromTaguchiValues:
     _FULL = {
-        "pct_auto":            75.0,
-        "pct_ok":              90.0,
-        "t_auto":              60.0,
-        "t_manual":          1800.0,
-        "num_bots":               2,
-        "num_manual_resources":   3,
-        "num_cases":            500,
+        "pct_auto": 75.0,
+        "pct_ok": 90.0,
+        "t_auto": 60.0,
+        "t_manual": 1800.0,
+        "num_bots": 2,
+        "num_manual_resources": 3,
+        "num_cases": 500,
     }
 
     def test_full_values_mapped_correctly(self):
         s = AutomationParams.from_taguchi_values(self._FULL)
-        assert s.automation_rate       == pytest.approx(0.75)
-        assert s.bot_failure_rate      == pytest.approx(0.10)  # 1 - 90/100
-        assert s.bot_execution_time    == pytest.approx(60.0)
+        assert s.automation_rate == pytest.approx(0.75)
+        assert s.bot_failure_rate == pytest.approx(0.10)  # 1 - 90/100
+        assert s.bot_execution_time == pytest.approx(60.0)
         assert s.manual_execution_time == pytest.approx(1800.0)
-        assert s.num_bots              == 2
-        assert s.num_manual_resources  == 3
-        assert s.num_cases             == 500
+        assert s.num_bots == 2
+        assert s.num_manual_resources == 3
+        assert s.num_cases == 500
 
     def test_empty_dict_uses_defaults(self):
         s = AutomationParams.from_taguchi_values({})
-        assert s.automation_rate      == pytest.approx(0.50)
-        assert s.bot_failure_rate     == pytest.approx(0.10)
-        assert s.num_bots             == 1
+        assert s.automation_rate == pytest.approx(0.50)
+        assert s.bot_failure_rate == pytest.approx(0.10)
+        assert s.num_bots == 1
         assert s.num_manual_resources == 1
-        assert s.num_cases            == 100
+        assert s.num_cases == 100
 
     def test_num_bots_and_num_manual_keys_used(self):
         s = AutomationParams.from_taguchi_values(
@@ -126,8 +127,8 @@ class TestFromTaguchiValues:
 
 # ── Demo monotonicity ─────────────────────────────────────────────────────────
 
-class TestDemoMonotonicity:
 
+class TestDemoMonotonicity:
     def test_larger_resource_pool_reduces_cycle_time(self):
         from core.demo import _fake_simulate as fake_simulate
         from core.parameters import Scenario
@@ -136,12 +137,16 @@ class TestDemoMonotonicity:
             s = Scenario(
                 "S01",
                 {
-                    "pct_auto": 50, "pct_ok": 90,
-                    "t_auto": 30, "t_manual": 300,
-                    "num_bots": num_bots, "num_manual_resources": num_man,
+                    "pct_auto": 50,
+                    "pct_ok": 90,
+                    "t_auto": 30,
+                    "t_manual": 300,
+                    "num_bots": num_bots,
+                    "num_manual_resources": num_man,
                     "num_cases": 500,
                 },
-                "t_id", "Act",
+                "t_id",
+                "Act",
             )
             return sum(fake_simulate(s, r).mean_cycle_h for r in range(n_reps)) / n_reps
 
