@@ -6,7 +6,7 @@ from core.constants import (
     COL_MEAN_CYCLE_H, COL_MEAN_COST, COL_TOTAL_CYCLE_S, COL_TOTAL_COST,
     COL_TOTAL_REWORK_COUNT, COL_REWORK_RATE,
 )
-from core.experiment import build_scenarios
+from core.taguchi import build_scenarios
 from core.orchestrator import ExperimentResult
 from core.transformations import XORSplitAutomation
 

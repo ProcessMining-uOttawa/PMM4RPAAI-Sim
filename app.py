@@ -10,14 +10,14 @@ import streamlit as st
 from pathlib import Path
 
 from core import analysis, demo, orchestrator
-from core.bpmn.utils import (
+from core.bpmn.query import (
     find_task_by_name,
     list_activities,
     task_mean_duration_s,
     resource_selector_config,
 )
 from core.constants import COL_MEAN_COST
-from core.experiment import build_scenarios
+from core.taguchi import build_scenarios
 from core.goals import Goal, baseline_per_case
 from core.metrics import MetricRegistry
 from core.simulation import runner, store
@@ -26,7 +26,7 @@ from core.transformations import REGISTRY
 from ui import preflight
 from ui.goals import GOAL_OPTIONS
 from ui.plots import factor_label_map, main_effects_chart
-from ui.runner import start_experiment, cancel_experiment, clear_run, current_run, commit_result
+from ui.run_manager import start_experiment, cancel_experiment, clear_run, current_run, commit_result
 from ui.table import prepare_ranked_display
 from ui.widgets import level_input_kwargs
 
