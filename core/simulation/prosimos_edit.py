@@ -1,17 +1,18 @@
 """Prosimos input-JSON mutation helpers — all schema knowledge lives here."""
+
 from __future__ import annotations
 
 from ..constants import KEY_RESOURCE_PROFILES, KEY_TASK_RESOURCE_DISTRIBUTION
 
 # ── Prosimos input JSON: schema key names (only consumed within this module and
 #    transformations.py — too coupled to put in constants.py) ─────────────────
-KEY_RESOURCE_CALENDARS      = "resource_calendars"
+KEY_RESOURCE_CALENDARS = "resource_calendars"
 KEY_GATEWAY_BRANCHING_PROBS = "gateway_branching_probabilities"
 
 
 def _write_distribution(entry: dict, name: str, params: list) -> None:
     for r in entry["resources"]:
-        r["distribution_name"]   = name
+        r["distribution_name"] = name
         r["distribution_params"] = params
 
 
@@ -40,8 +41,9 @@ def ensure_calendar(data: dict, entry: dict) -> None:
         calendars.append(entry)
 
 
-def upsert_resource_in_profile(data: dict, profile_id: str, profile_name: str,
-                                resource_entry: dict) -> None:
+def upsert_resource_in_profile(
+    data: dict, profile_id: str, profile_name: str, resource_entry: dict
+) -> None:
     """Ensure a resource profile exists and append resource_entry to its resource_list."""
     profiles = data.setdefault(KEY_RESOURCE_PROFILES, [])
     profile = next((p for p in profiles if p.get("id") == profile_id), None)
@@ -56,14 +58,17 @@ def append_task_distribution(data: dict, entry: dict) -> None:
     data[KEY_TASK_RESOURCE_DISTRIBUTION].append(entry)
 
 
-def add_gateway_probs(data: dict, gateway_id: str,
-                      path_probs: dict[str, float]) -> None:
+def add_gateway_probs(
+    data: dict, gateway_id: str, path_probs: dict[str, float]
+) -> None:
     """Append one gateway branching-probability entry to data[KEY_GATEWAY_BRANCHING_PROBS]."""
     gbp = data.setdefault(KEY_GATEWAY_BRANCHING_PROBS, [])
-    gbp.append({
-        "gateway_id": gateway_id,
-        "probabilities": [
-            {"path_id": path_id, "value": value}
-            for path_id, value in path_probs.items()
-        ],
-    })
+    gbp.append(
+        {
+            "gateway_id": gateway_id,
+            "probabilities": [
+                {"path_id": path_id, "value": value}
+                for path_id, value in path_probs.items()
+            ],
+        }
+    )

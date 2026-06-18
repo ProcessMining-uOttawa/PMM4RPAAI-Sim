@@ -1,4 +1,5 @@
 """Parallel simulation executor."""
+
 from __future__ import annotations
 import dataclasses
 import os
@@ -38,11 +39,16 @@ def run_all(
     workers = max_workers if max_workers is not None else os.cpu_count()
 
     with ThreadPoolExecutor(max_workers=workers) as pool:
+
         def _submit(task: SimulationTask):
             return pool.submit(
                 runner.simulate,
-                task.bpmn_path, task.json_path, task.n_cases, task.out_log,
-                stat_out=task.out_stat, proc_log=task.proc_log,
+                task.bpmn_path,
+                task.json_path,
+                task.n_cases,
+                task.out_log,
+                stat_out=task.out_stat,
+                proc_log=task.proc_log,
             )
 
         pending: dict = {_submit(task): task for task in tasks}
@@ -58,7 +64,9 @@ def run_all(
                     exc = f.exception()
                     if exc is not None:
                         if task.max_retries > 0:
-                            retried = dataclasses.replace(task, max_retries=task.max_retries - 1, proc_log=None)
+                            retried = dataclasses.replace(
+                                task, max_retries=task.max_retries - 1, proc_log=None
+                            )
                             pending[_submit(retried)] = retried
                         elif on_error is not None:
                             on_error(task, exc)

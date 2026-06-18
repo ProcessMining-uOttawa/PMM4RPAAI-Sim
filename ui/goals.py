@@ -1,4 +1,5 @@
 """Goal metric options for the sidebar goal selector."""
+
 from __future__ import annotations
 from typing import NamedTuple
 
@@ -13,7 +14,9 @@ class GoalOption(NamedTuple):
 
 
 GOAL_OPTIONS: dict[Metric, GoalOption] = {
-    MetricRegistry.CYCLE_TIME:  GoalOption(default_pct=20.0, default_weight=0.33),
-    MetricRegistry.COST:        GoalOption(default_pct=20.0, default_weight=0.33),
-    MetricRegistry.REWORK_RATE: GoalOption(default_pct=20.0, default_weight=0.33, step=0.1, allow_zero=True),
+    MetricRegistry.CYCLE_TIME: GoalOption(default_pct=20.0, default_weight=0.33),
+    MetricRegistry.COST: GoalOption(default_pct=20.0, default_weight=0.33),
+    MetricRegistry.REWORK_RATE: GoalOption(
+        default_pct=20.0, default_weight=0.33, step=0.1, allow_zero=True
+    ),
 }

@@ -1,23 +1,41 @@
 """Simulation result analysis: aggregation, Taguchi S/N, ranking, and baseline comparison."""
+
 from __future__ import annotations
 import math
 
 import pandas as pd
 
 from .constants import (
-    COL_MEAN_CYCLE_H, COL_MEAN_COST, COL_MEAN_CYCLE_H_MEAN, COL_MEAN_COST_MEAN,
-    COL_TOTAL_CYCLE_S, COL_TOTAL_COST, COL_TOTAL_CYCLE_S_MEAN, COL_TOTAL_COST_MEAN,
-    COL_TOTAL_REWORK_COUNT, COL_REWORK_RATE, COL_TOTAL_REWORK_COUNT_MEAN, COL_REWORK_RATE_MEAN,
+    COL_MEAN_CYCLE_H,
+    COL_MEAN_COST,
+    COL_MEAN_CYCLE_H_MEAN,
+    COL_MEAN_COST_MEAN,
+    COL_TOTAL_CYCLE_S,
+    COL_TOTAL_COST,
+    COL_TOTAL_CYCLE_S_MEAN,
+    COL_TOTAL_COST_MEAN,
+    COL_TOTAL_REWORK_COUNT,
+    COL_REWORK_RATE,
+    COL_TOTAL_REWORK_COUNT_MEAN,
+    COL_REWORK_RATE_MEAN,
 )
 from .goals import Goal
 from .metrics import Metric, MetricDirection, MetricRegistry
 from .constants import F_NUM_CASES
 
 
-_NON_FACTOR_COLS = frozenset({
-    "scenario_id", "replication", COL_MEAN_CYCLE_H, COL_MEAN_COST,
-    COL_TOTAL_CYCLE_S, COL_TOTAL_COST, COL_TOTAL_REWORK_COUNT, COL_REWORK_RATE,
-})
+_NON_FACTOR_COLS = frozenset(
+    {
+        "scenario_id",
+        "replication",
+        COL_MEAN_CYCLE_H,
+        COL_MEAN_COST,
+        COL_TOTAL_CYCLE_S,
+        COL_TOTAL_COST,
+        COL_TOTAL_REWORK_COUNT,
+        COL_REWORK_RATE,
+    }
+)
 
 
 def _factor_cols(df: pd.DataFrame) -> list[str]:
@@ -28,23 +46,27 @@ def aggregate(results: pd.DataFrame) -> pd.DataFrame:
     """results: scenario_id, replication, + all six metric cols (+ factor cols)."""
     factor_cols = _factor_cols(results)
     agg_spec: dict = {
-        COL_MEAN_CYCLE_H_MEAN:       (COL_MEAN_CYCLE_H,       "mean"),
-        "mean_cycle_h_std":          (COL_MEAN_CYCLE_H,       "std"),
-        COL_MEAN_COST_MEAN:          (COL_MEAN_COST,          "mean"),
-        "mean_cost_std":             (COL_MEAN_COST,          "std"),
-        COL_TOTAL_CYCLE_S_MEAN:      (COL_TOTAL_CYCLE_S,      "mean"),
-        COL_TOTAL_COST_MEAN:         (COL_TOTAL_COST,         "mean"),
+        COL_MEAN_CYCLE_H_MEAN: (COL_MEAN_CYCLE_H, "mean"),
+        "mean_cycle_h_std": (COL_MEAN_CYCLE_H, "std"),
+        COL_MEAN_COST_MEAN: (COL_MEAN_COST, "mean"),
+        "mean_cost_std": (COL_MEAN_COST, "std"),
+        COL_TOTAL_CYCLE_S_MEAN: (COL_TOTAL_CYCLE_S, "mean"),
+        COL_TOTAL_COST_MEAN: (COL_TOTAL_COST, "mean"),
         COL_TOTAL_REWORK_COUNT_MEAN: (COL_TOTAL_REWORK_COUNT, "mean"),
-        COL_REWORK_RATE_MEAN:        (COL_REWORK_RATE,        "mean"),
+        COL_REWORK_RATE_MEAN: (COL_REWORK_RATE, "mean"),
     }
-    return results.groupby(["scenario_id", *factor_cols], as_index=False).agg(**agg_spec)  # type: ignore[call-overload]
+    return results.groupby(["scenario_id", *factor_cols], as_index=False).agg(
+        **agg_spec
+    )  # type: ignore[call-overload]
 
 
 def _pct_delta(delta: float, baseline: float) -> float:
     return round(delta / baseline * 100, 1) if baseline != 0 else float("nan")
 
 
-def compare_to_baseline(agg: pd.DataFrame, baseline_agg: dict[int, dict]) -> pd.DataFrame:
+def compare_to_baseline(
+    agg: pd.DataFrame, baseline_agg: dict[int, dict]
+) -> pd.DataFrame:
     """Build a display DataFrame comparing each scenario's totals to its matching baseline.
 
     baseline_agg maps {n_cases: {col: value}} for each aggregate MetricSpec column.
@@ -56,7 +78,10 @@ def compare_to_baseline(agg: pd.DataFrame, baseline_agg: dict[int, dict]) -> pd.
     for n_cases in sorted(baseline_agg):
         b = baseline_agg[n_cases]
         b_vals = {s.column: s.display_fn(b[s.column]) for s in specs}
-        baseline_row: dict = {"Scenario": f"Baseline ({n_cases} cases)", "Cases": n_cases}
+        baseline_row: dict = {
+            "Scenario": f"Baseline ({n_cases} cases)",
+            "Cases": n_cases,
+        }
         for s in specs:
             baseline_row[s.display_name] = round(b_vals[s.column], s.decimal_places)
             if s.delta_name is not None:
@@ -74,7 +99,9 @@ def compare_to_baseline(agg: pd.DataFrame, baseline_agg: dict[int, dict]) -> pd.
                 if s.delta_name is not None:
                     scenario_row[s.delta_name] = round(delta, s.decimal_places)
                 if s.pct_change_name is not None:
-                    scenario_row[s.pct_change_name] = _pct_delta(delta, b_vals[s.column])
+                    scenario_row[s.pct_change_name] = _pct_delta(
+                        delta, b_vals[s.column]
+                    )
             rows.append(scenario_row)
     return pd.DataFrame(rows)
 
@@ -88,9 +115,9 @@ def signal_to_noise(
     if not vals:
         return float("nan")
     if direction == MetricDirection.SMALLER_IS_BETTER:
-        return -10 * math.log10(sum(v*v for v in vals) / len(vals))
+        return -10 * math.log10(sum(v * v for v in vals) / len(vals))
     if direction == MetricDirection.LARGER_IS_BETTER:
-        return -10 * math.log10(sum(1/(v*v) for v in vals) / len(vals))
+        return -10 * math.log10(sum(1 / (v * v) for v in vals) / len(vals))
     raise ValueError(direction)
 
 
@@ -102,11 +129,14 @@ def main_effects(results: pd.DataFrame, metric: Metric) -> pd.DataFrame:
     rows = []
     for f in _factor_cols(results):
         for level, sub in results.groupby(f):
-            rows.append({
-                "factor": f, "level": level,
-                "mean": sub[col].mean(),
-                "sn": signal_to_noise(sub[col].tolist(), direction, floor),
-            })
+            rows.append(
+                {
+                    "factor": f,
+                    "level": level,
+                    "mean": sub[col].mean(),
+                    "sn": signal_to_noise(sub[col].tolist(), direction, floor),
+                }
+            )
     return pd.DataFrame(rows)
 
 

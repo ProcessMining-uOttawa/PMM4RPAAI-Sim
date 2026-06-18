@@ -1,4 +1,5 @@
 """Streamlit widget helpers for the factor-levels panel."""
+
 from __future__ import annotations
 
 

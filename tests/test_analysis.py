@@ -1,4 +1,5 @@
 """Tests for core/analysis.py — no external tools required."""
+
 from __future__ import annotations
 import math
 
@@ -15,27 +16,79 @@ from core.analysis import (
 from core.goals import Goal
 from core.metrics import MetricDirection, MetricRegistry
 from core.constants import (
-    COL_MEAN_CYCLE_H, COL_MEAN_COST, COL_MEAN_CYCLE_H_MEAN, COL_MEAN_COST_MEAN,
-    COL_TOTAL_CYCLE_S, COL_TOTAL_COST, COL_TOTAL_CYCLE_S_MEAN, COL_TOTAL_COST_MEAN,
-    COL_TOTAL_REWORK_COUNT, COL_REWORK_RATE, COL_TOTAL_REWORK_COUNT_MEAN, COL_REWORK_RATE_MEAN,
+    COL_MEAN_CYCLE_H,
+    COL_MEAN_COST,
+    COL_MEAN_CYCLE_H_MEAN,
+    COL_MEAN_COST_MEAN,
+    COL_TOTAL_CYCLE_S,
+    COL_TOTAL_COST,
+    COL_TOTAL_CYCLE_S_MEAN,
+    COL_TOTAL_COST_MEAN,
+    COL_TOTAL_REWORK_COUNT,
+    COL_REWORK_RATE,
+    COL_TOTAL_REWORK_COUNT_MEAN,
+    COL_REWORK_RATE_MEAN,
 )
 
 
 # ── Helpers ───────────────────────────────────────────────────────────────────
 
+
 def _results_df() -> pd.DataFrame:
-    return pd.DataFrame([
-        {"scenario_id": "S01", "replication": 0, COL_MEAN_CYCLE_H: 10.0, COL_MEAN_COST:  5.0, "f_a": "low",  COL_TOTAL_CYCLE_S: 36000.0, COL_TOTAL_COST:  500.0, COL_TOTAL_REWORK_COUNT: 2.0, COL_REWORK_RATE: 10.0},
-        {"scenario_id": "S01", "replication": 1, COL_MEAN_CYCLE_H: 12.0, COL_MEAN_COST:  7.0, "f_a": "low",  COL_TOTAL_CYCLE_S: 43200.0, COL_TOTAL_COST:  700.0, COL_TOTAL_REWORK_COUNT: 4.0, COL_REWORK_RATE: 20.0},
-        {"scenario_id": "S02", "replication": 0, COL_MEAN_CYCLE_H: 20.0, COL_MEAN_COST: 10.0, "f_a": "high", COL_TOTAL_CYCLE_S: 72000.0, COL_TOTAL_COST: 1000.0, COL_TOTAL_REWORK_COUNT: 0.0, COL_REWORK_RATE:  0.0},
-        {"scenario_id": "S02", "replication": 1, COL_MEAN_CYCLE_H: 22.0, COL_MEAN_COST: 12.0, "f_a": "high", COL_TOTAL_CYCLE_S: 79200.0, COL_TOTAL_COST: 1200.0, COL_TOTAL_REWORK_COUNT: 2.0, COL_REWORK_RATE: 10.0},
-    ])
+    return pd.DataFrame(
+        [
+            {
+                "scenario_id": "S01",
+                "replication": 0,
+                COL_MEAN_CYCLE_H: 10.0,
+                COL_MEAN_COST: 5.0,
+                "f_a": "low",
+                COL_TOTAL_CYCLE_S: 36000.0,
+                COL_TOTAL_COST: 500.0,
+                COL_TOTAL_REWORK_COUNT: 2.0,
+                COL_REWORK_RATE: 10.0,
+            },
+            {
+                "scenario_id": "S01",
+                "replication": 1,
+                COL_MEAN_CYCLE_H: 12.0,
+                COL_MEAN_COST: 7.0,
+                "f_a": "low",
+                COL_TOTAL_CYCLE_S: 43200.0,
+                COL_TOTAL_COST: 700.0,
+                COL_TOTAL_REWORK_COUNT: 4.0,
+                COL_REWORK_RATE: 20.0,
+            },
+            {
+                "scenario_id": "S02",
+                "replication": 0,
+                COL_MEAN_CYCLE_H: 20.0,
+                COL_MEAN_COST: 10.0,
+                "f_a": "high",
+                COL_TOTAL_CYCLE_S: 72000.0,
+                COL_TOTAL_COST: 1000.0,
+                COL_TOTAL_REWORK_COUNT: 0.0,
+                COL_REWORK_RATE: 0.0,
+            },
+            {
+                "scenario_id": "S02",
+                "replication": 1,
+                COL_MEAN_CYCLE_H: 22.0,
+                COL_MEAN_COST: 12.0,
+                "f_a": "high",
+                COL_TOTAL_CYCLE_S: 79200.0,
+                COL_TOTAL_COST: 1200.0,
+                COL_TOTAL_REWORK_COUNT: 2.0,
+                COL_REWORK_RATE: 10.0,
+            },
+        ]
+    )
 
 
 # ── signal_to_noise ───────────────────────────────────────────────────────────
 
-class TestSignalToNoise:
 
+class TestSignalToNoise:
     def test_smaller_is_better(self):
         vals = [2.0, 4.0, 4.0]
         expected = -10 * math.log10(sum(v * v for v in vals) / len(vals))
@@ -44,7 +97,9 @@ class TestSignalToNoise:
     def test_larger_is_better(self):
         vals = [2.0, 4.0]
         expected = -10 * math.log10(sum(1 / (v * v) for v in vals) / len(vals))
-        assert signal_to_noise(vals, direction=MetricDirection.LARGER_IS_BETTER) == pytest.approx(expected)
+        assert signal_to_noise(
+            vals, direction=MetricDirection.LARGER_IS_BETTER
+        ) == pytest.approx(expected)
 
     def test_empty_returns_nan(self):
         assert math.isnan(signal_to_noise([]))
@@ -78,8 +133,8 @@ class TestSignalToNoise:
 
 # ── aggregate ─────────────────────────────────────────────────────────────────
 
-class TestAggregate:
 
+class TestAggregate:
     def test_one_row_per_scenario(self):
         assert len(aggregate(_results_df())) == 2
 
@@ -87,42 +142,69 @@ class TestAggregate:
         agg = aggregate(_results_df())
         row = agg[agg["scenario_id"] == "S01"].iloc[0]
         assert row[COL_MEAN_CYCLE_H_MEAN] == pytest.approx(11.0)
-        assert row[COL_MEAN_COST_MEAN]    == pytest.approx(6.0)
+        assert row[COL_MEAN_COST_MEAN] == pytest.approx(6.0)
 
     def test_rework_means_correct(self):
         agg = aggregate(_results_df())
         row = agg[agg["scenario_id"] == "S01"].iloc[0]
-        assert row[COL_TOTAL_REWORK_COUNT_MEAN] == pytest.approx(3.0)   # (2 + 4) / 2
-        assert row[COL_REWORK_RATE_MEAN]        == pytest.approx(15.0)  # (10.0 + 20.0) / 2
+        assert row[COL_TOTAL_REWORK_COUNT_MEAN] == pytest.approx(3.0)  # (2 + 4) / 2
+        assert row[COL_REWORK_RATE_MEAN] == pytest.approx(15.0)  # (10.0 + 20.0) / 2
 
     def test_nan_cost_propagates(self):
-        df = pd.DataFrame([{
-            "scenario_id": "S01", "replication": 0, "f_a": "low",
-            COL_MEAN_CYCLE_H: 10.0, COL_MEAN_COST: float("nan"),
-            COL_TOTAL_CYCLE_S: 36000.0, COL_TOTAL_COST: 500.0,
-            COL_TOTAL_REWORK_COUNT: 2.0, COL_REWORK_RATE: 5.0,
-        }])
+        df = pd.DataFrame(
+            [
+                {
+                    "scenario_id": "S01",
+                    "replication": 0,
+                    "f_a": "low",
+                    COL_MEAN_CYCLE_H: 10.0,
+                    COL_MEAN_COST: float("nan"),
+                    COL_TOTAL_CYCLE_S: 36000.0,
+                    COL_TOTAL_COST: 500.0,
+                    COL_TOTAL_REWORK_COUNT: 2.0,
+                    COL_REWORK_RATE: 5.0,
+                }
+            ]
+        )
         agg = aggregate(df)
         assert math.isnan(agg[COL_MEAN_COST_MEAN].iloc[0])
 
 
 # ── compare_to_baseline ───────────────────────────────────────────────────────
 
-class TestCompareToBaseline:
 
+class TestCompareToBaseline:
     def _agg(self):
-        return pd.DataFrame([
-            {"scenario_id": "S01", "num_cases": 100,
-             COL_TOTAL_CYCLE_S_MEAN: 7200.0, COL_TOTAL_COST_MEAN: 200.0,
-             COL_TOTAL_REWORK_COUNT_MEAN: 5.0, COL_REWORK_RATE_MEAN: 10.0},
-            {"scenario_id": "S02", "num_cases": 100,
-             COL_TOTAL_CYCLE_S_MEAN: 3600.0, COL_TOTAL_COST_MEAN: 80.0,
-             COL_TOTAL_REWORK_COUNT_MEAN: 2.0, COL_REWORK_RATE_MEAN: 4.0},
-        ])
+        return pd.DataFrame(
+            [
+                {
+                    "scenario_id": "S01",
+                    "num_cases": 100,
+                    COL_TOTAL_CYCLE_S_MEAN: 7200.0,
+                    COL_TOTAL_COST_MEAN: 200.0,
+                    COL_TOTAL_REWORK_COUNT_MEAN: 5.0,
+                    COL_REWORK_RATE_MEAN: 10.0,
+                },
+                {
+                    "scenario_id": "S02",
+                    "num_cases": 100,
+                    COL_TOTAL_CYCLE_S_MEAN: 3600.0,
+                    COL_TOTAL_COST_MEAN: 80.0,
+                    COL_TOTAL_REWORK_COUNT_MEAN: 2.0,
+                    COL_REWORK_RATE_MEAN: 4.0,
+                },
+            ]
+        )
 
     def _baseline(self):
-        return {100: {COL_TOTAL_CYCLE_S_MEAN: 3600.0, COL_TOTAL_COST_MEAN: 100.0,
-                      COL_TOTAL_REWORK_COUNT_MEAN: 4.0, COL_REWORK_RATE_MEAN: 8.0}}
+        return {
+            100: {
+                COL_TOTAL_CYCLE_S_MEAN: 3600.0,
+                COL_TOTAL_COST_MEAN: 100.0,
+                COL_TOTAL_REWORK_COUNT_MEAN: 4.0,
+                COL_REWORK_RATE_MEAN: 8.0,
+            }
+        }
 
     def test_baseline_row_is_first(self):
         df = compare_to_baseline(self._agg(), self._baseline())
@@ -154,26 +236,46 @@ class TestCompareToBaseline:
     def test_rework_delta_values(self):
         df = compare_to_baseline(self._agg(), self._baseline())
         s02 = df[df["Scenario"] == "S02"].iloc[0]
-        assert s02["Rework Count"]    == pytest.approx(2.0)
-        assert s02["Δ Rework Count"]  == pytest.approx(-2.0)
-        assert s02["Δ Rework (%)"]    == pytest.approx(-50.0)
+        assert s02["Rework Count"] == pytest.approx(2.0)
+        assert s02["Δ Rework Count"] == pytest.approx(-2.0)
+        assert s02["Δ Rework (%)"] == pytest.approx(-50.0)
         assert s02["Rework Rate (%)"] == pytest.approx(4.0)
-        assert s02["Δ Rate (pp)"]     == pytest.approx(-4.0)
+        assert s02["Δ Rate (pp)"] == pytest.approx(-4.0)
 
     def test_multiple_levels_produce_multiple_baseline_rows(self):
-        agg = pd.DataFrame([
-            {"scenario_id": "S01", "num_cases": 100,
-             COL_TOTAL_CYCLE_S_MEAN: 3600.0, COL_TOTAL_COST_MEAN: 100.0,
-             COL_TOTAL_REWORK_COUNT_MEAN: 4.0, COL_REWORK_RATE_MEAN: 8.0},
-            {"scenario_id": "S02", "num_cases": 1000,
-             COL_TOTAL_CYCLE_S_MEAN: 3600.0, COL_TOTAL_COST_MEAN: 100.0,
-             COL_TOTAL_REWORK_COUNT_MEAN: 4.0, COL_REWORK_RATE_MEAN: 8.0},
-        ])
+        agg = pd.DataFrame(
+            [
+                {
+                    "scenario_id": "S01",
+                    "num_cases": 100,
+                    COL_TOTAL_CYCLE_S_MEAN: 3600.0,
+                    COL_TOTAL_COST_MEAN: 100.0,
+                    COL_TOTAL_REWORK_COUNT_MEAN: 4.0,
+                    COL_REWORK_RATE_MEAN: 8.0,
+                },
+                {
+                    "scenario_id": "S02",
+                    "num_cases": 1000,
+                    COL_TOTAL_CYCLE_S_MEAN: 3600.0,
+                    COL_TOTAL_COST_MEAN: 100.0,
+                    COL_TOTAL_REWORK_COUNT_MEAN: 4.0,
+                    COL_REWORK_RATE_MEAN: 8.0,
+                },
+            ]
+        )
         baseline = {
-            100:  {COL_TOTAL_CYCLE_S_MEAN: 3600.0,  COL_TOTAL_COST_MEAN: 100.0,
-                   COL_TOTAL_REWORK_COUNT_MEAN: 4.0, COL_REWORK_RATE_MEAN: 8.0},
-            1000: {COL_TOTAL_CYCLE_S_MEAN: 36000.0, COL_TOTAL_COST_MEAN: 1000.0,
-                   COL_TOTAL_REWORK_COUNT_MEAN: 40.0, COL_REWORK_RATE_MEAN: 8.0},
+            100: {
+                COL_TOTAL_CYCLE_S_MEAN: 3600.0,
+                COL_TOTAL_COST_MEAN: 100.0,
+                COL_TOTAL_REWORK_COUNT_MEAN: 4.0,
+                COL_REWORK_RATE_MEAN: 8.0,
+            },
+            1000: {
+                COL_TOTAL_CYCLE_S_MEAN: 36000.0,
+                COL_TOTAL_COST_MEAN: 1000.0,
+                COL_TOTAL_REWORK_COUNT_MEAN: 40.0,
+                COL_REWORK_RATE_MEAN: 8.0,
+            },
         }
         df = compare_to_baseline(agg, baseline)
         baseline_rows = df[df["Scenario"].str.startswith("Baseline")]
@@ -183,8 +285,8 @@ class TestCompareToBaseline:
 
 # ── main_effects ──────────────────────────────────────────────────────────────
 
-class TestMainEffects:
 
+class TestMainEffects:
     def test_has_required_columns(self):
         me = main_effects(_results_df(), MetricRegistry.CYCLE_TIME)
         assert {"factor", "level", "mean", "sn"} <= set(me.columns)
@@ -207,36 +309,44 @@ class TestMainEffects:
 
 # ── rank ──────────────────────────────────────────────────────────────────────
 
-class TestRank:
 
+class TestRank:
     def test_goals_met_flag(self):
-        agg = pd.DataFrame([
-            {"scenario_id": "S01", COL_MEAN_CYCLE_H_MEAN: 20.0},
-            {"scenario_id": "S02", COL_MEAN_CYCLE_H_MEAN: 30.0},
-        ])
+        agg = pd.DataFrame(
+            [
+                {"scenario_id": "S01", COL_MEAN_CYCLE_H_MEAN: 20.0},
+                {"scenario_id": "S02", COL_MEAN_CYCLE_H_MEAN: 30.0},
+            ]
+        )
         ranked = rank(agg, [Goal(COL_MEAN_CYCLE_H_MEAN, weight=1.0, target=24.0)])
         by_sid = ranked.set_index("scenario_id")
         assert by_sid.loc["S01", "goal_met"]
         assert not by_sid.loc["S02", "goal_met"]
 
     def test_goals_met_sorted_first(self):
-        agg = pd.DataFrame([
-            {"scenario_id": "S01", COL_MEAN_CYCLE_H_MEAN: 30.0},
-            {"scenario_id": "S02", COL_MEAN_CYCLE_H_MEAN: 10.0},
-        ])
+        agg = pd.DataFrame(
+            [
+                {"scenario_id": "S01", COL_MEAN_CYCLE_H_MEAN: 30.0},
+                {"scenario_id": "S02", COL_MEAN_CYCLE_H_MEAN: 10.0},
+            ]
+        )
         ranked = rank(agg, [Goal(COL_MEAN_CYCLE_H_MEAN, weight=1.0, target=24.0)])
         assert ranked.iloc[0]["scenario_id"] == "S02"
 
     def test_nan_treated_as_unmet(self):
-        agg = pd.DataFrame([{"scenario_id": "S01", COL_MEAN_CYCLE_H_MEAN: float("nan")}])
+        agg = pd.DataFrame(
+            [{"scenario_id": "S01", COL_MEAN_CYCLE_H_MEAN: float("nan")}]
+        )
         ranked = rank(agg, [Goal(COL_MEAN_CYCLE_H_MEAN, weight=1.0, target=24.0)])
         assert not ranked.iloc[0]["goal_met"]
 
     def test_cost_mean_metric(self):
-        agg = pd.DataFrame([
-            {"scenario_id": "S01", COL_MEAN_COST_MEAN: 10.0},
-            {"scenario_id": "S02", COL_MEAN_COST_MEAN: 30.0},
-        ])
+        agg = pd.DataFrame(
+            [
+                {"scenario_id": "S01", COL_MEAN_COST_MEAN: 10.0},
+                {"scenario_id": "S02", COL_MEAN_COST_MEAN: 30.0},
+            ]
+        )
         ranked = rank(agg, [Goal(COL_MEAN_COST_MEAN, weight=1.0, target=20.0)])
         by_sid = ranked.set_index("scenario_id")
         assert by_sid.loc["S01", "goal_met"]
@@ -248,42 +358,76 @@ class TestRank:
         assert ranked.iloc[0]["score"] == pytest.approx(0.5)
 
     def test_multiple_goals_all_met(self):
-        agg = pd.DataFrame([{"scenario_id": "S01", COL_MEAN_CYCLE_H_MEAN: 20.0, COL_MEAN_COST_MEAN: 10.0}])
+        agg = pd.DataFrame(
+            [
+                {
+                    "scenario_id": "S01",
+                    COL_MEAN_CYCLE_H_MEAN: 20.0,
+                    COL_MEAN_COST_MEAN: 10.0,
+                }
+            ]
+        )
         goals = [
             Goal(COL_MEAN_CYCLE_H_MEAN, weight=0.5, target=24.0),
-            Goal(COL_MEAN_COST_MEAN,    weight=0.5, target=12.0),
+            Goal(COL_MEAN_COST_MEAN, weight=0.5, target=12.0),
         ]
         assert rank(agg, goals).iloc[0]["goal_met"]
 
     def test_multiple_goals_partial_met(self):
-        agg = pd.DataFrame([{"scenario_id": "S01", COL_MEAN_CYCLE_H_MEAN: 20.0, COL_MEAN_COST_MEAN: 15.0}])
+        agg = pd.DataFrame(
+            [
+                {
+                    "scenario_id": "S01",
+                    COL_MEAN_CYCLE_H_MEAN: 20.0,
+                    COL_MEAN_COST_MEAN: 15.0,
+                }
+            ]
+        )
         goals = [
             Goal(COL_MEAN_CYCLE_H_MEAN, weight=0.5, target=24.0),
-            Goal(COL_MEAN_COST_MEAN,    weight=0.5, target=12.0),  # not met
+            Goal(COL_MEAN_COST_MEAN, weight=0.5, target=12.0),  # not met
         ]
         assert not rank(agg, goals).iloc[0]["goal_met"]
 
     def test_weighted_score(self):
-        agg = pd.DataFrame([{"scenario_id": "S01", COL_MEAN_CYCLE_H_MEAN: 20.0, COL_MEAN_COST_MEAN: 10.0}])
+        agg = pd.DataFrame(
+            [
+                {
+                    "scenario_id": "S01",
+                    COL_MEAN_CYCLE_H_MEAN: 20.0,
+                    COL_MEAN_COST_MEAN: 10.0,
+                }
+            ]
+        )
         goals = [
             Goal(COL_MEAN_CYCLE_H_MEAN, weight=0.6, target=40.0),  # 0.6 * 0.5 = 0.30
-            Goal(COL_MEAN_COST_MEAN,    weight=0.4, target=20.0),  # 0.4 * 0.5 = 0.20
+            Goal(COL_MEAN_COST_MEAN, weight=0.4, target=20.0),  # 0.4 * 0.5 = 0.20
         ]
         assert rank(agg, goals).iloc[0]["score"] == pytest.approx(0.5)
 
     def test_zero_weight_excluded_from_score_and_goal_met(self):
-        agg = pd.DataFrame([{"scenario_id": "S01", COL_MEAN_CYCLE_H_MEAN: 20.0, COL_MEAN_COST_MEAN: 100.0}])
+        agg = pd.DataFrame(
+            [
+                {
+                    "scenario_id": "S01",
+                    COL_MEAN_CYCLE_H_MEAN: 20.0,
+                    COL_MEAN_COST_MEAN: 100.0,
+                }
+            ]
+        )
         goals = [
             Goal(COL_MEAN_CYCLE_H_MEAN, weight=1.0, target=24.0),
-            Goal(COL_MEAN_COST_MEAN,    weight=0.0, target=12.0),  # excluded
+            Goal(COL_MEAN_COST_MEAN, weight=0.0, target=12.0),  # excluded
         ]
         assert rank(agg, goals).iloc[0]["goal_met"]
 
     def test_rework_rate_goal(self):
-        agg = pd.DataFrame([
-            {"scenario_id": "S01", COL_REWORK_RATE_MEAN: 4.0},
-            {"scenario_id": "S02", COL_REWORK_RATE_MEAN: 0.0},
-        ])
+        agg = pd.DataFrame(
+            [
+                {"scenario_id": "S01", COL_REWORK_RATE_MEAN: 4.0},
+                {"scenario_id": "S02", COL_REWORK_RATE_MEAN: 0.0},
+            ]
+        )
         ranked = rank(agg, [Goal(COL_REWORK_RATE_MEAN, weight=1.0, target=5.0)])
         by_sid = ranked.set_index("scenario_id")
         assert by_sid.loc["S01", "goal_met"]
@@ -296,20 +440,30 @@ class TestRank:
         assert f"{COL_MEAN_CYCLE_H_MEAN}_met" in ranked.columns
 
     def test_per_goal_met_values(self):
-        agg = pd.DataFrame([
-            {"scenario_id": "S01", COL_MEAN_CYCLE_H_MEAN: 20.0},
-            {"scenario_id": "S02", COL_MEAN_CYCLE_H_MEAN: 30.0},
-        ])
+        agg = pd.DataFrame(
+            [
+                {"scenario_id": "S01", COL_MEAN_CYCLE_H_MEAN: 20.0},
+                {"scenario_id": "S02", COL_MEAN_CYCLE_H_MEAN: 30.0},
+            ]
+        )
         ranked = rank(agg, [Goal(COL_MEAN_CYCLE_H_MEAN, weight=1.0, target=24.0)])
         by_sid = ranked.set_index("scenario_id")
         assert by_sid.loc["S01", f"{COL_MEAN_CYCLE_H_MEAN}_met"]
         assert not by_sid.loc["S02", f"{COL_MEAN_CYCLE_H_MEAN}_met"]
 
     def test_per_goal_met_independent_of_aggregate(self):
-        agg = pd.DataFrame([{"scenario_id": "S01", COL_MEAN_CYCLE_H_MEAN: 20.0, COL_MEAN_COST_MEAN: 15.0}])
+        agg = pd.DataFrame(
+            [
+                {
+                    "scenario_id": "S01",
+                    COL_MEAN_CYCLE_H_MEAN: 20.0,
+                    COL_MEAN_COST_MEAN: 15.0,
+                }
+            ]
+        )
         goals = [
             Goal(COL_MEAN_CYCLE_H_MEAN, weight=0.5, target=24.0),
-            Goal(COL_MEAN_COST_MEAN,    weight=0.5, target=12.0),
+            Goal(COL_MEAN_COST_MEAN, weight=0.5, target=12.0),
         ]
         ranked = rank(agg, goals)
         assert ranked.iloc[0][f"{COL_MEAN_CYCLE_H_MEAN}_met"]
@@ -317,10 +471,18 @@ class TestRank:
         assert not ranked.iloc[0]["goal_met"]
 
     def test_zero_weight_goal_has_no_per_goal_column(self):
-        agg = pd.DataFrame([{"scenario_id": "S01", COL_MEAN_CYCLE_H_MEAN: 20.0, COL_MEAN_COST_MEAN: 100.0}])
+        agg = pd.DataFrame(
+            [
+                {
+                    "scenario_id": "S01",
+                    COL_MEAN_CYCLE_H_MEAN: 20.0,
+                    COL_MEAN_COST_MEAN: 100.0,
+                }
+            ]
+        )
         goals = [
             Goal(COL_MEAN_CYCLE_H_MEAN, weight=1.0, target=24.0),
-            Goal(COL_MEAN_COST_MEAN,    weight=0.0, target=12.0),
+            Goal(COL_MEAN_COST_MEAN, weight=0.0, target=12.0),
         ]
         ranked = rank(agg, goals)
         assert f"{COL_MEAN_CYCLE_H_MEAN}_met" in ranked.columns
@@ -329,8 +491,8 @@ class TestRank:
 
 # ── Goal ──────────────────────────────────────────────────────────────────────
 
-class TestGoal:
 
+class TestGoal:
     def test_from_pct_reduction_absolute_target(self):
         goal = Goal.from_pct_reduction("col", weight=0.5, pct=20.0, baseline_val=25.0)
         assert goal.target == pytest.approx(20.0)  # 25 * 0.8
@@ -340,6 +502,8 @@ class TestGoal:
         assert goal.target == pytest.approx(25.0)  # 25 * 1.0
 
     def test_from_pct_reduction_preserves_metric_and_weight(self):
-        goal = Goal.from_pct_reduction("mean_cycle_h_mean", weight=0.4, pct=10.0, baseline_val=30.0)
+        goal = Goal.from_pct_reduction(
+            "mean_cycle_h_mean", weight=0.4, pct=10.0, baseline_val=30.0
+        )
         assert goal.metric == "mean_cycle_h_mean"
         assert goal.weight == pytest.approx(0.4)

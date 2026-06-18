@@ -49,9 +49,9 @@ class ScenarioMeta:
 
 @dataclass
 class FailedReplication:
-    scenario_id: str    # scenario id, or "baseline" for baseline tasks
+    scenario_id: str  # scenario id, or "baseline" for baseline tasks
     rep: int
-    error: str          # str(exception)
+    error: str  # str(exception)
 
 
 def _unpack_meta(meta: object) -> tuple[str, int]:
@@ -95,7 +95,10 @@ def run_experiment(
     if provided — lets the caller update a progress bar without a Streamlit import here.
     """
     bpmn_tr = transformation.prepare_experiment(
-        bpmn_path, json_path, target_activity, experiment_dir,
+        bpmn_path,
+        json_path,
+        target_activity,
+        experiment_dir,
         bot_cost_per_hour=bot_cost_per_hour,
         selected_resource_id=selected_resource_id,
     )
@@ -132,7 +135,9 @@ def run_experiment(
                     n_cases=n_cases,
                     out_log=store.baseline_log(experiment_dir, rep, n_cases),
                     out_stat=store.baseline_stats(experiment_dir, rep, n_cases),
-                    proc_log=store.baseline_subprocess_log(experiment_dir, rep, n_cases),
+                    proc_log=store.baseline_subprocess_log(
+                        experiment_dir, rep, n_cases
+                    ),
                     metadata=BaselineMeta(n_cases=n_cases, rep=rep),
                     max_retries=max_retries,
                 )
@@ -148,7 +153,9 @@ def run_experiment(
                     n_cases=n_cases,
                     out_log=store.replication_log(experiment_dir, s.id, rep),
                     out_stat=store.replication_stats(experiment_dir, s.id, rep),
-                    proc_log=store.replication_subprocess_log(experiment_dir, s.id, rep),
+                    proc_log=store.replication_subprocess_log(
+                        experiment_dir, s.id, rep
+                    ),
                     metadata=ScenarioMeta(scenario_id=s.id, rep=rep, values=s.values),
                     max_retries=max_retries,
                 )
@@ -169,18 +176,29 @@ def run_experiment(
         assert task.out_stat is not None
         if isinstance(meta, BaselineMeta):
             baseline_reps[meta.n_cases].append(
-                dataclasses.asdict(prosimos_csv.replication_metrics(task.out_log, task.out_stat))
+                dataclasses.asdict(
+                    prosimos_csv.replication_metrics(task.out_log, task.out_stat)
+                )
             )
             baseline_log_paths[meta.n_cases].append(task.out_log)
             _tick("baseline", meta.rep)
         else:  # ScenarioMeta
-            m = dataclasses.asdict(prosimos_csv.replication_metrics(
-                task.out_log,
-                task.out_stat,
-                bot_task_name=_bot_task_name,
-                original_task_name=_original_task_name,
-            ))
-            rows.append({"scenario_id": meta.scenario_id, "replication": meta.rep, **m, **meta.values})
+            m = dataclasses.asdict(
+                prosimos_csv.replication_metrics(
+                    task.out_log,
+                    task.out_stat,
+                    bot_task_name=_bot_task_name,
+                    original_task_name=_original_task_name,
+                )
+            )
+            rows.append(
+                {
+                    "scenario_id": meta.scenario_id,
+                    "replication": meta.rep,
+                    **m,
+                    **meta.values,
+                }
+            )
             scenario_log_paths[meta.scenario_id].append(task.out_log)
             _tick(meta.scenario_id, meta.rep)
 
@@ -191,8 +209,11 @@ def run_experiment(
 
     stop_check = stop_event.is_set if stop_event is not None else None
     completed = run_all(
-        tasks, _on_complete, on_error=_on_error,
-        max_workers=max_workers, stop_check=stop_check,
+        tasks,
+        _on_complete,
+        on_error=_on_error,
+        max_workers=max_workers,
+        stop_check=stop_check,
     )
     if not completed:
         raise ExperimentCancelledError()
@@ -209,10 +230,10 @@ def run_experiment(
             continue  # all baseline replications for this n_cases level failed
         means = pd.DataFrame(rep_list).mean()
         baseline_agg[n_cases] = {
-            COL_TOTAL_CYCLE_S_MEAN:      means[COL_TOTAL_CYCLE_S],
-            COL_TOTAL_COST_MEAN:         means[COL_TOTAL_COST],
+            COL_TOTAL_CYCLE_S_MEAN: means[COL_TOTAL_CYCLE_S],
+            COL_TOTAL_COST_MEAN: means[COL_TOTAL_COST],
             COL_TOTAL_REWORK_COUNT_MEAN: means[COL_TOTAL_REWORK_COUNT],
-            COL_REWORK_RATE_MEAN:        means[COL_REWORK_RATE],
+            COL_REWORK_RATE_MEAN: means[COL_REWORK_RATE],
         }
 
     return ExperimentResult(
