@@ -284,7 +284,7 @@ with st.sidebar:
     st.subheader("Run config")
     n_reps = st.number_input("Replications (N)", 1, 100, 5)
     max_workers = st.number_input(
-        "Parallel workers", min_value=1, max_value=os.cpu_count(), value=1, step=1,
+        "Parallel workers", min_value=1, max_value=os.cpu_count(), value=os.cpu_count(), step=1,
         help="Number of Prosimos simulations to run in parallel. Higher values use more CPU.",
     )
     bot_cost_per_hour = st.number_input("Bot cost ($/hr)", min_value=0.0, value=0.0, step=1.0)
