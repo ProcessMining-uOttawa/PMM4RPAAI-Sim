@@ -4,10 +4,12 @@ from __future__ import annotations
 import csv
 from pathlib import Path
 
+import pandas as pd
 import pytest
 
 from core.simulation.prosimos_csv import (
     _parse_section,
+    _rework_metrics,
     total_metrics,
     replication_metrics,
     ReplicationMetrics,
@@ -17,7 +19,7 @@ from core.simulation.prosimos_csv import (
     PROSIMOS_COL_ACCUMULATED,
     PROSIMOS_KPI_CYCLE_TIME,
 )
-from core.constants import COL_TOTAL_CYCLE_S, COL_TOTAL_COST
+from core.constants import COL_TOTAL_CYCLE_S, COL_TOTAL_COST, COL_TOTAL_REWORK_COUNT, COL_REWORK_RATE
 
 
 # ── Helpers ───────────────────────────────────────────────────────────────────
@@ -155,6 +157,69 @@ class TestTotalMetrics:
         with pytest.raises(ValueError, match="Total Cost"):
             total_metrics(stats)
 
+    def test_missing_accumulated_column_raises(self, tmp_path):
+        stats = tmp_path / "stats.csv"
+        with open(stats, "w", newline="") as f:
+            import csv as _csv
+
+            w = _csv.writer(f)
+            w.writerow([PROSIMOS_SECTION_TASK_STATS])
+            w.writerow(["task_id", PROSIMOS_COL_TOTAL_COST])
+            w.writerow(["task_a", "50.0"])
+            w.writerow([])
+            w.writerow([PROSIMOS_SECTION_OVERALL])
+            # "Accumulated Value" column intentionally absent
+            w.writerow(["KPI", "Min", "Max", "Average", "Trace Occurrences"])
+            w.writerow([PROSIMOS_KPI_CYCLE_TIME, "0", "0", "0", "100"])
+        with pytest.raises(ValueError, match="Accumulated Value"):
+            total_metrics(stats)
+
+    def test_missing_cycle_kpi_row_raises(self, tmp_path):
+        stats = tmp_path / "stats.csv"
+        with open(stats, "w", newline="") as f:
+            import csv as _csv
+
+            w = _csv.writer(f)
+            w.writerow([PROSIMOS_SECTION_TASK_STATS])
+            w.writerow(["task_id", PROSIMOS_COL_TOTAL_COST])
+            w.writerow(["task_a", "50.0"])
+            w.writerow([])
+            w.writerow([PROSIMOS_SECTION_OVERALL])
+            w.writerow(["KPI", "Min", "Max", "Average", PROSIMOS_COL_ACCUMULATED, "Trace Occurrences"])
+            # cycle_time row intentionally absent
+            w.writerow(["some_other_kpi", "0", "0", "0", "999.0", "100"])
+        with pytest.raises(ValueError, match="cycle_time"):
+            total_metrics(stats)
+
+    def test_missing_task_stats_section_raises(self, tmp_path):
+        stats = tmp_path / "stats.csv"
+        with open(stats, "w", newline="") as f:
+            import csv as _csv
+
+            w = _csv.writer(f)
+            # Only overall section — no task stats section at all
+            w.writerow([PROSIMOS_SECTION_OVERALL])
+            w.writerow(["KPI", "Min", "Max", "Average", PROSIMOS_COL_ACCUMULATED, "Trace Occurrences"])
+            w.writerow([PROSIMOS_KPI_CYCLE_TIME, "0", "0", "0", "3600.0", "100"])
+        with pytest.raises(ValueError, match="Individual Task Statistics"):
+            total_metrics(stats)
+
+    def test_non_numeric_cost_raises(self, tmp_path):
+        stats = tmp_path / "stats.csv"
+        with open(stats, "w", newline="") as f:
+            import csv as _csv
+
+            w = _csv.writer(f)
+            w.writerow([PROSIMOS_SECTION_TASK_STATS])
+            w.writerow(["task_id", PROSIMOS_COL_TOTAL_COST])
+            w.writerow(["task_a", "not_a_number"])
+            w.writerow([])
+            w.writerow([PROSIMOS_SECTION_OVERALL])
+            w.writerow(["KPI", "Min", "Max", "Average", PROSIMOS_COL_ACCUMULATED, "Trace Occurrences"])
+            w.writerow([PROSIMOS_KPI_CYCLE_TIME, "0", "0", "0", "3600.0", "100"])
+        with pytest.raises(ValueError, match="Non-numeric Total Cost"):
+            total_metrics(stats)
+
 
 # ── replication_metrics ───────────────────────────────────────────────────────
 
@@ -227,3 +292,94 @@ class TestReplicationMetrics:
         stats.write_text("no recognisable sections here\n")
         with pytest.raises(ValueError, match="Overall Scenario Statistics"):
             replication_metrics(log, stats)
+
+
+# ── _rework_metrics ───────────────────────────────────────────────────────────
+
+BOT = "Auto Fix Bug"
+ORIG = "Fix Bug"
+
+
+def _df(*rows: tuple[str, str]) -> pd.DataFrame:
+    return pd.DataFrame(rows, columns=["case_id", "activity"])
+
+
+class TestReworkMetrics:
+    def test_no_rework_count_zero(self):
+        df = _df(("C1", ORIG), ("C2", ORIG))
+        r = _rework_metrics(df)
+        assert r[COL_TOTAL_REWORK_COUNT] == 0.0
+
+    def test_no_rework_rate_zero(self):
+        df = _df(("C1", ORIG), ("C2", ORIG))
+        r = _rework_metrics(df)
+        assert r[COL_REWORK_RATE] == 0.0
+
+    def test_standard_rework_count(self):
+        df = _df(("C1", ORIG), ("C1", ORIG), ("C2", ORIG))
+        r = _rework_metrics(df)
+        assert r[COL_TOTAL_REWORK_COUNT] == 1.0
+
+    def test_standard_rework_rate(self):
+        df = _df(("C1", ORIG), ("C1", ORIG), ("C2", ORIG))
+        r = _rework_metrics(df)
+        assert r[COL_REWORK_RATE] == pytest.approx(50.0)
+
+    def test_standard_rework_three_repeats(self):
+        df = _df(("C1", ORIG), ("C1", ORIG), ("C1", ORIG))
+        r = _rework_metrics(df)
+        assert r[COL_TOTAL_REWORK_COUNT] == 2.0
+
+    def test_standard_rework_multiple_activities(self):
+        df = _df(("C1", "A"), ("C1", "A"), ("C1", "B"), ("C1", "B"))
+        r = _rework_metrics(df)
+        assert r[COL_TOTAL_REWORK_COUNT] == 2.0
+
+    def test_bot_failure_adds_one(self):
+        df = _df(("C1", BOT), ("C1", ORIG), ("C2", BOT))
+        r = _rework_metrics(df, bot_task_name=BOT, original_task_name=ORIG)
+        assert r[COL_TOTAL_REWORK_COUNT] == 1.0
+
+    def test_bot_failure_rate(self):
+        df = _df(("C1", BOT), ("C1", ORIG), ("C2", BOT))
+        r = _rework_metrics(df, bot_task_name=BOT, original_task_name=ORIG)
+        assert r[COL_REWORK_RATE] == pytest.approx(50.0)
+
+    def test_bot_success_no_rework(self):
+        df = _df(("C1", BOT), ("C2", BOT))
+        r = _rework_metrics(df, bot_task_name=BOT, original_task_name=ORIG)
+        assert r[COL_TOTAL_REWORK_COUNT] == 0.0
+        assert r[COL_REWORK_RATE] == 0.0
+
+    def test_manual_path_no_bot_failure_rework(self):
+        df = _df(("C1", ORIG), ("C2", ORIG))
+        r = _rework_metrics(df, bot_task_name=BOT, original_task_name=ORIG)
+        assert r[COL_TOTAL_REWORK_COUNT] == 0.0
+
+    def test_combined_rework_count(self):
+        df = _df(("C1", BOT), ("C1", ORIG), ("C1", ORIG))
+        r = _rework_metrics(df, bot_task_name=BOT, original_task_name=ORIG)
+        assert r[COL_TOTAL_REWORK_COUNT] == 2.0
+
+    def test_combined_rate_all_cases(self):
+        df = _df(("C1", BOT), ("C1", ORIG), ("C1", ORIG))
+        r = _rework_metrics(df, bot_task_name=BOT, original_task_name=ORIG)
+        assert r[COL_REWORK_RATE] == 100.0
+
+    def test_bot_failure_ignored_without_params(self):
+        df = _df(("C1", BOT), ("C1", ORIG), ("C2", BOT))
+        r = _rework_metrics(df)
+        assert r[COL_TOTAL_REWORK_COUNT] == 0.0
+        assert r[COL_REWORK_RATE] == 0.0
+
+    def test_rework_count_sums_across_cases(self):
+        df = _df(
+            ("C1", ORIG),
+            ("C1", ORIG),
+            ("C2", BOT),
+            ("C2", ORIG),
+            ("C3", ORIG),
+        )
+        r = _rework_metrics(df, bot_task_name=BOT, original_task_name=ORIG)
+        assert r[COL_TOTAL_REWORK_COUNT] == 2.0
+        assert r[COL_REWORK_RATE] == pytest.approx(200 / 3)

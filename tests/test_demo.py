@@ -1,6 +1,9 @@
 """Tests for demo.run_experiment — synthetic simulation (no Simod/Prosimos)."""
 
 from __future__ import annotations
+import threading
+
+import pytest
 
 from core import demo
 from core.constants import (
@@ -10,9 +13,12 @@ from core.constants import (
     COL_TOTAL_COST,
     COL_TOTAL_REWORK_COUNT,
     COL_REWORK_RATE,
+    COL_TOTAL_CYCLE_S_MEAN,
+    COL_TOTAL_COST_MEAN,
+    COL_REWORK_RATE_MEAN,
 )
 from core.taguchi import build_scenarios
-from core.orchestrator import ExperimentResult
+from core.orchestrator import ExperimentCancelledError, ExperimentResult
 from core.transformations import XORSplitAutomation
 
 
@@ -90,3 +96,71 @@ class TestDemoRunExperiment:
     def test_failed_replications_empty_in_demo(self):
         result = demo.run_experiment(_scenarios(), n_reps=1)
         assert result.failed_replications == []
+
+
+# ── Demo monotonicity ─────────────────────────────────────────────────────────
+
+
+class TestDemoBaselineAgg:
+    def test_has_n1_key(self):
+        agg = demo.demo_baseline_agg()
+        assert 1 in agg
+
+    def test_contains_required_sub_keys(self):
+        agg = demo.demo_baseline_agg()
+        required = {COL_TOTAL_CYCLE_S_MEAN, COL_TOTAL_COST_MEAN, COL_REWORK_RATE_MEAN}
+        assert required <= set(agg[1].keys())
+
+    def test_values_are_positive(self):
+        agg = demo.demo_baseline_agg()
+        entry = agg[1]
+        assert entry[COL_TOTAL_CYCLE_S_MEAN] > 0
+        assert entry[COL_TOTAL_COST_MEAN] > 0
+        assert entry[COL_REWORK_RATE_MEAN] >= 0
+
+
+class TestFakeDiscovery:
+    def test_returns_nonempty_list(self):
+        assert len(demo.fake_discovery()) > 0
+
+    def test_returns_strings(self):
+        assert all(isinstance(a, str) for a in demo.fake_discovery())
+
+    def test_independent_copies(self):
+        # mutating the result must not affect subsequent calls
+        first = demo.fake_discovery()
+        first.clear()
+        assert len(demo.fake_discovery()) > 0
+
+
+class TestExperimentCancellation:
+    def test_cancelled_raises_experiment_cancelled_error(self):
+        stop = threading.Event()
+        stop.set()
+        with pytest.raises(ExperimentCancelledError):
+            demo.run_experiment(_scenarios(), n_reps=1, stop_event=stop)
+
+
+class TestDemoMonotonicity:
+    def test_larger_resource_pool_reduces_cycle_time(self):
+        from core.demo import _fake_simulate as fake_simulate
+        from core.parameters import Scenario
+
+        def _mean_cycle(num_bots: int, num_man: int, n_reps: int = 20) -> float:
+            s = Scenario(
+                "S01",
+                {
+                    "pct_auto": 50,
+                    "pct_ok": 90,
+                    "t_auto": 30,
+                    "t_manual": 300,
+                    "num_bots": num_bots,
+                    "num_manual_resources": num_man,
+                    "num_cases": 500,
+                },
+                "t_id",
+                "Act",
+            )
+            return sum(fake_simulate(s, r).mean_cycle_h for r in range(n_reps)) / n_reps
+
+        assert _mean_cycle(3, 3) < _mean_cycle(1, 1)

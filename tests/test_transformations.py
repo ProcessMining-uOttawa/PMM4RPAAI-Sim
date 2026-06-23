@@ -11,6 +11,7 @@ from core.transformations import (
     BOT_PROFILE_ID,
     AutomationParams,
     BpmnTransformResult,
+    XORSplitAutomation,
 )
 from core.simulation.prosimos_edit import (
     KEY_RESOURCE_CALENDARS,
@@ -29,6 +30,136 @@ from core.constants import (
     F_NUM_MANUAL_RESOURCES,
     F_NUM_CASES,
 )
+
+
+# ── Shared fixtures ───────────────────────────────────────────────────────────
+#
+# These live here, not in a root conftest.py, because this module is their only
+# consumer — a shared conftest promises cross-module reuse that no longer holds.
+#
+# MINIMAL_PARAMS hardcodes the Prosimos JSON schema keys as string literals
+# rather than importing the KEY_* constants from production. The fixture mocks an
+# *external* system's document format, so it should be an independent oracle of
+# that contract: if a KEY_* constant were ever mistyped, production would look
+# for the wrong key in this correctly-spelled document and fail — exactly the
+# regression a constant-mirrored fixture would silently hide. (Assertions below
+# navigate production's *own* output and legitimately use the KEY_* constants.)
+#
+#  start_1 ──flow_in──► task_1 ("Test Task") ──flow_out──► end_1
+
+MINIMAL_BPMN = """\
+<?xml version="1.0" encoding="utf-8"?>
+<bpmn:definitions
+    xmlns:bpmn="http://www.omg.org/spec/BPMN/20100524/MODEL"
+    xmlns:bpmndi="http://www.omg.org/spec/BPMN/20100524/DI"
+    xmlns:dc="http://www.omg.org/spec/DD/20100524/DC"
+    xmlns:di="http://www.omg.org/spec/DD/20100524/DI"
+    id="def_1">
+  <bpmn:process id="proc_1" isExecutable="true">
+    <bpmn:startEvent id="start_1"/>
+    <bpmn:task id="task_1" name="Test Task"/>
+    <bpmn:endEvent id="end_1"/>
+    <bpmn:sequenceFlow id="flow_in"  sourceRef="start_1" targetRef="task_1"/>
+    <bpmn:sequenceFlow id="flow_out" sourceRef="task_1"  targetRef="end_1"/>
+  </bpmn:process>
+  <bpmndi:BPMNDiagram id="diagram_1">
+    <bpmndi:BPMNPlane id="plane_1" bpmnElement="proc_1">
+      <bpmndi:BPMNShape id="start_1_di" bpmnElement="start_1">
+        <dc:Bounds x="100" y="200" width="36" height="36"/>
+        <bpmndi:BPMNLabel/>
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="task_1_di" bpmnElement="task_1">
+        <dc:Bounds x="200" y="180" width="100" height="80"/>
+        <bpmndi:BPMNLabel/>
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="end_1_di" bpmnElement="end_1">
+        <dc:Bounds x="400" y="200" width="36" height="36"/>
+        <bpmndi:BPMNLabel/>
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNEdge id="flow_in_di" bpmnElement="flow_in">
+        <di:waypoint x="136" y="218"/>
+        <di:waypoint x="200" y="220"/>
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="flow_out_di" bpmnElement="flow_out">
+        <di:waypoint x="300" y="220"/>
+        <di:waypoint x="400" y="218"/>
+      </bpmndi:BPMNEdge>
+    </bpmndi:BPMNPlane>
+  </bpmndi:BPMNDiagram>
+</bpmn:definitions>
+"""
+
+MINIMAL_PARAMS = {
+    "resource_calendars": [
+        {
+            "id": "cal_human",
+            "name": "9-5 Weekdays",
+            "time_periods": [
+                {
+                    "from": "MONDAY",
+                    "to": "FRIDAY",
+                    "beginTime": "09:00:00.000",
+                    "endTime": "17:00:00.000",
+                }
+            ],
+        }
+    ],
+    "resource_profiles": [
+        {
+            "id": "profile_human",
+            "name": "Human Workers",
+            "resource_list": [
+                {
+                    "id": "res_human_1",
+                    "name": "Worker",
+                    "cost_per_hour": "10",
+                    "amount": 1,
+                    "calendar": "cal_human",
+                    "assignedTasks": ["task_1"],
+                }
+            ],
+        }
+    ],
+    "task_resource_distribution": [
+        {
+            "task_id": "task_1",
+            "resources": [
+                {
+                    "resource_id": "res_human_1",
+                    "distribution_name": "fix",
+                    "distribution_params": [{"value": 3600.0}],
+                }
+            ],
+        }
+    ],
+    "gateway_branching_probabilities": [],
+}
+
+
+@pytest.fixture
+def pattern():
+    return XORSplitAutomation()
+
+
+@pytest.fixture
+def bpmn_file(tmp_path):
+    p = tmp_path / "test.bpmn"
+    p.write_text(MINIMAL_BPMN, encoding="utf-8")
+    return p
+
+
+@pytest.fixture
+def params_file(tmp_path):
+    p = tmp_path / "params.json"
+    p.write_text(json.dumps(MINIMAL_PARAMS), encoding="utf-8")
+    return p
+
+
+@pytest.fixture
+def applied(pattern, bpmn_file, tmp_path):
+    """Runs apply_pattern and returns (bpmn_out_path, ids)."""
+    bpmn_out, ids = pattern.apply_pattern(bpmn_file, "Test Task", tmp_path / "out")
+    return bpmn_out, ids
 
 
 # ── Multi-flow BPMN fixtures (no DI section needed — error raised before DI work) ─
@@ -219,12 +350,12 @@ class TestBuildBaseJson:
         params_empty.write_text(
             json.dumps(
                 {
-                    KEY_RESOURCE_CALENDARS: [],
-                    KEY_RESOURCE_PROFILES: [],
-                    KEY_TASK_RESOURCE_DISTRIBUTION: [
+                    "resource_calendars": [],
+                    "resource_profiles": [],
+                    "task_resource_distribution": [
                         {"task_id": ids.task_id, "resources": []}
                     ],
-                    KEY_GATEWAY_BRANCHING_PROBS: [],
+                    "gateway_branching_probabilities": [],
                 }
             )
         )
@@ -460,3 +591,111 @@ def _task_dist_bounds(data: dict, task_id: str) -> tuple[float, float]:
     )
     params = entry["resources"][0]["distribution_params"]
     return params[0]["value"], params[1]["value"]
+
+
+# ── AutomationParams.from_taguchi_values ──────────────────────────────────────
+
+
+class TestFromTaguchiValues:
+    _FULL = {
+        "pct_auto": 75.0,
+        "pct_ok": 90.0,
+        "t_auto": 60.0,
+        "t_manual": 1800.0,
+        "num_bots": 2,
+        "num_manual_resources": 3,
+        "num_cases": 500,
+    }
+
+    def test_full_values_mapped_correctly(self):
+        s = AutomationParams.from_taguchi_values(self._FULL)
+        assert s.automation_rate == pytest.approx(0.75)
+        assert s.bot_failure_rate == pytest.approx(0.10)  # 1 - 90/100
+        assert s.bot_execution_time == pytest.approx(60.0)
+        assert s.manual_execution_time == pytest.approx(1800.0)
+        assert s.num_bots == 2
+        assert s.num_manual_resources == 3
+        assert s.num_cases == 500
+
+    def test_empty_dict_uses_defaults(self):
+        s = AutomationParams.from_taguchi_values({})
+        assert s.automation_rate == pytest.approx(0.50)
+        assert s.bot_failure_rate == pytest.approx(0.10)
+        assert s.num_bots == 1
+        assert s.num_manual_resources == 1
+        assert s.num_cases == 100
+
+    def test_num_bots_and_num_manual_keys_used(self):
+        s = AutomationParams.from_taguchi_values(
+            {"num_bots": 3, "num_manual_resources": 5}
+        )
+        assert s.num_bots == 3
+        assert s.num_manual_resources == 5
+
+    def test_selected_resource_id_passed_through(self):
+        s = AutomationParams.from_taguchi_values({}, selected_resource_id="res_42")
+        assert s.selected_resource_id == "res_42"
+
+
+# ── TransformIds properties ───────────────────────────────────────────────────
+
+
+def test_bot_task_name():
+    ids = _make_ids("task_1", "Test Task")
+    assert ids.bot_task_name == "Auto Test Task"
+
+
+# ── prepare_experiment ────────────────────────────────────────────────────────
+
+
+class TestPrepareExperiment:
+    def test_returns_bpmn_transform_result(
+        self, pattern, bpmn_file, params_file, tmp_path
+    ):
+        result = pattern.prepare_experiment(
+            bpmn_file, params_file, "Test Task", tmp_path / "out"
+        )
+        assert isinstance(result, BpmnTransformResult)
+
+    def test_bpmn_path_exists(self, pattern, bpmn_file, params_file, tmp_path):
+        result = pattern.prepare_experiment(
+            bpmn_file, params_file, "Test Task", tmp_path / "out"
+        )
+        assert result.bpmn_path.exists()
+
+    def test_selected_resource_id_propagated(
+        self, pattern, bpmn_file, params_file, tmp_path
+    ):
+        result = pattern.prepare_experiment(
+            bpmn_file,
+            params_file,
+            "Test Task",
+            tmp_path / "out",
+            selected_resource_id="res_human_1",
+        )
+        assert result.selected_resource_id == "res_human_1"
+
+    def test_selected_resource_id_defaults_to_none(
+        self, pattern, bpmn_file, params_file, tmp_path
+    ):
+        result = pattern.prepare_experiment(
+            bpmn_file, params_file, "Test Task", tmp_path / "out"
+        )
+        assert result.selected_resource_id is None
+
+
+# ── apply_pattern — no-process error ─────────────────────────────────────────
+
+
+def test_no_process_raises(pattern, tmp_path):
+    from core.bpmn import BPMN_NS as _NS
+
+    bpmn = f"""\
+<?xml version="1.0" encoding="utf-8"?>
+<bpmn:definitions xmlns:bpmn="{_NS}" id="def_1">
+</bpmn:definitions>
+"""
+    path = tmp_path / "no_process.bpmn"
+    path.write_text(bpmn, encoding="utf-8")
+    with pytest.raises(ValueError, match="No <bpmn:process>"):
+        pattern.apply_pattern(path, "Test Task", tmp_path / "out")
