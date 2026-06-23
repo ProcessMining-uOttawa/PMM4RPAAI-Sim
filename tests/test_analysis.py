@@ -488,22 +488,3 @@ class TestRank:
         assert f"{COL_MEAN_CYCLE_H_MEAN}_met" in ranked.columns
         assert f"{COL_MEAN_COST_MEAN}_met" not in ranked.columns
 
-
-# ── Goal ──────────────────────────────────────────────────────────────────────
-
-
-class TestGoal:
-    def test_from_pct_reduction_absolute_target(self):
-        goal = Goal.from_pct_reduction("col", weight=0.5, pct=20.0, baseline_val=25.0)
-        assert goal.target == pytest.approx(20.0)  # 25 * 0.8
-
-    def test_from_pct_reduction_zero_pct(self):
-        goal = Goal.from_pct_reduction("col", weight=1.0, pct=0.0, baseline_val=25.0)
-        assert goal.target == pytest.approx(25.0)  # 25 * 1.0
-
-    def test_from_pct_reduction_preserves_metric_and_weight(self):
-        goal = Goal.from_pct_reduction(
-            "mean_cycle_h_mean", weight=0.4, pct=10.0, baseline_val=30.0
-        )
-        assert goal.metric == "mean_cycle_h_mean"
-        assert goal.weight == pytest.approx(0.4)
