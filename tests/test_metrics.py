@@ -16,15 +16,21 @@ class TestMetricRegistryRankable:
         assert not MetricRegistry.REWORK_COUNT.rankable
 
     def test_rankable_includes_cycle_time(self):
-        rankable_columns = {m.per_case.mean.column for m in MetricRegistry.rankable() if m.per_case}
+        rankable_columns = {
+            m.per_case.mean.column for m in MetricRegistry.rankable() if m.per_case
+        }
         assert COL_MEAN_CYCLE_H_MEAN in rankable_columns
 
     def test_rankable_includes_cost(self):
-        rankable_columns = {m.per_case.mean.column for m in MetricRegistry.rankable() if m.per_case}
+        rankable_columns = {
+            m.per_case.mean.column for m in MetricRegistry.rankable() if m.per_case
+        }
         assert COL_MEAN_COST_MEAN in rankable_columns
 
     def test_rankable_includes_rework_rate(self):
-        aggregate_columns = {m.aggregate.column for m in MetricRegistry.rankable() if m.aggregate}
+        aggregate_columns = {
+            m.aggregate.column for m in MetricRegistry.rankable() if m.aggregate
+        }
         assert COL_REWORK_RATE_MEAN in aggregate_columns
 
 
