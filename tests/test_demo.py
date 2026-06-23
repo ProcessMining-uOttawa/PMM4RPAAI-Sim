@@ -98,9 +98,6 @@ class TestDemoRunExperiment:
         assert result.failed_replications == []
 
 
-# ── Demo monotonicity ─────────────────────────────────────────────────────────
-
-
 class TestDemoBaselineAgg:
     def test_has_n1_key(self):
         agg = demo.demo_baseline_agg()
@@ -139,6 +136,9 @@ class TestExperimentCancellation:
         stop.set()
         with pytest.raises(ExperimentCancelledError):
             demo.run_experiment(_scenarios(), n_reps=1, stop_event=stop)
+
+
+# ── Demo monotonicity ─────────────────────────────────────────────────────────
 
 
 class TestDemoMonotonicity:

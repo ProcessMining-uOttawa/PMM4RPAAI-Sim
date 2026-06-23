@@ -135,9 +135,7 @@ class TestTotalMetrics:
     def test_missing_cost_column_raises(self, tmp_path):
         stats = tmp_path / "stats.csv"
         with open(stats, "w", newline="") as f:
-            import csv as _csv
-
-            w = _csv.writer(f)
+            w = csv.writer(f)
             w.writerow([PROSIMOS_SECTION_TASK_STATS])
             w.writerow(["task_id", "Some Other Column"])
             w.writerow(["task_a", "50.0"])
@@ -160,9 +158,7 @@ class TestTotalMetrics:
     def test_missing_accumulated_column_raises(self, tmp_path):
         stats = tmp_path / "stats.csv"
         with open(stats, "w", newline="") as f:
-            import csv as _csv
-
-            w = _csv.writer(f)
+            w = csv.writer(f)
             w.writerow([PROSIMOS_SECTION_TASK_STATS])
             w.writerow(["task_id", PROSIMOS_COL_TOTAL_COST])
             w.writerow(["task_a", "50.0"])
@@ -177,9 +173,7 @@ class TestTotalMetrics:
     def test_missing_cycle_kpi_row_raises(self, tmp_path):
         stats = tmp_path / "stats.csv"
         with open(stats, "w", newline="") as f:
-            import csv as _csv
-
-            w = _csv.writer(f)
+            w = csv.writer(f)
             w.writerow([PROSIMOS_SECTION_TASK_STATS])
             w.writerow(["task_id", PROSIMOS_COL_TOTAL_COST])
             w.writerow(["task_a", "50.0"])
@@ -194,9 +188,7 @@ class TestTotalMetrics:
     def test_missing_task_stats_section_raises(self, tmp_path):
         stats = tmp_path / "stats.csv"
         with open(stats, "w", newline="") as f:
-            import csv as _csv
-
-            w = _csv.writer(f)
+            w = csv.writer(f)
             # Only overall section — no task stats section at all
             w.writerow([PROSIMOS_SECTION_OVERALL])
             w.writerow(["KPI", "Min", "Max", "Average", PROSIMOS_COL_ACCUMULATED, "Trace Occurrences"])
@@ -207,9 +199,7 @@ class TestTotalMetrics:
     def test_non_numeric_cost_raises(self, tmp_path):
         stats = tmp_path / "stats.csv"
         with open(stats, "w", newline="") as f:
-            import csv as _csv
-
-            w = _csv.writer(f)
+            w = csv.writer(f)
             w.writerow([PROSIMOS_SECTION_TASK_STATS])
             w.writerow(["task_id", PROSIMOS_COL_TOTAL_COST])
             w.writerow(["task_a", "not_a_number"])

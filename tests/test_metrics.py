@@ -13,8 +13,7 @@ from core.constants import (
 
 class TestMetricRegistryRankable:
     def test_rankable_excludes_rework_count(self):
-        rankable_columns = {m.aggregate.column for m in MetricRegistry.rankable() if m.aggregate}
-        assert COL_TOTAL_REWORK_COUNT_MEAN not in rankable_columns
+        assert not MetricRegistry.REWORK_COUNT.rankable
 
     def test_rankable_includes_cycle_time(self):
         rankable_columns = {m.per_case.mean.column for m in MetricRegistry.rankable() if m.per_case}

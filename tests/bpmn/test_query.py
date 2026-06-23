@@ -275,15 +275,8 @@ class TestListActivities:
 # ── resource_selector_config ──────────────────────────────────────────────────
 
 
-def _prosimos_sel(
-    task_id: str, resources: list[dict], *, shared_with: str | None = None
-) -> dict:
-    """Build a minimal Prosimos JSON dict for resource_selector_config tests.
-
-    resources: list of {id, name, amount} for the target task.
-    shared_with: if given, each resource also appears in a second task entry,
-                 making them shared.
-    """
+def _prosimos_sel(task_id: str, resources: list[dict]) -> dict:
+    """Build a minimal Prosimos JSON dict for resource_selector_config tests."""
     profile_resources = [
         {"id": r["id"], "name": r["name"], "amount": r.get("amount", 1)}
         for r in resources
@@ -294,13 +287,6 @@ def _prosimos_sel(
             "resources": [{"resource_id": r["id"]} for r in resources],
         }
     ]
-    if shared_with:
-        task_dist.append(
-            {
-                "task_id": shared_with,
-                "resources": [{"resource_id": r["id"]} for r in resources],
-            }
-        )
     return {
         "resource_profiles": [{"id": "profile_1", "resource_list": profile_resources}],
         "task_resource_distribution": task_dist,

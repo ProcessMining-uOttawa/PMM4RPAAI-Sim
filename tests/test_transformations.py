@@ -208,7 +208,7 @@ class TestMultiFlowNotImplemented:
     def test_multi_outgoing_raises(self, pattern, tmp_path):
         bpmn = tmp_path / "multi_out.bpmn"
         bpmn.write_text(MULTI_OUTGOING_BPMN, encoding="utf-8")
-        with pytest.raises(NotImplementedError, match="expected 1 incoming"):
+        with pytest.raises(NotImplementedError, match=r"got 1 \+ 2"):
             pattern.apply_pattern(bpmn, "Test Task", tmp_path / "out")
 
 

@@ -32,7 +32,7 @@ class TestGoal:
 
 
 class TestBaselinePerCase:
-    def _agg(self, n_cases: int, total_cycle_s: float, total_cost: float, rework_rate: float) -> dict:
+    def _agg(self, total_cycle_s: float, total_cost: float, rework_rate: float) -> dict:
         return {
             COL_TOTAL_CYCLE_S_MEAN: total_cycle_s,
             COL_TOTAL_COST_MEAN: total_cost,
@@ -40,26 +40,26 @@ class TestBaselinePerCase:
         }
 
     def test_cycle_time_per_case(self):
-        agg = {100: self._agg(100, total_cycle_s=360000.0, total_cost=0.0, rework_rate=0.0)}
+        agg = {100: self._agg(total_cycle_s=360000.0, total_cost=0.0, rework_rate=0.0)}
         result = baseline_per_case(agg)
         # 360000 s / 3600 / 100 cases = 1.0 h/case
         assert result[COL_MEAN_CYCLE_H_MEAN] == pytest.approx(1.0)
 
     def test_cost_per_case(self):
-        agg = {100: self._agg(100, total_cycle_s=1.0, total_cost=500.0, rework_rate=0.0)}
+        agg = {100: self._agg(total_cycle_s=1.0, total_cost=500.0, rework_rate=0.0)}
         result = baseline_per_case(agg)
         # 500 / 100 cases = 5.0 $/case
         assert result[COL_MEAN_COST_MEAN] == pytest.approx(5.0)
 
     def test_rework_rate_passed_through(self):
-        agg = {100: self._agg(100, total_cycle_s=1.0, total_cost=0.0, rework_rate=12.5)}
+        agg = {100: self._agg(total_cycle_s=1.0, total_cost=0.0, rework_rate=12.5)}
         result = baseline_per_case(agg)
         assert result[COL_REWORK_RATE_MEAN] == pytest.approx(12.5)
 
     def test_picks_smallest_n_cases_when_multiple(self):
         agg = {
-            100: self._agg(100, total_cycle_s=360000.0, total_cost=500.0, rework_rate=5.0),
-            500: self._agg(500, total_cycle_s=1800000.0, total_cost=2500.0, rework_rate=5.0),
+            100: self._agg(total_cycle_s=360000.0, total_cost=500.0, rework_rate=5.0),
+            500: self._agg(total_cycle_s=1800000.0, total_cost=2500.0, rework_rate=5.0),
         }
         result = baseline_per_case(agg)
         # n_ref=100: 360000/3600/100 = 1.0 h/case (not 500 entry)
