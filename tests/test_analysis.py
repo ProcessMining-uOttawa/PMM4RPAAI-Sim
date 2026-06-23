@@ -487,4 +487,3 @@ class TestRank:
         ranked = rank(agg, goals)
         assert f"{COL_MEAN_CYCLE_H_MEAN}_met" in ranked.columns
         assert f"{COL_MEAN_COST_MEAN}_met" not in ranked.columns
-

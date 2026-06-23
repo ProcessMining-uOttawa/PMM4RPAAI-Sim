@@ -19,7 +19,12 @@ from core.simulation.prosimos_csv import (
     PROSIMOS_COL_ACCUMULATED,
     PROSIMOS_KPI_CYCLE_TIME,
 )
-from core.constants import COL_TOTAL_CYCLE_S, COL_TOTAL_COST, COL_TOTAL_REWORK_COUNT, COL_REWORK_RATE
+from core.constants import (
+    COL_TOTAL_CYCLE_S,
+    COL_TOTAL_COST,
+    COL_TOTAL_REWORK_COUNT,
+    COL_REWORK_RATE,
+)
 
 
 # ── Helpers ───────────────────────────────────────────────────────────────────
@@ -179,7 +184,16 @@ class TestTotalMetrics:
             w.writerow(["task_a", "50.0"])
             w.writerow([])
             w.writerow([PROSIMOS_SECTION_OVERALL])
-            w.writerow(["KPI", "Min", "Max", "Average", PROSIMOS_COL_ACCUMULATED, "Trace Occurrences"])
+            w.writerow(
+                [
+                    "KPI",
+                    "Min",
+                    "Max",
+                    "Average",
+                    PROSIMOS_COL_ACCUMULATED,
+                    "Trace Occurrences",
+                ]
+            )
             # cycle_time row intentionally absent
             w.writerow(["some_other_kpi", "0", "0", "0", "999.0", "100"])
         with pytest.raises(ValueError, match="cycle_time"):
@@ -191,7 +205,16 @@ class TestTotalMetrics:
             w = csv.writer(f)
             # Only overall section — no task stats section at all
             w.writerow([PROSIMOS_SECTION_OVERALL])
-            w.writerow(["KPI", "Min", "Max", "Average", PROSIMOS_COL_ACCUMULATED, "Trace Occurrences"])
+            w.writerow(
+                [
+                    "KPI",
+                    "Min",
+                    "Max",
+                    "Average",
+                    PROSIMOS_COL_ACCUMULATED,
+                    "Trace Occurrences",
+                ]
+            )
             w.writerow([PROSIMOS_KPI_CYCLE_TIME, "0", "0", "0", "3600.0", "100"])
         with pytest.raises(ValueError, match="Individual Task Statistics"):
             total_metrics(stats)
@@ -205,7 +228,16 @@ class TestTotalMetrics:
             w.writerow(["task_a", "not_a_number"])
             w.writerow([])
             w.writerow([PROSIMOS_SECTION_OVERALL])
-            w.writerow(["KPI", "Min", "Max", "Average", PROSIMOS_COL_ACCUMULATED, "Trace Occurrences"])
+            w.writerow(
+                [
+                    "KPI",
+                    "Min",
+                    "Max",
+                    "Average",
+                    PROSIMOS_COL_ACCUMULATED,
+                    "Trace Occurrences",
+                ]
+            )
             w.writerow([PROSIMOS_KPI_CYCLE_TIME, "0", "0", "0", "3600.0", "100"])
         with pytest.raises(ValueError, match="Non-numeric Total Cost"):
             total_metrics(stats)

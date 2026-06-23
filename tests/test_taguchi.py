@@ -78,4 +78,3 @@ class TestBuildScenarios:
         _, scenarios = build_scenarios(self._params(2), "t", "Act")
         assert scenarios[0].id == "S01"
         assert scenarios[8].id == "S09"
-

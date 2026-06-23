@@ -239,7 +239,7 @@ class TestListActivities:
 <?xml version="1.0"?>
 <bpmn:definitions xmlns:bpmn="{BPMN_NS}">
   <bpmn:process>
-    {''.join(f'<bpmn:task id="t{i}" name="{n}"/>' for i, n in enumerate(names))}
+    {"".join(f'<bpmn:task id="t{i}" name="{n}"/>' for i, n in enumerate(names))}
   </bpmn:process>
 </bpmn:definitions>"""
         path = tmp_path / "model.bpmn"
