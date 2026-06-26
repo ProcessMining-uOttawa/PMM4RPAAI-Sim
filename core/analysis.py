@@ -123,8 +123,11 @@ def signal_to_noise(
 
 def main_effects(results: pd.DataFrame, metric: Metric) -> pd.DataFrame:
     """For each factor × level: mean metric and S/N ratio."""
-    col = metric.per_case.results_column  # type: ignore[union-attr]
-    direction = metric.per_case.mean.direction  # type: ignore[union-attr]
+    if metric.per_case is None:
+        raise ValueError(f"main_effects() requires a metric with per_case data; got {metric}")
+    pc = metric.per_case
+    col = pc.results_column
+    direction = pc.mean.direction
     floor = metric.sn_floor
     rows = []
     for f in _factor_cols(results):
@@ -141,23 +144,22 @@ def main_effects(results: pd.DataFrame, metric: Metric) -> pd.DataFrame:
 
 
 def rank(agg: pd.DataFrame, goals: list[Goal]) -> pd.DataFrame:
-    """Adds per-goal '{metric}_met' columns, aggregate 'goal_met', and 'score'.
+    """Adds per-goal '{metric}_score' and '{metric}_met' columns, plus aggregate 'score'.
 
-    Per-goal columns: True when that goal's metric is at or below its target.
-    goal_met: True only when all non-zero-weight goals are individually met.
-    score: weighted sum of (metric / target) across non-zero-weight goals (lower = better).
-    Zero-weight goals are excluded from all three.
+    Per-goal score: piecewise linear 0–100 (100 = target met, 50 = at baseline, 0 = at worst).
+    Per-goal met: True when the goal's score reaches 100 (metric hits or beats target).
+    Aggregate score: min of all per-goal scores (weakest-link rule).
+    Scenarios are sorted descending by aggregate score (higher is better).
     """
     out = agg.copy()
-    scores = pd.Series(0.0, index=out.index)
-    goal_met = pd.Series(True, index=out.index)
+    per_goal_scores: list[pd.Series] = []
     for goal in goals:
-        if goal.weight == 0:
-            continue
-        per_goal = out[goal.metric].le(goal.target).fillna(False)
-        out[f"{goal.metric}_met"] = per_goal
-        scores += goal.weight * (out[goal.metric] / goal.target).fillna(float("inf"))
-        goal_met &= per_goal
-    out["goal_met"] = goal_met
-    out["score"] = scores
-    return out.sort_values(["goal_met", "score"], ascending=[False, True])
+        goal_scores = out[goal.metric].apply(goal.score)
+        out[f"{goal.metric}_score"] = goal_scores.round(1)
+        out[f"{goal.metric}_met"] = goal_scores >= 100.0
+        per_goal_scores.append(goal_scores)
+    if per_goal_scores:
+        out["score"] = pd.concat(per_goal_scores, axis=1).min(axis=1).round(1)
+    else:
+        out["score"] = 0.0
+    return out.sort_values("score", ascending=False)
