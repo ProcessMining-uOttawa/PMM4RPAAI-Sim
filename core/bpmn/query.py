@@ -26,7 +26,10 @@ def find_task_in_process(process: ET.Element, name: str) -> ET.Element | None:
 
 
 def find_task_by_name(tree: ET.ElementTree, name: str) -> ET.Element | None:
-    process = find_process(tree.getroot())
+    root = tree.getroot()
+    if root is None:
+        return None
+    process = find_process(root)
     return find_task_in_process(process, name) if process is not None else None
 
 
