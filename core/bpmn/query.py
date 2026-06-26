@@ -20,12 +20,12 @@ def list_activities(bpmn_path) -> list[str]:
     names = []
     for tag in _TASK_TAGS:
         for el in tree.findall(f".//{{{_BPMN}}}{tag}"):
-            n = el.get("name")
-            if n:
-                names.append(n)
+            name = el.get("name")
+            if name:
+                names.append(name)
     seen, out = set(), []
-    for n in names:
-        if n not in seen:
-            seen.add(n)
-            out.append(n)
+    for name in names:
+        if name not in seen:
+            seen.add(name)
+            out.append(name)
     return out
