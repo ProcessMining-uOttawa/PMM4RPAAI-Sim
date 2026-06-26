@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from ..constants import KEY_RESOURCE_PROFILES, KEY_TASK_RESOURCE_DISTRIBUTION
+from ...constants import KEY_RESOURCE_PROFILES, KEY_TASK_RESOURCE_DISTRIBUTION
 
 # ── Prosimos input JSON: schema key names (only consumed within this module and
 #    transformations.py — too coupled to put in constants.py) ─────────────────
@@ -11,9 +11,9 @@ KEY_GATEWAY_BRANCHING_PROBS = "gateway_branching_probabilities"
 
 
 def _write_distribution(entry: dict, name: str, params: list) -> None:
-    for r in entry["resources"]:
-        r["distribution_name"] = name
-        r["distribution_params"] = params
+    for resource in entry["resources"]:
+        resource["distribution_name"] = name
+        resource["distribution_params"] = params
 
 
 def set_uniform(entry: dict, mean_s: float, jitter: float = 0.05) -> None:
