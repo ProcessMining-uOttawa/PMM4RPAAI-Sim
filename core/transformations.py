@@ -19,7 +19,7 @@ from .constants import (
     F_NUM_MANUAL_RESOURCES,
     F_NUM_CASES,
 )
-from .simulation.prosimos_edit import (
+from .simulation.prosimos.editor import (
     set_uniform,
     set_fixed,
     set_resource_amount,

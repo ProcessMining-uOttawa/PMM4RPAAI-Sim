@@ -7,7 +7,7 @@ from pathlib import Path
 
 import pandas as pd
 
-from ..constants import (
+from ...constants import (
     COL_TOTAL_CYCLE_S,
     COL_TOTAL_COST,
     COL_TOTAL_REWORK_COUNT,

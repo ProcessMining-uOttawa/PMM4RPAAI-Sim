@@ -10,12 +10,8 @@ import streamlit as st
 from pathlib import Path
 
 from core import analysis, demo, orchestrator
-from core.bpmn.query import (
-    find_task_by_name,
-    list_activities,
-    task_mean_duration_s,
-    resource_selector_config,
-)
+from core.bpmn.query import find_task_by_name, list_activities
+from core.simulation.prosimos.query import resource_selector_config, task_mean_duration_s
 from core.constants import COL_MEAN_COST
 from core.taguchi import build_scenarios
 from core.goals import Goal, GOAL_IMPROVEMENT_PCT, baseline_per_case
@@ -289,7 +285,7 @@ with col1:
                         [r["name"] for r in cfg.frozen],
                         disabled=True,
                     )
-                    if cfg.frozen_pool_size is None:
+                    if cfg.fallback_pool_size is None:
                         st.warning(
                             "All resources are shared across tasks — "
                             "resource not found in profiles; pool size unknown."
@@ -299,7 +295,7 @@ with col1:
                             "All resources are shared across tasks — "
                             "Human pool size is frozen at its current value."
                         )
-                        frozen_pool_size = cfg.frozen_pool_size
+                        frozen_pool_size = cfg.fallback_pool_size
                 else:
                     if cfg.frozen:
                         st.caption(

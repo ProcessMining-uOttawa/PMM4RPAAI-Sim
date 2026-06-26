@@ -7,7 +7,7 @@ from pathlib import Path
 import pandas as pd
 import pytest
 
-from core.simulation.prosimos_csv import (
+from core.simulation.prosimos.reader import (
     _parse_section,
     _rework_metrics,
     total_metrics,

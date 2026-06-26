@@ -9,7 +9,8 @@ from typing import Callable
 
 import pandas as pd
 
-from .simulation import prosimos_csv, store
+from .simulation import store
+from .simulation.prosimos.reader import replication_metrics
 from .simulation.executor import SimulationTask, run_all
 from .constants import (
     COL_TOTAL_CYCLE_S,
@@ -177,14 +178,14 @@ def run_experiment(
         if isinstance(meta, BaselineMeta):
             baseline_reps[meta.n_cases].append(
                 dataclasses.asdict(
-                    prosimos_csv.replication_metrics(task.out_log, task.out_stat)
+                    replication_metrics(task.out_log, task.out_stat)
                 )
             )
             baseline_log_paths[meta.n_cases].append(task.out_log)
             _tick("baseline", meta.rep)
         else:  # ScenarioMeta
             m = dataclasses.asdict(
-                prosimos_csv.replication_metrics(
+                replication_metrics(
                     task.out_log,
                     task.out_stat,
                     bot_task_name=_bot_task_name,

@@ -13,11 +13,11 @@ from core.transformations import (
     BpmnTransformResult,
     XORSplitAutomation,
 )
-from core.simulation.prosimos_edit import (
+from core.simulation.prosimos.editor import (
     KEY_RESOURCE_CALENDARS,
     KEY_GATEWAY_BRANCHING_PROBS,
 )
-from core.bpmn.query import resource_pool_size
+from core.simulation.prosimos.query import resource_pool_size
 from core.bpmn import BPMN_NS
 from core.constants import (
     KEY_RESOURCE_PROFILES,
