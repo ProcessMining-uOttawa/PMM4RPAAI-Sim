@@ -310,180 +310,116 @@ class TestMainEffects:
 # ── rank ──────────────────────────────────────────────────────────────────────
 
 
+def _sib_goal(metric: str, baseline: float) -> Goal:
+    """Smaller-is-better goal with target=0.9×b, threshold=b, worst=1.1×b."""
+    from core.metrics import MetricDirection
+
+    return Goal.from_baseline(metric, baseline, MetricDirection.SMALLER_IS_BETTER)
+
+
 class TestRank:
-    def test_goals_met_flag(self):
-        agg = pd.DataFrame(
-            [
-                {"scenario_id": "S01", COL_MEAN_CYCLE_H_MEAN: 20.0},
-                {"scenario_id": "S02", COL_MEAN_CYCLE_H_MEAN: 30.0},
-            ]
-        )
-        ranked = rank(agg, [Goal(COL_MEAN_CYCLE_H_MEAN, weight=1.0, target=24.0)])
-        by_sid = ranked.set_index("scenario_id")
-        assert by_sid.loc["S01", "goal_met"]
-        assert not by_sid.loc["S02", "goal_met"]
+    def test_per_goal_score_column_added(self):
+        agg = pd.DataFrame([{"scenario_id": "S01", COL_MEAN_CYCLE_H_MEAN: 100.0}])
+        ranked = rank(agg, [_sib_goal(COL_MEAN_CYCLE_H_MEAN, 100.0)])
+        assert f"{COL_MEAN_CYCLE_H_MEAN}_score" in ranked.columns
 
-    def test_goals_met_sorted_first(self):
-        agg = pd.DataFrame(
-            [
-                {"scenario_id": "S01", COL_MEAN_CYCLE_H_MEAN: 30.0},
-                {"scenario_id": "S02", COL_MEAN_CYCLE_H_MEAN: 10.0},
-            ]
-        )
-        ranked = rank(agg, [Goal(COL_MEAN_CYCLE_H_MEAN, weight=1.0, target=24.0)])
-        assert ranked.iloc[0]["scenario_id"] == "S02"
+    def test_per_goal_met_column_added(self):
+        agg = pd.DataFrame([{"scenario_id": "S01", COL_MEAN_CYCLE_H_MEAN: 100.0}])
+        ranked = rank(agg, [_sib_goal(COL_MEAN_CYCLE_H_MEAN, 100.0)])
+        assert f"{COL_MEAN_CYCLE_H_MEAN}_met" in ranked.columns
 
-    def test_nan_treated_as_unmet(self):
+    def test_overall_score_column_added(self):
+        agg = pd.DataFrame([{"scenario_id": "S01", COL_MEAN_CYCLE_H_MEAN: 100.0}])
+        ranked = rank(agg, [_sib_goal(COL_MEAN_CYCLE_H_MEAN, 100.0)])
+        assert "score" in ranked.columns
+
+    def test_score_at_target_is_100(self):
+        # value = 0.9 × baseline → at target → score 100
+        agg = pd.DataFrame([{"scenario_id": "S01", COL_MEAN_CYCLE_H_MEAN: 90.0}])
+        ranked = rank(agg, [_sib_goal(COL_MEAN_CYCLE_H_MEAN, 100.0)])
+        assert ranked.iloc[0][f"{COL_MEAN_CYCLE_H_MEAN}_score"] == pytest.approx(100.0)
+
+    def test_score_at_threshold_is_50(self):
+        # value = baseline → at threshold → score 50
+        agg = pd.DataFrame([{"scenario_id": "S01", COL_MEAN_CYCLE_H_MEAN: 100.0}])
+        ranked = rank(agg, [_sib_goal(COL_MEAN_CYCLE_H_MEAN, 100.0)])
+        assert ranked.iloc[0][f"{COL_MEAN_CYCLE_H_MEAN}_score"] == pytest.approx(50.0)
+
+    def test_score_at_worst_is_0(self):
+        # value = 1.1 × baseline → at worst → score 0
+        agg = pd.DataFrame([{"scenario_id": "S01", COL_MEAN_CYCLE_H_MEAN: 110.0}])
+        ranked = rank(agg, [_sib_goal(COL_MEAN_CYCLE_H_MEAN, 100.0)])
+        assert ranked.iloc[0][f"{COL_MEAN_CYCLE_H_MEAN}_score"] == pytest.approx(0.0)
+
+    def test_met_true_when_at_target(self):
+        agg = pd.DataFrame([{"scenario_id": "S01", COL_MEAN_CYCLE_H_MEAN: 90.0}])
+        ranked = rank(agg, [_sib_goal(COL_MEAN_CYCLE_H_MEAN, 100.0)])
+        assert ranked.iloc[0][f"{COL_MEAN_CYCLE_H_MEAN}_met"]
+
+    def test_met_false_when_at_threshold(self):
+        agg = pd.DataFrame([{"scenario_id": "S01", COL_MEAN_CYCLE_H_MEAN: 100.0}])
+        ranked = rank(agg, [_sib_goal(COL_MEAN_CYCLE_H_MEAN, 100.0)])
+        assert not ranked.iloc[0][f"{COL_MEAN_CYCLE_H_MEAN}_met"]
+
+    def test_nan_gets_score_0(self):
         agg = pd.DataFrame(
             [{"scenario_id": "S01", COL_MEAN_CYCLE_H_MEAN: float("nan")}]
         )
-        ranked = rank(agg, [Goal(COL_MEAN_CYCLE_H_MEAN, weight=1.0, target=24.0)])
-        assert not ranked.iloc[0]["goal_met"]
+        ranked = rank(agg, [_sib_goal(COL_MEAN_CYCLE_H_MEAN, 100.0)])
+        assert ranked.iloc[0][f"{COL_MEAN_CYCLE_H_MEAN}_score"] == pytest.approx(0.0)
+        assert not ranked.iloc[0][f"{COL_MEAN_CYCLE_H_MEAN}_met"]
 
-    def test_cost_mean_metric(self):
-        agg = pd.DataFrame(
-            [
-                {"scenario_id": "S01", COL_MEAN_COST_MEAN: 10.0},
-                {"scenario_id": "S02", COL_MEAN_COST_MEAN: 30.0},
-            ]
-        )
-        ranked = rank(agg, [Goal(COL_MEAN_COST_MEAN, weight=1.0, target=20.0)])
-        by_sid = ranked.set_index("scenario_id")
-        assert by_sid.loc["S01", "goal_met"]
-        assert not by_sid.loc["S02", "goal_met"]
-
-    def test_score_is_weighted_ratio(self):
-        agg = pd.DataFrame([{"scenario_id": "S01", COL_MEAN_CYCLE_H_MEAN: 20.0}])
-        ranked = rank(agg, [Goal(COL_MEAN_CYCLE_H_MEAN, weight=1.0, target=40.0)])
-        assert ranked.iloc[0]["score"] == pytest.approx(0.5)
-
-    def test_multiple_goals_all_met(self):
+    def test_overall_score_is_min_of_per_goal_scores(self):
+        # Goal 1: value=90 (at target) → score 100
+        # Goal 2: value=100 (at threshold) → score 50
+        # Overall score = min(100, 50) = 50
         agg = pd.DataFrame(
             [
                 {
                     "scenario_id": "S01",
-                    COL_MEAN_CYCLE_H_MEAN: 20.0,
-                    COL_MEAN_COST_MEAN: 10.0,
-                }
-            ]
-        )
-        goals = [
-            Goal(COL_MEAN_CYCLE_H_MEAN, weight=0.5, target=24.0),
-            Goal(COL_MEAN_COST_MEAN, weight=0.5, target=12.0),
-        ]
-        assert rank(agg, goals).iloc[0]["goal_met"]
-
-    def test_multiple_goals_partial_met(self):
-        agg = pd.DataFrame(
-            [
-                {
-                    "scenario_id": "S01",
-                    COL_MEAN_CYCLE_H_MEAN: 20.0,
-                    COL_MEAN_COST_MEAN: 15.0,
-                }
-            ]
-        )
-        goals = [
-            Goal(COL_MEAN_CYCLE_H_MEAN, weight=0.5, target=24.0),
-            Goal(COL_MEAN_COST_MEAN, weight=0.5, target=12.0),  # not met
-        ]
-        assert not rank(agg, goals).iloc[0]["goal_met"]
-
-    def test_weighted_score(self):
-        agg = pd.DataFrame(
-            [
-                {
-                    "scenario_id": "S01",
-                    COL_MEAN_CYCLE_H_MEAN: 20.0,
-                    COL_MEAN_COST_MEAN: 10.0,
-                }
-            ]
-        )
-        goals = [
-            Goal(COL_MEAN_CYCLE_H_MEAN, weight=0.6, target=40.0),  # 0.6 * 0.5 = 0.30
-            Goal(COL_MEAN_COST_MEAN, weight=0.4, target=20.0),  # 0.4 * 0.5 = 0.20
-        ]
-        assert rank(agg, goals).iloc[0]["score"] == pytest.approx(0.5)
-
-    def test_zero_weight_excluded_from_score_and_goal_met(self):
-        agg = pd.DataFrame(
-            [
-                {
-                    "scenario_id": "S01",
-                    COL_MEAN_CYCLE_H_MEAN: 20.0,
+                    COL_MEAN_CYCLE_H_MEAN: 90.0,
                     COL_MEAN_COST_MEAN: 100.0,
                 }
             ]
         )
         goals = [
-            Goal(COL_MEAN_CYCLE_H_MEAN, weight=1.0, target=24.0),
-            Goal(COL_MEAN_COST_MEAN, weight=0.0, target=12.0),  # excluded
+            _sib_goal(COL_MEAN_CYCLE_H_MEAN, 100.0),
+            _sib_goal(COL_MEAN_COST_MEAN, 100.0),
         ]
-        assert rank(agg, goals).iloc[0]["goal_met"]
+        ranked = rank(agg, goals)
+        assert ranked.iloc[0]["score"] == pytest.approx(50.0)
 
-    def test_rework_rate_goal(self):
+    def test_sorted_descending_by_score(self):
+        # S01: at threshold (score 50); S02: at target (score 100) → S02 ranked first
         agg = pd.DataFrame(
             [
-                {"scenario_id": "S01", COL_REWORK_RATE_MEAN: 4.0},
-                {"scenario_id": "S02", COL_REWORK_RATE_MEAN: 0.0},
+                {"scenario_id": "S01", COL_MEAN_CYCLE_H_MEAN: 100.0},
+                {"scenario_id": "S02", COL_MEAN_CYCLE_H_MEAN: 90.0},
             ]
         )
-        ranked = rank(agg, [Goal(COL_REWORK_RATE_MEAN, weight=1.0, target=5.0)])
-        by_sid = ranked.set_index("scenario_id")
-        assert by_sid.loc["S01", "goal_met"]
-        assert by_sid.loc["S02", "goal_met"]
+        ranked = rank(agg, [_sib_goal(COL_MEAN_CYCLE_H_MEAN, 100.0)])
         assert ranked.iloc[0]["scenario_id"] == "S02"
 
-    def test_per_goal_met_column_added(self):
-        agg = pd.DataFrame([{"scenario_id": "S01", COL_MEAN_CYCLE_H_MEAN: 20.0}])
-        ranked = rank(agg, [Goal(COL_MEAN_CYCLE_H_MEAN, weight=1.0, target=24.0)])
-        assert f"{COL_MEAN_CYCLE_H_MEAN}_met" in ranked.columns
-
-    def test_per_goal_met_values(self):
-        agg = pd.DataFrame(
-            [
-                {"scenario_id": "S01", COL_MEAN_CYCLE_H_MEAN: 20.0},
-                {"scenario_id": "S02", COL_MEAN_CYCLE_H_MEAN: 30.0},
-            ]
-        )
-        ranked = rank(agg, [Goal(COL_MEAN_CYCLE_H_MEAN, weight=1.0, target=24.0)])
-        by_sid = ranked.set_index("scenario_id")
-        assert by_sid.loc["S01", f"{COL_MEAN_CYCLE_H_MEAN}_met"]
-        assert not by_sid.loc["S02", f"{COL_MEAN_CYCLE_H_MEAN}_met"]
-
-    def test_per_goal_met_independent_of_aggregate(self):
+    def test_per_goal_met_independent_across_goals(self):
+        # S01 meets cycle time but not cost
         agg = pd.DataFrame(
             [
                 {
                     "scenario_id": "S01",
-                    COL_MEAN_CYCLE_H_MEAN: 20.0,
-                    COL_MEAN_COST_MEAN: 15.0,
+                    COL_MEAN_CYCLE_H_MEAN: 90.0,
+                    COL_MEAN_COST_MEAN: 100.0,
                 }
             ]
         )
         goals = [
-            Goal(COL_MEAN_CYCLE_H_MEAN, weight=0.5, target=24.0),
-            Goal(COL_MEAN_COST_MEAN, weight=0.5, target=12.0),
+            _sib_goal(COL_MEAN_CYCLE_H_MEAN, 100.0),  # met (value at target)
+            _sib_goal(COL_MEAN_COST_MEAN, 100.0),  # not met (value at threshold)
         ]
         ranked = rank(agg, goals)
         assert ranked.iloc[0][f"{COL_MEAN_CYCLE_H_MEAN}_met"]
         assert not ranked.iloc[0][f"{COL_MEAN_COST_MEAN}_met"]
-        assert not ranked.iloc[0]["goal_met"]
 
-    def test_zero_weight_goal_has_no_per_goal_column(self):
-        agg = pd.DataFrame(
-            [
-                {
-                    "scenario_id": "S01",
-                    COL_MEAN_CYCLE_H_MEAN: 20.0,
-                    COL_MEAN_COST_MEAN: 100.0,
-                }
-            ]
-        )
-        goals = [
-            Goal(COL_MEAN_CYCLE_H_MEAN, weight=1.0, target=24.0),
-            Goal(COL_MEAN_COST_MEAN, weight=0.0, target=12.0),
-        ]
-        ranked = rank(agg, goals)
-        assert f"{COL_MEAN_CYCLE_H_MEAN}_met" in ranked.columns
-        assert f"{COL_MEAN_COST_MEAN}_met" not in ranked.columns
+    def test_empty_goals_produces_zero_score(self):
+        agg = pd.DataFrame([{"scenario_id": "S01", COL_MEAN_CYCLE_H_MEAN: 90.0}])
+        ranked = rank(agg, [])
+        assert ranked.iloc[0]["score"] == pytest.approx(0.0)

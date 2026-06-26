@@ -65,6 +65,15 @@ class Metric:
     def per_case_display_name(self) -> str | None:
         return self.per_case.mean.display_name if self.per_case else None
 
+    @property
+    def per_case_compact_label(self) -> str | None:
+        """short_label when available, falling back to display_name."""
+        return (
+            (self.per_case.mean.short_label or self.per_case.mean.display_name)
+            if self.per_case
+            else None
+        )
+
 
 class MetricRegistry:
     CYCLE_TIME: Metric = Metric(

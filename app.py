@@ -18,13 +18,13 @@ from core.bpmn.query import (
 )
 from core.constants import COL_MEAN_COST
 from core.taguchi import build_scenarios
-from core.goals import Goal, baseline_per_case
-from core.metrics import MetricRegistry
+from core.goals import Goal, GOAL_IMPROVEMENT_PCT, baseline_per_case
+from core.metrics import Metric, MetricRegistry
 from core.simulation import runner, store
 from core.transformations import REGISTRY
 
 from ui import preflight
-from ui.goals import GOAL_OPTIONS
+from ui.goals import GOAL_METRICS
 from ui.plots import factor_label_map, main_effects_chart
 from ui.run_manager import (
     start_experiment,
@@ -199,11 +199,14 @@ with st.sidebar:
             _clear_log()
             st.rerun()
 
-    _goal_specs: list[tuple[str, float, float]] = []  # (col, pct, weight)
+    _goal_specs: list[Metric] = []
     if ss.activities:
         st.divider()
         st.subheader("Goals")
-        _all_metrics = list(GOAL_OPTIONS.keys())
+        st.caption(
+            f"Scoring: 100 = target (±{GOAL_IMPROVEMENT_PCT} % vs baseline), "
+            f"50 = baseline, 0 = worst"
+        )
         _n_goals = st.radio(
             "Goals",
             [1, 2, 3],
@@ -213,89 +216,21 @@ with st.sidebar:
             label_visibility="collapsed",
         )
 
-        if _n_goals == 1:
-            _k = "goal_metric_0"
-            if ss.get(_k) not in _all_metrics:
-                ss[_k] = _all_metrics[0]
+        _chosen: list[Metric] = []
+        for _i in range(_n_goals):
+            _avail = [m for m in GOAL_METRICS if m not in _chosen]
+            _k = f"goal_metric_{_i}"
+            if ss.get(_k) not in _avail:
+                ss[_k] = _avail[0]
             _m = st.selectbox(
-                "Metric",
-                options=_all_metrics,
+                f"Goal {_i + 1}",
+                options=_avail,
                 format_func=lambda m: m.per_case_display_name,
                 key=_k,
                 label_visibility="collapsed",
             )
-            _opt = GOAL_OPTIONS[_m]
-            _pct = st.number_input(
-                "Reduction (%)",
-                value=_opt.default_pct,
-                min_value=0.0,
-                max_value=99.0,
-                step=_opt.step,
-                key=f"goal_pct_{_m.per_case_column}",
-            )
-            _goal_specs.append((_m.per_case_column, _pct, 1.0))
-
-        else:  # 2 or 3 goals
-            if _n_goals == 2:
-                _w = st.slider(
-                    "Goal 1 weight",
-                    min_value=0.0,
-                    max_value=1.0,
-                    value=0.5,
-                    step=0.05,
-                    key="goal_weight_2",
-                )
-            _cols_hdr = st.columns([3, 2, 1.5])
-            _cols_hdr[0].caption("Metric")
-            _cols_hdr[1].caption("Reduction (%)")
-            _cols_hdr[2].caption("Weight")
-            _chosen: list = []
-            for _i in range(_n_goals):
-                _avail = [m for m in _all_metrics if m not in _chosen]
-                _k = f"goal_metric_{_i}"
-                if ss.get(_k) not in _avail:
-                    ss[_k] = _avail[0]
-                _row = st.columns([3, 2, 1.5])
-                _m = _row[0].selectbox(
-                    f"Goal {_i + 1}",
-                    options=_avail,
-                    format_func=lambda m: m.per_case_display_name,
-                    key=_k,
-                    label_visibility="collapsed",
-                )
-                _chosen.append(_m)
-                _opt = GOAL_OPTIONS[_m]
-                _gcol = _m.per_case_column
-                _pct = _row[1].number_input(
-                    f"pct_{_gcol}",
-                    value=_opt.default_pct,
-                    min_value=0.0,
-                    max_value=99.0,
-                    step=_opt.step,
-                    key=f"goal_pct_{_gcol}",
-                    label_visibility="collapsed",
-                )
-                if _n_goals == 2:
-                    _this_wt = _w if _i == 0 else round(1.0 - _w, 2)
-                    _row[2].markdown(f"**{_this_wt:.2f}**")
-                else:
-                    _this_wt = _row[2].number_input(
-                        f"wt_{_gcol}",
-                        value=_opt.default_weight,
-                        min_value=0.0,
-                        max_value=1.0,
-                        step=0.05,
-                        key=f"goal_weight_{_gcol}",
-                        label_visibility="collapsed",
-                    )
-                _goal_specs.append((_gcol, _pct, _this_wt))
-
-            if _n_goals == 3:
-                _weight_sum = sum(wt for _, _, wt in _goal_specs)
-                if abs(_weight_sum - 1.0) > 0.01:
-                    st.warning(
-                        f"Weights sum to {_weight_sum:.2f} — scores will be skewed unless they sum to 1."
-                    )
+            _chosen.append(_m)
+            _goal_specs.append(_m)
 
     st.divider()
     st.subheader("Run config")
@@ -540,20 +475,17 @@ if ss.results is not None:
         _baseline = baseline_per_case(
             ss.baseline_agg if ss.baseline_agg is not None else demo.demo_baseline_agg()
         )
-        goals = [
-            Goal.from_pct_reduction(col, wt, pct, _baseline[col])
-            for col, pct, wt in _goal_specs
-        ]
+        goals = [Goal.from_metric(_m, _baseline) for _m in _goal_specs]
         ranked = analysis.rank(agg, goals)
         show_factors = st.checkbox(
             "Show Taguchi factors", value=False, key="show_factors"
         )
         st.dataframe(
-            prepare_ranked_display(ranked, goals, params, show_factors),
+            prepare_ranked_display(ranked, _goal_specs, params, show_factors),
             use_container_width=True,
             hide_index=True,
         )
-        st.markdown("###### Main effects (smaller is better)")
+        st.markdown("###### Main effects")
         label_map = factor_label_map(params)
         _me_metrics = MetricRegistry.rankable()
         _tabs = st.tabs([m.per_case_display_name for m in _me_metrics])
@@ -634,7 +566,7 @@ if ss.results is not None:
         )
 
     baseline_agg = ss.get("baseline_agg")
-    if baseline_agg:
+    if baseline_agg is not None:
         with st.container(border=True):
             st.markdown("##### 5 · Baseline comparison")
             st.caption(
