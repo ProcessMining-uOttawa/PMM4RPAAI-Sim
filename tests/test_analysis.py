@@ -362,7 +362,9 @@ class TestRank:
         assert not ranked.iloc[0][f"{COL_MEAN_CYCLE_H_MEAN}_met"]
 
     def test_nan_gets_score_0(self):
-        agg = pd.DataFrame([{"scenario_id": "S01", COL_MEAN_CYCLE_H_MEAN: float("nan")}])
+        agg = pd.DataFrame(
+            [{"scenario_id": "S01", COL_MEAN_CYCLE_H_MEAN: float("nan")}]
+        )
         ranked = rank(agg, [_sib_goal(COL_MEAN_CYCLE_H_MEAN, 100.0)])
         assert ranked.iloc[0][f"{COL_MEAN_CYCLE_H_MEAN}_score"] == pytest.approx(0.0)
         assert not ranked.iloc[0][f"{COL_MEAN_CYCLE_H_MEAN}_met"]
@@ -372,7 +374,13 @@ class TestRank:
         # Goal 2: value=100 (at threshold) → score 50
         # Overall score = min(100, 50) = 50
         agg = pd.DataFrame(
-            [{"scenario_id": "S01", COL_MEAN_CYCLE_H_MEAN: 90.0, COL_MEAN_COST_MEAN: 100.0}]
+            [
+                {
+                    "scenario_id": "S01",
+                    COL_MEAN_CYCLE_H_MEAN: 90.0,
+                    COL_MEAN_COST_MEAN: 100.0,
+                }
+            ]
         )
         goals = [
             _sib_goal(COL_MEAN_CYCLE_H_MEAN, 100.0),
@@ -395,11 +403,17 @@ class TestRank:
     def test_per_goal_met_independent_across_goals(self):
         # S01 meets cycle time but not cost
         agg = pd.DataFrame(
-            [{"scenario_id": "S01", COL_MEAN_CYCLE_H_MEAN: 90.0, COL_MEAN_COST_MEAN: 100.0}]
+            [
+                {
+                    "scenario_id": "S01",
+                    COL_MEAN_CYCLE_H_MEAN: 90.0,
+                    COL_MEAN_COST_MEAN: 100.0,
+                }
+            ]
         )
         goals = [
             _sib_goal(COL_MEAN_CYCLE_H_MEAN, 100.0),  # met (value at target)
-            _sib_goal(COL_MEAN_COST_MEAN, 100.0),      # not met (value at threshold)
+            _sib_goal(COL_MEAN_COST_MEAN, 100.0),  # not met (value at threshold)
         ]
         ranked = rank(agg, goals)
         assert ranked.iloc[0][f"{COL_MEAN_CYCLE_H_MEAN}_met"]

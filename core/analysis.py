@@ -124,7 +124,9 @@ def signal_to_noise(
 def main_effects(results: pd.DataFrame, metric: Metric) -> pd.DataFrame:
     """For each factor × level: mean metric and S/N ratio."""
     if metric.per_case is None:
-        raise ValueError(f"main_effects() requires a metric with per_case data; got {metric}")
+        raise ValueError(
+            f"main_effects() requires a metric with per_case data; got {metric}"
+        )
     pc = metric.per_case
     col = pc.results_column
     direction = pc.mean.direction

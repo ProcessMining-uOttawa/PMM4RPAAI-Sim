@@ -20,7 +20,11 @@ from core.constants import (
 
 class TestFromMetric:
     def test_delegates_to_from_baseline_correctly(self):
-        baseline = {"mean_cycle_h_mean": 100.0, "mean_cost_mean": 50.0, "rework_rate_mean": 5.0}
+        baseline = {
+            "mean_cycle_h_mean": 100.0,
+            "mean_cost_mean": 50.0,
+            "rework_rate_mean": 5.0,
+        }
         goal = Goal.from_metric(MetricRegistry.CYCLE_TIME, baseline)
         assert goal.metric == "mean_cycle_h_mean"
         assert goal.target == pytest.approx(90.0)
@@ -62,7 +66,9 @@ class TestFromBaseline:
         assert goal.worst == pytest.approx(90.0)
 
     def test_metric_name_preserved(self):
-        goal = Goal.from_baseline("mean_cycle_h_mean", 10.0, MetricDirection.SMALLER_IS_BETTER)
+        goal = Goal.from_baseline(
+            "mean_cycle_h_mean", 10.0, MetricDirection.SMALLER_IS_BETTER
+        )
         assert goal.metric == "mean_cycle_h_mean"
 
     def test_zero_baseline_produces_all_zero_breakpoints(self):

@@ -27,14 +27,18 @@ def prepare_ranked_display(
 
     for m in MetricRegistry.rankable():
         col_r, name_r = m.per_case_column, m.per_case_display_name
-        assert col_r is not None and name_r is not None  # rankable() guarantees per_case
+        assert (
+            col_r is not None and name_r is not None
+        )  # rankable() guarantees per_case
         include.append((col_r, name_r))
 
     met_cols: list[str] = []
     for m in goal_metrics:
         col = m.per_case_column
         label = m.per_case_compact_label
-        assert col is not None and label is not None  # goal_metrics are rankable metrics with per_case
+        assert (
+            col is not None and label is not None
+        )  # goal_metrics are rankable metrics with per_case
         met_col = f"{col}_met"
         include.append((f"{col}_score", f"{label} Score"))
         include.append((met_col, f"{label} ✓"))
