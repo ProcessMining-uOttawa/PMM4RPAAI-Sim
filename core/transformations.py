@@ -449,11 +449,39 @@ class XORSplitAutomation(Transformation):
 
         # 1. Add all new elements in free space below the existing diagram.
         lo = _xor_bypass_layout(root, ids)
-        add_task_el(root, process, ShapeSpec(ids.bot_id, f"Auto {T_name}", *lo[ids.bot_id], TASK_W, TASK_H))
-        add_xor_el(root, process, ShapeSpec(ids.automation_gate, GW1_NAME, *lo[ids.automation_gate], GW_W, GW_H))
-        add_xor_el(root, process, ShapeSpec(ids.bot_result_gate, GW2_NAME, *lo[ids.bot_result_gate], GW_W, GW_H))
-        add_xor_el(root, process, ShapeSpec(ids.fallback_merge, GW3_NAME, *lo[ids.fallback_merge], GW_W, GW_H))
-        add_xor_el(root, process, ShapeSpec(ids.final_join_gate, GW4_NAME, *lo[ids.final_join_gate], GW_W, GW_H))
+        add_task_el(
+            root,
+            process,
+            ShapeSpec(ids.bot_id, f"Auto {T_name}", *lo[ids.bot_id], TASK_W, TASK_H),
+        )
+        add_xor_el(
+            root,
+            process,
+            ShapeSpec(
+                ids.automation_gate, GW1_NAME, *lo[ids.automation_gate], GW_W, GW_H
+            ),
+        )
+        add_xor_el(
+            root,
+            process,
+            ShapeSpec(
+                ids.bot_result_gate, GW2_NAME, *lo[ids.bot_result_gate], GW_W, GW_H
+            ),
+        )
+        add_xor_el(
+            root,
+            process,
+            ShapeSpec(
+                ids.fallback_merge, GW3_NAME, *lo[ids.fallback_merge], GW_W, GW_H
+            ),
+        )
+        add_xor_el(
+            root,
+            process,
+            ShapeSpec(
+                ids.final_join_gate, GW4_NAME, *lo[ids.final_join_gate], GW_W, GW_H
+            ),
+        )
 
         # 2. Redirect boundary flows.
         # out_flow already originates from the original task, so we reuse it as
@@ -462,13 +490,52 @@ class XORSplitAutomation(Transformation):
         update_flow_target(root, process, out_flow_id, ids.final_join_gate)
 
         # 3. Wire the seven internal flows
-        add_flow_el(root, process, FlowSpec(ids.automation_branch, ids.automation_gate, ids.bot_id, BOT_BRANCH_LABEL))
-        add_flow_el(root, process, FlowSpec(ids.manual_branch, ids.automation_gate, ids.fallback_merge, HUMAN_BRANCH_LABEL))
-        add_flow_el(root, process, FlowSpec(ids.bot_output, ids.bot_id, ids.bot_result_gate))
-        add_flow_el(root, process, FlowSpec(ids.bot_success, ids.bot_result_gate, ids.final_join_gate, BOT_SUCCESS_LABEL))
-        add_flow_el(root, process, FlowSpec(ids.bot_failure, ids.bot_result_gate, ids.fallback_merge, BOT_FAILURE_LABEL))
+        add_flow_el(
+            root,
+            process,
+            FlowSpec(
+                ids.automation_branch, ids.automation_gate, ids.bot_id, BOT_BRANCH_LABEL
+            ),
+        )
+        add_flow_el(
+            root,
+            process,
+            FlowSpec(
+                ids.manual_branch,
+                ids.automation_gate,
+                ids.fallback_merge,
+                HUMAN_BRANCH_LABEL,
+            ),
+        )
+        add_flow_el(
+            root, process, FlowSpec(ids.bot_output, ids.bot_id, ids.bot_result_gate)
+        )
+        add_flow_el(
+            root,
+            process,
+            FlowSpec(
+                ids.bot_success,
+                ids.bot_result_gate,
+                ids.final_join_gate,
+                BOT_SUCCESS_LABEL,
+            ),
+        )
+        add_flow_el(
+            root,
+            process,
+            FlowSpec(
+                ids.bot_failure,
+                ids.bot_result_gate,
+                ids.fallback_merge,
+                BOT_FAILURE_LABEL,
+            ),
+        )
         add_flow_el(root, process, FlowSpec(ids.to_human, ids.fallback_merge, T_id))
-        add_flow_el(root, process, FlowSpec(ids.exit_flow, ids.final_join_gate, original_next_id))
+        add_flow_el(
+            root,
+            process,
+            FlowSpec(ids.exit_flow, ids.final_join_gate, original_next_id),
+        )
 
         tree.write(str(bpmn_out), xml_declaration=True, encoding="utf-8")
         return bpmn_out, ids

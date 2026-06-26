@@ -128,19 +128,27 @@ class TestAddShape:
 class TestAddTaskEl:
     def test_adds_task_element_to_process(self):
         root, process, _ = _parse()
-        add_task_el(root, process, ShapeSpec("t_new", "New Task", 200, 200, TASK_W, TASK_H))
+        add_task_el(
+            root, process, ShapeSpec("t_new", "New Task", 200, 200, TASK_W, TASK_H)
+        )
         el = process.find(f"{{{_BPMN_NS}}}task[@id='t_new']")
         assert el is not None
         assert el.get("name") == "New Task"
 
     def test_adds_shape_to_plane(self):
         root, process, plane = _parse()
-        add_task_el(root, process, ShapeSpec("t_new", "New Task", 200, 200, TASK_W, TASK_H))
-        assert plane.find(f"{{{_BPMNDI_NS}}}BPMNShape[@bpmnElement='t_new']") is not None
+        add_task_el(
+            root, process, ShapeSpec("t_new", "New Task", 200, 200, TASK_W, TASK_H)
+        )
+        assert (
+            plane.find(f"{{{_BPMNDI_NS}}}BPMNShape[@bpmnElement='t_new']") is not None
+        )
 
     def test_shape_uses_spec_dimensions(self):
         root, process, plane = _parse()
-        add_task_el(root, process, ShapeSpec("t_new", "New Task", 50, 75, TASK_W, TASK_H))
+        add_task_el(
+            root, process, ShapeSpec("t_new", "New Task", 50, 75, TASK_W, TASK_H)
+        )
         bounds = plane.find(
             f"{{{_BPMNDI_NS}}}BPMNShape[@bpmnElement='t_new']/{{{_DC_NS}}}Bounds"
         )
@@ -152,7 +160,9 @@ class TestAddTaskEl:
     def test_no_op_when_no_plane(self):
         root, process, _ = _parse(_BPMN_XML_NO_DI)
         children_before = list(process)
-        add_task_el(root, process, ShapeSpec("t_new", "New Task", 200, 200, TASK_W, TASK_H))
+        add_task_el(
+            root, process, ShapeSpec("t_new", "New Task", 200, 200, TASK_W, TASK_H)
+        )
         assert list(process) == children_before
 
 

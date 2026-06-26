@@ -72,7 +72,9 @@ def _get_shape_bounds(root: ET.Element, element_id: str) -> dict | None:
         if shape.get("bpmnElement") == element_id:
             bounds = shape.find(f"{{{_DC}}}Bounds")
             if bounds is not None:
-                return {k: float(bounds.get(k, 0)) for k in ("x", "y", "width", "height")}
+                return {
+                    k: float(bounds.get(k, 0)) for k in ("x", "y", "width", "height")
+                }
             return None
     return None
 
@@ -84,7 +86,10 @@ def _waypoints_between(
     tgt_bounds = _get_shape_bounds(root, tgt_id)
     if src_bounds and tgt_bounds:
         return [
-            (src_bounds["x"] + src_bounds["width"], src_bounds["y"] + src_bounds["height"] / 2),
+            (
+                src_bounds["x"] + src_bounds["width"],
+                src_bounds["y"] + src_bounds["height"] / 2,
+            ),
             (tgt_bounds["x"], tgt_bounds["y"] + tgt_bounds["height"] / 2),
         ]
     return [(300.0, 120.0), (400.0, 120.0)]
