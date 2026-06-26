@@ -41,7 +41,6 @@ def prepare_ranked_display(
         )  # goal_metrics are rankable metrics with per_case
         met_col = f"{col}_met"
         include.append((f"{col}_score", f"{label} Score"))
-        include.append((met_col, f"{label} ✓"))
         met_cols.append(met_col)
 
     include.append(("score", "Overall Score"))
