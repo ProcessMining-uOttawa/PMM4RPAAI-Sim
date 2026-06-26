@@ -11,7 +11,10 @@ from pathlib import Path
 
 from core import analysis, demo, orchestrator
 from core.bpmn.query import find_task_by_name, list_activities
-from core.simulation.prosimos.query import resource_selector_config, task_mean_duration_s
+from core.simulation.prosimos.query import (
+    resource_selector_config,
+    task_mean_duration_s,
+)
 from core.constants import COL_MEAN_COST
 from core.taguchi import build_scenarios
 from core.goals import Goal, GOAL_IMPROVEMENT_PCT, baseline_per_case

@@ -177,9 +177,7 @@ def run_experiment(
         assert task.out_stat is not None
         if isinstance(meta, BaselineMeta):
             baseline_reps[meta.n_cases].append(
-                dataclasses.asdict(
-                    replication_metrics(task.out_log, task.out_stat)
-                )
+                dataclasses.asdict(replication_metrics(task.out_log, task.out_stat))
             )
             baseline_log_paths[meta.n_cases].append(task.out_log)
             _tick("baseline", meta.rep)
