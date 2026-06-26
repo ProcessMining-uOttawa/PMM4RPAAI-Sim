@@ -3,7 +3,6 @@
 from __future__ import annotations
 from .parameters import Parameter, Scenario
 
-
 # Standard Taguchi orthogonal arrays for 3-level factors (0-indexed levels).
 # L9 (3^4): up to 4 factors.
 L9 = [
@@ -71,6 +70,10 @@ L27 = [
 
 
 def pick_array(n_factors: int):
+    if n_factors < 0:
+        raise ValueError(f"n_factors must be non-negative; got {n_factors}.")
+    if n_factors == 0:
+        return "L1", [[]], 0
     if n_factors <= 4:
         return "L9", L9, 4
     if n_factors <= 7:
@@ -87,17 +90,6 @@ def build_scenarios(
 ) -> tuple[str, list[Scenario]]:
     active = [p for p in parameters if not p.frozen]
     frozen = [p for p in parameters if p.frozen]
-
-    if not active:
-        vals = {p.id: p.levels[0] for p in frozen}
-        return "L1", [
-            Scenario(
-                id="S01",
-                values=vals,
-                transformation_id=transformation_id,
-                target_activity=target_activity,
-            )
-        ]
 
     name, array, _ = pick_array(len(active))
     scenarios = []
