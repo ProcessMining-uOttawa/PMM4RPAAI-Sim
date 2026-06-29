@@ -174,6 +174,9 @@ with st.sidebar:
             ss.activities = list_activities(ss.bpmn_path)
             ss.discovering = False
         else:
+            # Non-demo discovery is only reached via needs_discovery's first
+            # disjunct, which requires a truthy upload (demo_mode is False here).
+            assert uploaded is not None
             if not preflight_ok:
                 ss.discovering = False
                 ss.log_fingerprint = None
@@ -186,13 +189,13 @@ with st.sidebar:
                 "Running Simod discovery (~2 min for 100k events)…", expanded=True
             ) as s:
                 try:
-                    bpmn, params = runner.discover(
+                    bpmn, params_path = runner.discover(
                         log_path,
                         run_dir,
                         java_home=java_home,
                         proc_log=store.discovery_log(run_dir),
                     )
-                    ss.bpmn_path, ss.json_path = bpmn, params
+                    ss.bpmn_path, ss.json_path = bpmn, params_path
                     ss.activities = list_activities(bpmn)
                     ss.log_name, ss.log_path = uploaded.name, log_path
                     s.update(
@@ -428,6 +431,8 @@ def _panel3() -> None:
                 elif _rs.outcome.error is not None:
                     st.toast(f"Simulation failed: {_rs.outcome.error}", icon="❌")
                 else:
+                    # Not cancelled and no error → result is set (RunOutcome invariant).
+                    assert _rs.outcome.result is not None
                     commit_result(ss, _rs.outcome.result)
                     st.toast(f"Completed {total_runs} simulations.", icon="✅")
                 clear_run(ss)
@@ -524,17 +529,26 @@ if ss.results is not None:
         st.markdown("###### Main effects")
         label_map = factor_label_map(params)
         _me_metrics = MetricRegistry.rankable()
-        _tabs = st.tabs([m.per_case_display_name for m in _me_metrics])
-        for _tab, _metric in zip(_tabs, _me_metrics):
+        # rankable() guarantees per_case is set, so per_case_display_name is non-None.
+        _me_labels: list[str] = []
+        for _m in _me_metrics:
+            assert _m.per_case_display_name is not None
+            _me_labels.append(_m.per_case_display_name)
+        _tabs = st.tabs(_me_labels)
+        for _tab, _metric, _label in zip(_tabs, _me_metrics, _me_labels):
             with _tab:
                 me = analysis.main_effects(ss.results, _metric)
                 st.plotly_chart(
-                    main_effects_chart(me, label_map, _metric.per_case_display_name),
+                    main_effects_chart(me, label_map, _label),
                     use_container_width=True,
                 )
 
-        bpmn_path = ss.get("experiment_bpmn_path")
-        bpmn_exists = bpmn_path and Path(bpmn_path).exists()
+        _raw_bpmn_path = ss.get("experiment_bpmn_path")
+        bpmn_file: Path | None = (
+            Path(_raw_bpmn_path)
+            if _raw_bpmn_path and Path(_raw_bpmn_path).exists()
+            else None
+        )
         json_paths = {
             sid: Path(p)
             for sid, p in ss.get("scenario_json_paths", {}).items()
@@ -573,11 +587,11 @@ if ss.results is not None:
         )
         col_bpmn.download_button(
             "⬇ BPMN",
-            data=Path(bpmn_path).read_bytes() if bpmn_exists else b"",
+            data=bpmn_file.read_bytes() if bpmn_file else b"",
             file_name="model.bpmn",
             mime="application/xml",
             use_container_width=True,
-            disabled=not bpmn_exists,
+            disabled=bpmn_file is None,
         )
         _slp = ss.scenario_log_paths
         _blp = ss.baseline_log_paths
@@ -592,13 +606,13 @@ if ss.results is not None:
         )
         col_all.download_button(
             "⬇ Model (ZIP)",
-            data=store.group_zip(Path(bpmn_path), json_paths, stats_csv)
-            if (bpmn_exists and json_paths)
+            data=store.group_zip(bpmn_file, json_paths, stats_csv)
+            if (bpmn_file and json_paths)
             else b"",
             file_name="export.zip",
             mime="application/zip",
             use_container_width=True,
-            disabled=not (bpmn_exists and json_paths),
+            disabled=not (bpmn_file and json_paths),
         )
 
     baseline_agg = ss.get("baseline_agg")

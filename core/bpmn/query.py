@@ -25,11 +25,11 @@ def find_task_in_process(process: ET.Element, name: str) -> ET.Element | None:
     return None
 
 
-def find_task_by_name(tree: ET.ElementTree, name: str) -> ET.Element | None:
-    root = tree.getroot()
-    if root is None:
-        return None
-    process = find_process(root)
+def find_task_by_name(tree: ET.ElementTree[ET.Element], name: str) -> ET.Element | None:
+    # The type narrows the param to a rooted tree (what every caller passes via
+    # ET.parse / ET.fromstring), so getroot() is non-None. A tree with no
+    # <process> still returns None via the find_process guard below.
+    process = find_process(tree.getroot())
     return find_task_in_process(process, name) if process is not None else None
 
 
