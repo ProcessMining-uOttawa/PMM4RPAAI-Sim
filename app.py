@@ -167,8 +167,11 @@ with st.sidebar:
         ss.discovering = True
         ss.log_fingerprint = upload_fp
         if demo_mode:
-            ss.log_name = uploaded.name if uploaded else "sample log"
-            ss.activities = demo.fake_discovery()
+            # Use the pre-baked demo model so the real activity-list +
+            # factor-prepopulation path runs (only the simulation is synthetic).
+            ss.log_name = "LoanApp (demo)"
+            ss.bpmn_path, ss.json_path = demo.DEMO_BPMN, demo.DEMO_JSON
+            ss.activities = list_activities(ss.bpmn_path)
             ss.discovering = False
         else:
             if not preflight_ok:
@@ -278,7 +281,8 @@ with col1:
         _task_id: str | None = None
         prosimos_data: dict | None = None
         _resource_cfg = None
-        if ss.bpmn_path and ss.json_path and not demo_mode:
+        # Runs in demo mode too — demo points bpmn_path/json_path at the demo model.
+        if ss.bpmn_path and ss.json_path:
             try:
                 _tree = ET.parse(str(ss.bpmn_path))
                 _target_el = find_task_by_name(_tree, target)
@@ -403,6 +407,10 @@ def _panel3() -> None:
             f"{len(scenarios)} scenarios × {n_reps} reps = {total_runs} runs</span>",
             unsafe_allow_html=True,
         )
+        if demo_mode:
+            st.caption(
+                "🧪 Demo run — results are illustrative (synthetic), not a real simulation."
+            )
 
         _rs = current_run(ss)
         if _rs is not None:
@@ -478,6 +486,14 @@ if ss.results is not None:
 
     with st.container(border=True):
         st.markdown("##### 4 · Ranked scenarios")
+        if demo_mode:
+            st.info(
+                "**Demo mode — illustrative results.** These metrics are synthetic "
+                "(derived from the factor values, not a real Prosimos simulation). "
+                "The discovered model and factor levels are real; only the outcomes "
+                "are mocked.",
+                icon="🧪",
+            )
         if ss.failed_replications:
             st.warning(
                 f"{len(ss.failed_replications)} replication(s) failed and were excluded from results. "

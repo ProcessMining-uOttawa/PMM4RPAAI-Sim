@@ -1,11 +1,15 @@
 """Tests for demo.run_experiment — synthetic simulation (no Simod/Prosimos)."""
 
 from __future__ import annotations
+import json
 import threading
+import xml.etree.ElementTree as ET
 
 import pytest
 
 from core import demo
+from core.bpmn.query import find_task_by_name, list_activities
+from core.simulation.prosimos.query import task_mean_duration_s
 from core.constants import (
     COL_MEAN_CYCLE_H,
     COL_MEAN_COST,
@@ -116,18 +120,28 @@ class TestDemoBaselineAgg:
         assert entry[COL_REWORK_RATE_MEAN] >= 0
 
 
-class TestFakeDiscovery:
-    def test_returns_nonempty_list(self):
-        assert len(demo.fake_discovery()) > 0
+class TestDemoFixtures:
+    """The pre-baked demo model must stay loadable by the real prepopulation path."""
 
-    def test_returns_strings(self):
-        assert all(isinstance(a, str) for a in demo.fake_discovery())
+    def test_fixtures_exist(self):
+        assert demo.DEMO_BPMN.is_file()
+        assert demo.DEMO_JSON.is_file()
 
-    def test_independent_copies(self):
-        # mutating the result must not affect subsequent calls
-        first = demo.fake_discovery()
-        first.clear()
-        assert len(demo.fake_discovery()) > 0
+    def test_activities_discoverable(self):
+        activities = list_activities(demo.DEMO_BPMN)
+        assert len(activities) > 0
+        assert all(isinstance(a, str) for a in activities)
+
+    def test_every_activity_resolves_a_discovered_mean(self):
+        # if a task_id mismatch crept in, the demo factor levels would silently
+        # fall back to the flat default — so assert all means resolve.
+        data = json.loads(demo.DEMO_JSON.read_text())
+        tree = ET.parse(str(demo.DEMO_BPMN))
+        for activity in list_activities(demo.DEMO_BPMN):
+            task = find_task_by_name(tree, activity)
+            assert task is not None
+            mean = task_mean_duration_s(data, task.get("id"))
+            assert mean is not None and mean > 0
 
 
 class TestExperimentCancellation:
