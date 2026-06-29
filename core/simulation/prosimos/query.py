@@ -43,9 +43,23 @@ def _distribution_mean(resource: dict) -> float | None:
     params = [param["value"] for param in resource.get("distribution_params", [])]
     if distribution_name == "uniform" and len(params) == 2:
         return (params[0] + params[1]) / 2
-    if distribution_name in ("fix", "fixed") and len(params) == 1:
-        return params[0]
-    if distribution_name in ("expon", "exponential", "norm", "normal") and params:
+    # Prosimos (pix_framework) stores the empirical mean as the first param for every
+    # distribution Simod emits except uniform: fix [mean], expon [mean, min, max],
+    # norm [mean, std, min, max], lognorm/gamma [mean, var, min, max]. (triang is in
+    # the enum but the fitter never emits it, so it stays unhandled → None.)
+    mean_first = {
+        "fix",
+        "fixed",
+        "expon",
+        "exponential",
+        "norm",
+        "normal",
+        "lognorm",
+        "lognormal",
+        "log_normal",
+        "gamma",
+    }
+    if distribution_name in mean_first and params:
         return params[0]
     return None
 

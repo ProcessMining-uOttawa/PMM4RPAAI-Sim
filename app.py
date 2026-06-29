@@ -12,6 +12,7 @@ from pathlib import Path
 from core import analysis, demo, orchestrator
 from core.bpmn.query import find_task_by_name, list_activities
 from core.simulation.prosimos.query import (
+    resource_pool_size,
     resource_selector_config,
     task_mean_duration_s,
 )
@@ -80,6 +81,20 @@ def _clear_log() -> None:
     ss.bpmn_path = None
     ss.json_path = None
     ss.log_fingerprint = None
+
+
+def _halt_if_unresolved(pool_size: int | None) -> None:
+    """Stop with a clear error when a task resource resolves to no profile.
+
+    Should never happen with valid Simod output — Prosimos itself rejects such a
+    model — so we surface it loudly rather than fabricating human-pool levels.
+    """
+    if pool_size is None:
+        st.error(
+            "A resource referenced by this task is not defined in any profile — "
+            "the model JSON appears malformed."
+        )
+        st.stop()
 
 
 # --- header ------------------------------------------------------------------
@@ -152,8 +167,11 @@ with st.sidebar:
         ss.discovering = True
         ss.log_fingerprint = upload_fp
         if demo_mode:
-            ss.log_name = uploaded.name if uploaded else "sample log"
-            ss.activities = demo.fake_discovery()
+            # Use the pre-baked demo model so the real activity-list +
+            # factor-prepopulation path runs (only the simulation is synthetic).
+            ss.log_name = "LoanApp (demo)"
+            ss.bpmn_path, ss.json_path = demo.DEMO_BPMN, demo.DEMO_JSON
+            ss.activities = list_activities(ss.bpmn_path)
             ss.discovering = False
         else:
             if not preflight_ok:
@@ -263,7 +281,8 @@ with col1:
         _task_id: str | None = None
         prosimos_data: dict | None = None
         _resource_cfg = None
-        if ss.bpmn_path and ss.json_path and not demo_mode:
+        # Runs in demo mode too — demo points bpmn_path/json_path at the demo model.
+        if ss.bpmn_path and ss.json_path:
             try:
                 _tree = ET.parse(str(ss.bpmn_path))
                 _target_el = find_task_by_name(_tree, target)
@@ -277,9 +296,10 @@ with col1:
 
         # Resource selector — only shown in non-demo mode when task has multiple resources.
         selected_resource_id: str | None = None
+        selected_pool_size: int | None = None
         frozen_pool_size: int | None = None
 
-        if _resource_cfg is not None:
+        if _resource_cfg is not None and prosimos_data is not None:
             cfg = _resource_cfg
             if cfg.selectable or cfg.frozen:
                 if not cfg.selectable:
@@ -288,17 +308,12 @@ with col1:
                         [r["name"] for r in cfg.frozen],
                         disabled=True,
                     )
-                    if cfg.fallback_pool_size is None:
-                        st.warning(
-                            "All resources are shared across tasks — "
-                            "resource not found in profiles; pool size unknown."
-                        )
-                    else:
-                        st.warning(
-                            "All resources are shared across tasks — "
-                            "Human pool size is frozen at its current value."
-                        )
-                        frozen_pool_size = cfg.fallback_pool_size
+                    _halt_if_unresolved(cfg.fallback_pool_size)
+                    st.warning(
+                        "All resources are shared across tasks — "
+                        "Human pool size is frozen at its current value."
+                    )
+                    frozen_pool_size = cfg.fallback_pool_size
                 else:
                     if cfg.frozen:
                         st.caption(
@@ -313,6 +328,10 @@ with col1:
                         selected_resource_id = next(
                             r["id"] for r in cfg.selectable if r["name"] == _sel_name
                         )
+                    selected_pool_size = resource_pool_size(
+                        prosimos_data, selected_resource_id
+                    )
+                    _halt_if_unresolved(selected_pool_size)
 
         pattern_id = st.selectbox(
             "Substitution pattern",
@@ -331,7 +350,7 @@ with col2:
         params = transformation.parameters(
             target,
             current_duration_s=current_dur,
-            selected_resource_id=selected_resource_id,
+            selected_pool_size=selected_pool_size,
             frozen_pool_size=frozen_pool_size,
         )
         if current_dur is not None:
@@ -340,6 +359,12 @@ with col2:
         hdr[0].caption("Factor")
         for i, lbl in enumerate(("Low", "Mid", "High")):
             hdr[i + 1].caption(lbl)
+        # The computed level value is part of each widget key so the input
+        # re-defaults when its level changes — e.g. switching target gives a new
+        # t_manual mean, switching resource a new num_manual pool. A stable key
+        # would pin the widget to its first-render value and ignore the new
+        # `value=` (the "value is only the initial value" trap — see §6); fixed
+        # factors keep a constant key, so user edits to them survive a target switch.
         for p in params:
             row = st.columns([3, 1, 1, 1])
             row[0].markdown(f"**{p.label}**")
@@ -348,7 +373,7 @@ with col2:
                     f"{p.id}_frozen",
                     **level_input_kwargs(p.kind, p.levels[0]),
                     label_visibility="collapsed",
-                    key=f"{p.id}_frozen",
+                    key=f"{p.id}_frozen_{p.levels[0]}",
                     disabled=True,
                 )
                 row[2].caption("frozen")
@@ -360,7 +385,7 @@ with col2:
                             f"{p.id}_{i}",
                             **level_input_kwargs(p.kind, p.levels[i]),
                             label_visibility="collapsed",
-                            key=f"{p.id}_{i}",
+                            key=f"{p.id}_{i}_{p.levels[i]}",
                         )
                     )
                 p.levels = new
@@ -382,6 +407,10 @@ def _panel3() -> None:
             f"{len(scenarios)} scenarios × {n_reps} reps = {total_runs} runs</span>",
             unsafe_allow_html=True,
         )
+        if demo_mode:
+            st.caption(
+                "🧪 Demo run — results are illustrative (synthetic), not a real simulation."
+            )
 
         _rs = current_run(ss)
         if _rs is not None:
@@ -457,6 +486,14 @@ if ss.results is not None:
 
     with st.container(border=True):
         st.markdown("##### 4 · Ranked scenarios")
+        if demo_mode:
+            st.info(
+                "**Demo mode — illustrative results.** These metrics are synthetic "
+                "(derived from the factor values, not a real Prosimos simulation). "
+                "The discovered model and factor levels are real; only the outcomes "
+                "are mocked.",
+                icon="🧪",
+            )
         if ss.failed_replications:
             st.warning(
                 f"{len(ss.failed_replications)} replication(s) failed and were excluded from results. "
@@ -569,8 +606,9 @@ if ss.results is not None:
         with st.container(border=True):
             st.markdown("##### 5 · Baseline comparison")
             st.caption(
-                "Total metrics averaged across replications. "
-                "Δ values are relative to the original process (no automation)."
+                "Total metrics averaged across replications. Δ values are relative to "
+                "the 0%-automation baseline — the pattern with every case on the human "
+                "path, at Simod-discovered durations and staffing."
             )
             st.dataframe(
                 analysis.compare_to_baseline(agg, baseline_agg),

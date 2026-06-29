@@ -7,6 +7,7 @@ import pytest
 
 from core.transformations import (
     _make_ids,
+    _manual_pool_levels,
     BOT_CALENDAR_ID,
     BOT_PROFILE_ID,
     AutomationParams,
@@ -160,6 +161,71 @@ def applied(pattern, bpmn_file, tmp_path):
     """Runs apply_pattern and returns (bpmn_out_path, ids)."""
     bpmn_out, ids = pattern.apply_pattern(bpmn_file, "Test Task", tmp_path / "out")
     return bpmn_out, ids
+
+
+# ── TestParameters ────────────────────────────────────────────────────────────
+
+
+class TestParameters:
+    """Factor-level declaration, focused on the human-pool centering."""
+
+    def _levels(self, params, factor_id):
+        return next(p.levels for p in params if p.id == factor_id)
+
+    def _param(self, params, factor_id):
+        return next(p for p in params if p.id == factor_id)
+
+    def test_manual_pool_centered_on_selected_size(self, pattern):
+        params = pattern.parameters("T", selected_pool_size=5)
+        assert self._levels(params, F_NUM_MANUAL_RESOURCES) == [4, 5, 6]
+
+    def test_manual_pool_floor_at_one(self, pattern):
+        # discovered pool of 1 → shift up to [1, 2, 3], never [0, 1, 2]
+        params = pattern.parameters("T", selected_pool_size=1)
+        assert self._levels(params, F_NUM_MANUAL_RESOURCES) == [1, 2, 3]
+
+    def test_manual_pool_default_when_size_unknown(self, pattern):
+        # no pool info (e.g. demo) → default size 1 hits the floor → [1, 2, 3]
+        params = pattern.parameters("T")
+        assert self._levels(params, F_NUM_MANUAL_RESOURCES) == [1, 2, 3]
+
+    def test_manual_pool_not_frozen_by_default(self, pattern):
+        params = pattern.parameters("T", selected_pool_size=5)
+        assert self._param(params, F_NUM_MANUAL_RESOURCES).frozen is False
+
+    def test_frozen_pool_pins_all_three_levels(self, pattern):
+        params = pattern.parameters("T", frozen_pool_size=4)
+        manual = self._param(params, F_NUM_MANUAL_RESOURCES)
+        assert manual.levels == [4, 4, 4]
+        assert manual.frozen is True
+
+    def test_frozen_takes_precedence_over_selected(self, pattern):
+        params = pattern.parameters("T", selected_pool_size=8, frozen_pool_size=3)
+        assert self._levels(params, F_NUM_MANUAL_RESOURCES) == [3, 3, 3]
+
+    def test_bot_pool_levels_unchanged(self, pattern):
+        # num_bots is a NEW pool — stays 1/2/3 regardless of the discovered human pool
+        params = pattern.parameters("T", selected_pool_size=8)
+        assert self._levels(params, F_NUM_BOTS) == [1, 2, 3]
+
+
+class TestManualPoolLevels:
+    """The centering formula in isolation."""
+
+    def test_perturbs_by_one_for_normal_pool(self):
+        assert _manual_pool_levels(5) == [4, 5, 6]
+
+    def test_two_gives_one_two_three(self):
+        assert _manual_pool_levels(2) == [1, 2, 3]
+
+    def test_one_shifts_up(self):
+        assert _manual_pool_levels(1) == [1, 2, 3]
+
+    def test_levels_stay_distinct_and_positive(self):
+        for n in range(1, 20):
+            levels = _manual_pool_levels(n)
+            assert len(set(levels)) == 3
+            assert all(v >= 1 for v in levels)
 
 
 # ── Multi-flow BPMN fixtures (no DI section needed — error raised before DI work) ─
@@ -571,6 +637,54 @@ class TestParamsFromValues:
         )
         params = pattern.params_from_values(_VALUES, result_none)
         assert params.selected_resource_id is None
+
+
+class TestBaselineParams:
+    @pytest.fixture
+    def bpmn_result(self, pattern, bpmn_file, params_file, tmp_path):
+        bpmn_out, ids = pattern.apply_pattern(bpmn_file, "Test Task", tmp_path / "out")
+        template = pattern.build_scenario_template(params_file, ids)
+        return BpmnTransformResult(
+            bpmn_path=bpmn_out,
+            scenario_template=template,
+            ids=ids,
+            selected_resource_id="res_human_1",
+        )
+
+    def test_returns_automation_params(self, pattern, bpmn_result):
+        assert isinstance(pattern.baseline_params(bpmn_result), AutomationParams)
+
+    def test_zero_automation(self, pattern, bpmn_result):
+        params = pattern.baseline_params(bpmn_result)
+        assert params.automation_rate == 0.0
+        assert params.manual_branch_rate == 1.0  # 100% human path
+
+    def test_manual_duration_is_discovered_mean(self, pattern, bpmn_result):
+        # MINIMAL_PARAMS task_1 is fix 3600.0 → that is the baseline human duration
+        params = pattern.baseline_params(bpmn_result)
+        assert params.manual_execution_time == pytest.approx(3600.0)
+
+    def test_skips_pool_resize(self, pattern, bpmn_result):
+        # selected_resource_id=None leaves the human pool at its discovered size
+        assert pattern.baseline_params(bpmn_result).selected_resource_id is None
+
+    def test_bot_factors_inert_but_valid(self, pattern, bpmn_result):
+        params = pattern.baseline_params(bpmn_result)
+        assert params.bot_failure_rate == 0.0
+        assert params.num_bots >= 1
+        assert params.num_cases >= 1
+
+    def test_applied_baseline_routes_all_to_human(self, pattern, bpmn_result, tmp_path):
+        out = tmp_path / "baseline.json"
+        pattern.apply_params(
+            bpmn_result.scenario_template,
+            bpmn_result.ids,
+            pattern.baseline_params(bpmn_result),
+            out,
+        )
+        probs = _gbp_probs(json.loads(out.read_text()), bpmn_result.ids.automation_gate)
+        assert probs[bpmn_result.ids.automation_branch] == 0.0
+        assert probs[bpmn_result.ids.manual_branch] == 1.0
 
 
 # ── Helpers used by multiple test classes ─────────────────────────────────────

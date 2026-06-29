@@ -4,6 +4,7 @@ from __future__ import annotations
 import random
 import threading
 from dataclasses import dataclass
+from pathlib import Path
 from typing import Callable
 
 import pandas as pd
@@ -32,14 +33,13 @@ from .constants import (
 from .orchestrator import ExperimentCancelledError, ExperimentResult
 
 
-DEMO_ACTIVITIES = [
-    "Receive application",
-    "Validate claim",
-    "Check credit",
-    "Approve loan",
-    "Notify customer",
-    "Archive",
-]
+# Pre-baked demo discovery: a real Simod output (synthetic LoanApp benchmark) so
+# demo mode reuses the real activity-list + factor-prepopulation path rather than a
+# parallel fake_discovery. See demo/README.md for provenance.
+_DEMO_DIR = Path(__file__).resolve().parent.parent / "demo"
+DEMO_BPMN = _DEMO_DIR / "model.bpmn"
+DEMO_JSON = _DEMO_DIR / "params.json"
+
 BASELINE_CYCLE_H = 31.2
 BASELINE_COST = 48.0
 BASELINE_REWORK_RATE = 5.0  # percentage (0–100), matches COL_REWORK_RATE storage unit
@@ -69,10 +69,6 @@ def demo_baseline_agg() -> dict[int, dict]:
             COL_REWORK_RATE_MEAN: BASELINE_REWORK_RATE,
         }
     }
-
-
-def fake_discovery() -> list[str]:
-    return list(DEMO_ACTIVITIES)
 
 
 def _fake_simulate(

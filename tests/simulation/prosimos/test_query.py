@@ -165,11 +165,17 @@ class TestTaskMeanDurationS:
 
     @pytest.mark.parametrize(
         "distribution_name, values, expected",
+        # Param layouts mirror Prosimos/pix_framework exactly (params[0] = mean):
+        #   fix [mean] · expon [mean, min, max] · norm [mean, std, min, max] ·
+        #   lognorm / gamma [mean, var, min, max]. Short forms exercise the aliases.
         [
-            ("expon", [120.0], 120.0),  # first param is the mean
-            ("exponential", [60.0], 60.0),  # alias of expon
-            ("norm", [300.0, 30.0], 300.0),  # first param is the mean (2nd is std)
-            ("normal", [180.0, 20.0], 180.0),  # alias of norm
+            ("fix", [450.0], 450.0),
+            ("expon", [120.0, 0.0, 600.0], 120.0),
+            ("exponential", [60.0], 60.0),  # alias
+            ("norm", [300.0, 30.0, 0.0, 600.0], 300.0),
+            ("normal", [180.0, 20.0], 180.0),  # alias
+            ("lognorm", [240.0, 10000.0, 0.0, 1200.0], 240.0),
+            ("gamma", [500.0, 250000.0, 0.0, 3000.0], 500.0),
         ],
     )
     def test_first_param_is_mean(self, distribution_name, values, expected):
@@ -177,9 +183,10 @@ class TestTaskMeanDurationS:
         assert task_mean_duration_s(data, "t1") == pytest.approx(expected)
 
     def test_unrecognised_distribution_returns_none(self):
-        # only uniform/fix/expon/norm are understood; gamma is skipped, so a
-        # task with no recognised distribution yields None
-        data = _distribution_json("gamma", [1.0, 2.0, 3.0])
+        # Simod emits uniform/fix/expon/norm/lognorm/gamma; "triang" is in pix's enum
+        # but the fitter never emits it, so we deliberately don't handle it → None
+        # (the caller then falls back to its default duration).
+        data = _distribution_json("triang", [1.0, 2.0, 3.0])
         assert task_mean_duration_s(data, "t1") is None
 
 

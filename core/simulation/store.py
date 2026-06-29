@@ -61,6 +61,13 @@ def baseline_dir(exp: Path, n_cases: int) -> Path:
     return d
 
 
+def baseline_params_path(exp: Path) -> Path:
+    """The single shared baseline params.json — one config reused across all n_cases."""
+    d = exp / "baseline"
+    d.mkdir(parents=True, exist_ok=True)
+    return d / "params.json"
+
+
 def baseline_log(exp: Path, replication: int, n_cases: int) -> Path:
     return _rep_path(baseline_dir(exp, n_cases), replication, "log.csv")
 
