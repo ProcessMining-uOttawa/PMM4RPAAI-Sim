@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 from collections import Counter
+from collections.abc import Iterator
 from dataclasses import dataclass
 
 from ...constants import KEY_TASK_RESOURCE_DISTRIBUTION, KEY_RESOURCE_PROFILES
@@ -11,32 +12,63 @@ from ...constants import KEY_TASK_RESOURCE_DISTRIBUTION, KEY_RESOURCE_PROFILES
 class ResourceSelectorConfig:
     """Classification of a task's resources for the UI resource selector."""
 
-    selectable: list[dict]  # [{id, name}] — resources the user can choose from
-    frozen: list[dict]  # [{id, name}] — shared resources (displayed but not pickable)
-    fallback_pool_size: (
-        int | None
-    )  # pool size shown read-only when all resources are shared
+    # resources the user can choose from, as [{id, name}]
+    selectable: list[dict]
+    # shared resources: displayed but not pickable, as [{id, name}]
+    frozen: list[dict]
+    # pool size shown read-only when all resources are shared (else None)
+    fallback_pool_size: int | None
+
+
+# ── Private JSON navigation ────────────────────────────────────────────────────
+
+
+def _all_profile_resources(prosimos_json: dict) -> Iterator[dict]:
+    """Yield every resource dict across all resource profiles."""
+    for profile in prosimos_json.get(KEY_RESOURCE_PROFILES, []):
+        yield from profile.get("resource_list", [])
+
+
+def _task_distribution(prosimos_json: dict, task_id: str) -> dict | None:
+    """Return the task_resource_distribution entry for task_id, or None."""
+    for entry in prosimos_json.get(KEY_TASK_RESOURCE_DISTRIBUTION, []):
+        if entry.get("task_id") == task_id:
+            return entry
+    return None
+
+
+def _distribution_mean(resource: dict) -> float | None:
+    """Mean duration of one resource's distribution, or None if unrecognised."""
+    distribution_name = resource.get("distribution_name", "")
+    params = [param["value"] for param in resource.get("distribution_params", [])]
+    if distribution_name == "uniform" and len(params) == 2:
+        return (params[0] + params[1]) / 2
+    if distribution_name in ("fix", "fixed") and len(params) == 1:
+        return params[0]
+    if distribution_name in ("expon", "exponential", "norm", "normal") and params:
+        return params[0]
+    return None
+
+
+# ── Public queries ─────────────────────────────────────────────────────────────
 
 
 def task_resources(prosimos_json: dict, task_id: str) -> list[dict]:
     """Return [{id, name}] for resources assigned to task_id, in assignment order."""
+    entry = _task_distribution(prosimos_json, task_id)
+    if entry is None:
+        return []
     name_by_id = {
         resource["id"]: resource.get("name", resource["id"])
-        for profile in prosimos_json.get(KEY_RESOURCE_PROFILES, [])
-        for resource in profile.get("resource_list", [])
+        for resource in _all_profile_resources(prosimos_json)
     }
-    for entry in prosimos_json.get(KEY_TASK_RESOURCE_DISTRIBUTION, []):
-        if entry.get("task_id") == task_id:
-            return [
-                {
-                    "id": resource["resource_id"],
-                    "name": name_by_id.get(
-                        resource["resource_id"], resource["resource_id"]
-                    ),
-                }
-                for resource in entry.get("resources", [])
-            ]
-    return []
+    return [
+        {
+            "id": resource["resource_id"],
+            "name": name_by_id.get(resource["resource_id"], resource["resource_id"]),
+        }
+        for resource in entry.get("resources", [])
+    ]
 
 
 def shared_resource_ids(prosimos_json: dict) -> set[str]:
@@ -46,15 +78,14 @@ def shared_resource_ids(prosimos_json: dict) -> set[str]:
         for entry in prosimos_json.get(KEY_TASK_RESOURCE_DISTRIBUTION, [])
         for resource in entry.get("resources", [])
     )
-    return {rid for rid, count in counts.items() if count > 1}
+    return {resource_id for resource_id, count in counts.items() if count > 1}
 
 
 def resource_pool_size(prosimos_json: dict, resource_id: str) -> int | None:
     """Return the current pool size (amount) for a resource, or None if not found."""
-    for profile in prosimos_json.get(KEY_RESOURCE_PROFILES, []):
-        for resource in profile.get("resource_list", []):
-            if resource.get("id") == resource_id:
-                return int(resource.get("amount", 1))
+    for resource in _all_profile_resources(prosimos_json):
+        if resource.get("id") == resource_id:
+            return int(resource.get("amount", 1))
     return None
 
 
@@ -72,13 +103,8 @@ def resource_selector_config(
             selectable=resources, frozen=[], fallback_pool_size=None
         )
     shared = shared_resource_ids(prosimos_json)
-    selectable: list[dict] = []
-    frozen: list[dict] = []
-    for resource in resources:
-        if resource["id"] in shared:
-            frozen.append(resource)
-        else:
-            selectable.append(resource)
+    selectable = [resource for resource in resources if resource["id"] not in shared]
+    frozen = [resource for resource in resources if resource["id"] in shared]
     fallback_pool_size: int | None = None
     if not selectable:
         fallback_pool_size = resource_pool_size(prosimos_json, resources[0]["id"])
@@ -89,21 +115,12 @@ def resource_selector_config(
 
 def task_mean_duration_s(prosimos_json: dict, task_id: str) -> float | None:
     """Return the average mean duration (over resources) for a task, or None."""
-    for entry in prosimos_json.get(KEY_TASK_RESOURCE_DISTRIBUTION, []):
-        if entry.get("task_id") != task_id:
-            continue
-        means = []
-        for resource in entry.get("resources", []):
-            dn = resource.get("distribution_name", "")
-            params = [p["value"] for p in resource.get("distribution_params", [])]
-            if dn == "uniform" and len(params) == 2:
-                means.append((params[0] + params[1]) / 2)
-            elif dn in ("fix", "fixed") and len(params) == 1:
-                means.append(params[0])
-            elif dn in ("expon", "exponential") and len(params) >= 1:
-                means.append(params[0])
-            elif dn in ("norm", "normal") and len(params) >= 1:
-                means.append(params[0])
-        if means:
-            return sum(means) / len(means)
-    return None
+    entry = _task_distribution(prosimos_json, task_id)
+    if entry is None:
+        return None
+    means = []
+    for resource in entry.get("resources", []):
+        mean = _distribution_mean(resource)
+        if mean is not None:
+            means.append(mean)
+    return sum(means) / len(means) if means else None

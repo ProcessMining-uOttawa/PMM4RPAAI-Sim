@@ -1,4 +1,4 @@
-"""Tests for core/simulation/prosimos_csv.py — no external tools required."""
+"""Tests for core/simulation/prosimos/reader.py — no external tools required."""
 
 from __future__ import annotations
 import csv
