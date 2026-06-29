@@ -37,10 +37,11 @@ Ranking table + main-effects view + export (Statistics CSV, Params ZIP, BPMN, Ev
 
 **`XORSplitAutomation` is the only substitution pattern and no second pattern will be added** — it is central to the client's thesis. The `Transformation` ABC and `REGISTRY` exist for clean encapsulation, not extensibility. Three contracts define that boundary:
 
-- **`Transformation`** ([core/transformations.py](core/transformations.py)) — abstract base with four abstract methods:
-  - `parameters(target_activity, current_duration_s) → list[Parameter]`
+- **`Transformation`** ([core/transformations.py](core/transformations.py)) — abstract base with five abstract methods:
+  - `parameters(target_activity, current_duration_s, selected_pool_size, frozen_pool_size) → list[Parameter]`
     declares the factors the pattern exposes. The UI auto-renders them; the
-    Taguchi designer auto-fits an OA.
+    Taguchi designer auto-fits an OA. `selected_pool_size` is the discovered
+    human pool size the `num_manual_resources` levels centre on (`_manual_pool_levels`).
   - `prepare_experiment(bpmn_in, json_in, target, out_dir, ...) → BpmnTransformResult`
     mutates the BPMN once and builds the shared scenario-template JSON. Called
     once per experiment. Returns a `BpmnTransformResult` carrying `bpmn_path`,
@@ -48,6 +49,10 @@ Ranking table + main-effects view + export (Statistics CSV, Params ZIP, BPMN, Ev
   - `params_from_values(values, result) → ScenarioParams` converts one Taguchi
     row into the pattern's typed params object. Keeps `orchestrator.py` free of
     any concrete subclass imports.
+  - `baseline_params(result) → ScenarioParams` returns the no-intervention
+    baseline params (the pattern applied with 0% automation, Simod-discovered
+    durations/staffing). Keeps `orchestrator.py` pattern-agnostic — it never
+    constructs `pct_auto=0` itself.
   - `apply_params(template, ids, params, out) → Path` deep-copies the template
     and injects scenario-specific values. Called once per scenario.
   - The only pattern: `XORSplitAutomation` — the 4-gateway / 2-activity
@@ -72,7 +77,7 @@ Ranking table + main-effects view + export (Statistics CSV, Params ZIP, BPMN, Ev
 | [app.py](app.py) | Streamlit dashboard (Mockup B): sidebar = experiment state + run config; 5 panels = Activity & pattern · Factor levels · Execution · Ranked scenarios · Baseline comparison. Panel 4 includes an export row with five buttons: BPMN · Params (ZIP) · Statistics (CSV) · Event logs (ZIP) · Model (ZIP). Event logs (ZIP) is disabled in demo mode; Model (ZIP) bundles BPMN + params + statistics. `_clear_results()` resets all run-level session state keys; `_clear_log()` calls `_clear_results()` then resets log-level keys — new keys belong in one of these helpers, not scattered across reset sites. |
 | [.github/workflows/ci.yml](.github/workflows/ci.yml) | GitHub Actions CI: four parallel jobs — **lint** (ruff check + ruff format --check), **type-check** (`mypy core/ --ignore-missing-imports`), **test** (pytest with `--cov=core --cov-fail-under=75`), **audit** (pip-audit). Triggered on push and PR to main. The test job installs `pip install -r requirements.txt`; lint, type-check, and audit install only their respective tool — heavy packages (streamlit, simod, prosimos) are not needed for CI. `pytest-cov>=5.0` is in `requirements.txt`. The 75% coverage floor excludes subprocess paths (`runner.py`, `orchestrator.py` real pipeline, `store.py`) that legitimately require Simod/Prosimos; current measured coverage is ~79%. |
 | [core/constants.py](core/constants.py) | Cross-cutting constants only: twelve `COL_*` analysis column names (`mean_cycle_h`, `mean_cost`, their means, `total_cycle_s`, `total_cost`, their means, `total_rework_count`, `rework_rate`, their means); `KEY_RESOURCE_PROFILES` / `KEY_TASK_RESOURCE_DISTRIBUTION` (used in both `bpmn/query.py` and `transformations.py`); and seven `F_*` Taguchi factor ID constants (`F_PCT_AUTO` … `F_NUM_CASES`) consumed by `transformations.py`, `analysis.py`, and `demo.py`. Everything else lives in its home module. |
-| [core/orchestrator.py](core/orchestrator.py) | Real-pipeline run loop only: pre-generates all scenario JSONs sequentially, then delegates parallel execution to `simulation.executor.run_all()`, collects results into a tidy DataFrame. Also runs the baseline (original, untransformed model) and returns mean total metrics + rework means for Panel 5. No demo awareness — `app.py` routes to `demo.run_experiment()` for demo mode. `ExperimentResult` dataclass carries `results`, `experiment_bpmn_path`, `scenario_json_paths`, `baseline_agg`, `scenario_log_paths` (`dict[str, list[Path]]`), and `baseline_log_paths` (`dict[int, list[Path]]`); new fields default to `{}` so `demo.py` needs no change. |
+| [core/orchestrator.py](core/orchestrator.py) | Real-pipeline run loop only: pre-generates all scenario JSONs sequentially, then delegates parallel execution to `simulation.executor.run_all()`, collects results into a tidy DataFrame. Also runs the baseline — the **transformed** model with `transformation.baseline_params()` (0% automation: every case on the human path, Simod-discovered durations/staffing) pre-generated once into a single `baseline/params.json` and reused across all `n_cases` levels — and returns mean total metrics + rework means for Panel 5. The baseline shares the scenario distribution model (uniform around the discovered mean), so its delta isolates automation rather than a distribution-shape change. No demo awareness — `app.py` routes to `demo.run_experiment()` for demo mode. `ExperimentResult` dataclass carries `results`, `experiment_bpmn_path`, `scenario_json_paths`, `baseline_agg`, `scenario_log_paths` (`dict[str, list[Path]]`), and `baseline_log_paths` (`dict[int, list[Path]]`); new fields default to `{}` so `demo.py` needs no change. |
 | [ui/preflight.py](ui/preflight.py) | Detects Python 3.9, Corretto 8 (auto-finds `C:\Program Files\Amazon Corretto\jdk1.8*`), and both venvs. Public API: `Check` dataclass, `run_checks() -> tuple[list[Check], str | None]` (checks + suggested JAVA_HOME), `all_ok(checks)`. `_detect_corretto8()` is private — called once inside `run_checks()`, result returned as the tuple's second element so `app.py` never calls it separately. Imports `SIMOD_EXE`/`PROSIMOS_EXE` from `core.simulation.runner`; called only by `app.py`. Moved from `core/` because `Check` is UI-shaped data and `app.py` is the sole caller. |
 | [core/transformations.py](core/transformations.py) | `Transformation` ABC + `XORSplitAutomation` impl + `REGISTRY` of available patterns. Also owns `AutomationParams(ScenarioParams)` — the typed simulation parameters for one XORSplitAutomation scenario; `BpmnTransformResult` — returned by `prepare_experiment()`, carries `bpmn_path`, `scenario_template`, `ids`, and `selected_resource_id`; `TransformIds` with computed properties `bot_resource_id`, `bot_resource_name`, and `bot_task_name`; and all XORSplitAutomation-specific constants: `BOT_*`, `GW*_NAME`, sequence flow display labels (`BOT_BRANCH_LABEL`, `HUMAN_BRANCH_LABEL`, `BOT_SUCCESS_LABEL`, `BOT_FAILURE_LABEL`), and Taguchi level lists. `F_*` factor ID constants live in `constants.py`. |
 | [core/bpmn/\_\_init\_\_.py](core/bpmn/__init__.py) | BPMN XML namespace constants (`BPMN_NS`, `BPMNDI_NS`, `DC_NS`, `DI_NS`, `BPMN_TASK_TAGS`). |
@@ -122,8 +127,8 @@ For a target activity *Act*, the pattern produces this fragment:
 | `pct_ok` (%) | 80 / 90 / 95 | XOR2 success probability (skip the fallback) |
 | `t_auto` (s) | 5%, 10%, 20% of Simod mean | Automated task mean duration |
 | `t_manual` (s) | 80%, 100%, 120% of Simod mean | Non-automated mean (**prepopulated from Simod**) |
-| `num_bots` | 1 / 2 / 3 | Bot resource pool size |
-| `num_manual_resources` | 1 / 2 / 3 | Human resource pool size |
+| `num_bots` | 1 / 2 / 3 | Bot resource pool size (a *new* pool — not discovered-centred) |
+| `num_manual_resources` | discovered pool *n* ±1 → `[n-1, n, n+1]` (floor: *n*=1 → `1/2/3`) | Human resource pool size, centred on the Simod-discovered pool (`_manual_pool_levels`) |
 | `num_cases` | 100 / 500 / 1000 | Cases per Prosimos replication (simulation scale) |
 
 `apply()` does:

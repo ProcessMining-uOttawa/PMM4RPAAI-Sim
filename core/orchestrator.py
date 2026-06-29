@@ -119,6 +119,15 @@ def run_experiment(
         )
         scenario_json_paths[s.id] = s_json
 
+    # The baseline is the pattern applied with 0% automation — generated once and
+    # reused across every n_cases level (cases-per-rep is a CLI arg, not in the JSON).
+    baseline_json_path = transformation.apply_params(
+        bpmn_tr.scenario_template,
+        bpmn_tr.ids,
+        transformation.baseline_params(bpmn_tr),
+        store.baseline_params_path(experiment_dir),
+    )
+
     total = len(scenarios) * n_reps + len(cases_levels) * n_reps
     done = 0
     rows: list[dict] = []
@@ -131,8 +140,8 @@ def run_experiment(
         for rep in range(n_reps):
             tasks.append(
                 SimulationTask(
-                    bpmn_path=bpmn_path,
-                    json_path=json_path,
+                    bpmn_path=bpmn_tr.bpmn_path,
+                    json_path=baseline_json_path,
                     n_cases=n_cases,
                     out_log=store.baseline_log(experiment_dir, rep, n_cases),
                     out_stat=store.baseline_stats(experiment_dir, rep, n_cases),
@@ -177,7 +186,14 @@ def run_experiment(
         assert task.out_stat is not None
         if isinstance(meta, BaselineMeta):
             baseline_reps[meta.n_cases].append(
-                dataclasses.asdict(replication_metrics(task.out_log, task.out_stat))
+                dataclasses.asdict(
+                    replication_metrics(
+                        task.out_log,
+                        task.out_stat,
+                        bot_task_name=_bot_task_name,
+                        original_task_name=_original_task_name,
+                    )
+                )
             )
             baseline_log_paths[meta.n_cases].append(task.out_log)
             _tick("baseline", meta.rep)

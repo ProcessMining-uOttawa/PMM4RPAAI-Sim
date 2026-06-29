@@ -12,6 +12,7 @@ from pathlib import Path
 from core import analysis, demo, orchestrator
 from core.bpmn.query import find_task_by_name, list_activities
 from core.simulation.prosimos.query import (
+    resource_pool_size,
     resource_selector_config,
     task_mean_duration_s,
 )
@@ -80,6 +81,20 @@ def _clear_log() -> None:
     ss.bpmn_path = None
     ss.json_path = None
     ss.log_fingerprint = None
+
+
+def _halt_if_unresolved(pool_size: int | None) -> None:
+    """Stop with a clear error when a task resource resolves to no profile.
+
+    Should never happen with valid Simod output — Prosimos itself rejects such a
+    model — so we surface it loudly rather than fabricating human-pool levels.
+    """
+    if pool_size is None:
+        st.error(
+            "A resource referenced by this task is not defined in any profile — "
+            "the model JSON appears malformed."
+        )
+        st.stop()
 
 
 # --- header ------------------------------------------------------------------
@@ -277,9 +292,10 @@ with col1:
 
         # Resource selector — only shown in non-demo mode when task has multiple resources.
         selected_resource_id: str | None = None
+        selected_pool_size: int | None = None
         frozen_pool_size: int | None = None
 
-        if _resource_cfg is not None:
+        if _resource_cfg is not None and prosimos_data is not None:
             cfg = _resource_cfg
             if cfg.selectable or cfg.frozen:
                 if not cfg.selectable:
@@ -288,17 +304,12 @@ with col1:
                         [r["name"] for r in cfg.frozen],
                         disabled=True,
                     )
-                    if cfg.fallback_pool_size is None:
-                        st.warning(
-                            "All resources are shared across tasks — "
-                            "resource not found in profiles; pool size unknown."
-                        )
-                    else:
-                        st.warning(
-                            "All resources are shared across tasks — "
-                            "Human pool size is frozen at its current value."
-                        )
-                        frozen_pool_size = cfg.fallback_pool_size
+                    _halt_if_unresolved(cfg.fallback_pool_size)
+                    st.warning(
+                        "All resources are shared across tasks — "
+                        "Human pool size is frozen at its current value."
+                    )
+                    frozen_pool_size = cfg.fallback_pool_size
                 else:
                     if cfg.frozen:
                         st.caption(
@@ -313,6 +324,10 @@ with col1:
                         selected_resource_id = next(
                             r["id"] for r in cfg.selectable if r["name"] == _sel_name
                         )
+                    selected_pool_size = resource_pool_size(
+                        prosimos_data, selected_resource_id
+                    )
+                    _halt_if_unresolved(selected_pool_size)
 
         pattern_id = st.selectbox(
             "Substitution pattern",
@@ -331,7 +346,7 @@ with col2:
         params = transformation.parameters(
             target,
             current_duration_s=current_dur,
-            selected_resource_id=selected_resource_id,
+            selected_pool_size=selected_pool_size,
             frozen_pool_size=frozen_pool_size,
         )
         if current_dur is not None:
@@ -569,8 +584,9 @@ if ss.results is not None:
         with st.container(border=True):
             st.markdown("##### 5 · Baseline comparison")
             st.caption(
-                "Total metrics averaged across replications. "
-                "Δ values are relative to the original process (no automation)."
+                "Total metrics averaged across replications. Δ values are relative to "
+                "the 0%-automation baseline — the pattern with every case on the human "
+                "path, at Simod-discovered durations and staffing."
             )
             st.dataframe(
                 analysis.compare_to_baseline(agg, baseline_agg),

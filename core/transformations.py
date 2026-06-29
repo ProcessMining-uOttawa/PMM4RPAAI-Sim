@@ -28,6 +28,7 @@ from .simulation.prosimos.editor import (
     append_task_distribution,
     add_gateway_probs,
 )
+from .simulation.prosimos.query import task_mean_duration_s
 from .bpmn.query import (
     find_process,
     find_task_in_process,
@@ -86,8 +87,23 @@ PCT_OK_LEVELS = [80, 90, 95]
 T_AUTO_FRACTIONS = [0.05, 0.10, 0.20]
 T_MANUAL_FACTORS = [0.80, 1.00, 1.20]
 NUM_BOTS_LEVELS = [1, 2, 3]
-NUM_MANUAL_LEVELS = [1, 2, 3]
 NUM_CASES_LEVELS = [100, 500, 1000]
+# Human pool levels are centred on the discovered pool size (see _manual_pool_levels).
+# This default is used only when no pool size is known (e.g. demo mode, pre-discovery);
+# 1 reproduces the historical [1, 2, 3] levels and matches the demo baseline's staffing.
+DEFAULT_MANUAL_POOL_SIZE = 1
+
+
+def _manual_pool_levels(pool_size: int) -> list[int]:
+    """Three ascending staffing levels centred on the discovered human pool size.
+
+    For a pool of n >= 2, perturb by ±1 → [n-1, n, n+1]. Below 2 we shift up to
+    [1, 2, 3] so the levels stay distinct and >= 1 — 0 resources is invalid, and a
+    duplicate level would break the Taguchi 3-distinct-levels assumption.
+    """
+    if pool_size >= 2:
+        return [pool_size - 1, pool_size, pool_size + 1]
+    return [1, 2, 3]
 
 
 # ── XORSplitAutomation: scenario input type ───────────────────────────────────
@@ -206,11 +222,12 @@ class Transformation(ABC):
         self,
         target_activity: str,
         current_duration_s: float | None = None,
-        selected_resource_id: str | None = None,
+        selected_pool_size: int | None = None,
         frozen_pool_size: int | None = None,
     ) -> list[Parameter]:
         """Declare factors. `current_duration_s` prepopulates duration levels.
-        `selected_resource_id` identifies which resource pool to vary.
+        `selected_pool_size` is the discovered size of the human pool to vary; the
+        manual-pool levels centre on it (None falls back to a default).
         `frozen_pool_size` freezes the manual pool factor at that value when set."""
 
     def prepare_experiment(
@@ -239,6 +256,10 @@ class Transformation(ABC):
         self, values: dict, result: BpmnTransformResult
     ) -> ScenarioParams:
         """Convert one Taguchi row into typed ScenarioParams for apply_params()."""
+
+    @abstractmethod
+    def baseline_params(self, result: BpmnTransformResult) -> ScenarioParams:
+        """Params for the no-intervention baseline (the pattern applied, automation off)."""
 
     @abstractmethod
     def apply_pattern(
@@ -348,7 +369,7 @@ class XORSplitAutomation(Transformation):
         self,
         _target_activity: str,
         current_duration_s: float | None = None,
-        selected_resource_id: str | None = None,
+        selected_pool_size: int | None = None,
         frozen_pool_size: int | None = None,
     ) -> list[Parameter]:
         t = (
@@ -356,8 +377,17 @@ class XORSplitAutomation(Transformation):
             if current_duration_s
             else DEFAULT_MANUAL_DURATION_S
         )
-        pool_frozen = frozen_pool_size is not None
-        pool_levels = [frozen_pool_size] * 3 if pool_frozen else list(NUM_MANUAL_LEVELS)
+        if frozen_pool_size is not None:
+            pool_frozen = True
+            pool_levels = [frozen_pool_size] * 3
+        else:
+            pool_frozen = False
+            center = (
+                selected_pool_size
+                if selected_pool_size is not None
+                else DEFAULT_MANUAL_POOL_SIZE
+            )
+            pool_levels = _manual_pool_levels(center)
         return [
             Parameter(
                 F_PCT_AUTO,
@@ -410,6 +440,30 @@ class XORSplitAutomation(Transformation):
     ) -> ScenarioParams:
         return AutomationParams.from_taguchi_values(
             values, selected_resource_id=result.selected_resource_id
+        )
+
+    # --- baseline_params -----------------------------------------------------
+    def baseline_params(self, result: BpmnTransformResult) -> ScenarioParams:
+        """The no-intervention baseline: the pattern applied with 0% automation.
+
+        Human duration stays at its Simod-discovered mean (the same t_manual centre
+        the scenarios perturb around) and the human pool is left at its discovered
+        size — selected_resource_id=None skips the resize. The bot-side factors are
+        inert because no case is routed to the bot.
+        """
+        manual_s = (
+            task_mean_duration_s(result.scenario_template, result.ids.task_id)
+            or DEFAULT_MANUAL_DURATION_S
+        )
+        return AutomationParams(
+            automation_rate=0.0,  # 100% human path
+            bot_failure_rate=0.0,  # inert: no case reaches the bot
+            bot_execution_time=0.0,  # inert: bot never runs
+            manual_execution_time=manual_s,
+            num_bots=1,  # inert: bot pool unused
+            num_manual_resources=1,  # inert: resize skipped via selected_resource_id=None
+            num_cases=1,  # inert: cases-per-rep is a CLI arg, not in the JSON
+            selected_resource_id=None,
         )
 
     # --- apply_pattern -------------------------------------------------------
