@@ -355,6 +355,12 @@ with col2:
         hdr[0].caption("Factor")
         for i, lbl in enumerate(("Low", "Mid", "High")):
             hdr[i + 1].caption(lbl)
+        # The computed level value is part of each widget key so the input
+        # re-defaults when its level changes — e.g. switching target gives a new
+        # t_manual mean, switching resource a new num_manual pool. A stable key
+        # would pin the widget to its first-render value and ignore the new
+        # `value=` (the "value is only the initial value" trap — see §6); fixed
+        # factors keep a constant key, so user edits to them survive a target switch.
         for p in params:
             row = st.columns([3, 1, 1, 1])
             row[0].markdown(f"**{p.label}**")
@@ -363,7 +369,7 @@ with col2:
                     f"{p.id}_frozen",
                     **level_input_kwargs(p.kind, p.levels[0]),
                     label_visibility="collapsed",
-                    key=f"{p.id}_frozen",
+                    key=f"{p.id}_frozen_{p.levels[0]}",
                     disabled=True,
                 )
                 row[2].caption("frozen")
@@ -375,7 +381,7 @@ with col2:
                             f"{p.id}_{i}",
                             **level_input_kwargs(p.kind, p.levels[i]),
                             label_visibility="collapsed",
-                            key=f"{p.id}_{i}",
+                            key=f"{p.id}_{i}_{p.levels[i]}",
                         )
                     )
                 p.levels = new
