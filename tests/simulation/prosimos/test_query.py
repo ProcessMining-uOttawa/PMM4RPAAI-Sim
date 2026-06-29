@@ -66,21 +66,44 @@ _PROSIMOS_JSON = {
 }
 
 
-def _prosimos_sel(task_id: str, resources: list[dict]) -> dict:
+def _selector_json(task_id: str, resources: list[dict]) -> dict:
     """Build a minimal Prosimos JSON dict for resource_selector_config tests."""
     profile_resources = [
-        {"id": r["id"], "name": r["name"], "amount": r.get("amount", 1)}
-        for r in resources
+        {
+            "id": resource["id"],
+            "name": resource["name"],
+            "amount": resource.get("amount", 1),
+        }
+        for resource in resources
     ]
     task_dist = [
         {
             "task_id": task_id,
-            "resources": [{"resource_id": r["id"]} for r in resources],
+            "resources": [{"resource_id": resource["id"]} for resource in resources],
         }
     ]
     return {
         "resource_profiles": [{"id": "profile_1", "resource_list": profile_resources}],
         "task_resource_distribution": task_dist,
+    }
+
+
+def _distribution_json(distribution_name: str, values: list[float]) -> dict:
+    """One task (t1) with one resource (r1) using the given duration distribution."""
+    return {
+        KEY_RESOURCE_PROFILES: [],
+        KEY_TASK_RESOURCE_DISTRIBUTION: [
+            {
+                "task_id": "t1",
+                "resources": [
+                    {
+                        "resource_id": "r1",
+                        "distribution_name": distribution_name,
+                        "distribution_params": [{"value": value} for value in values],
+                    }
+                ],
+            }
+        ],
     }
 
 
@@ -140,77 +163,24 @@ class TestTaskMeanDurationS:
     def test_returns_none_when_task_not_found(self):
         assert task_mean_duration_s(_PROSIMOS_JSON, "nonexistent") is None
 
-    def test_expon_distribution_uses_first_param_as_mean(self):
-        data = {
-            KEY_RESOURCE_PROFILES: [],
-            KEY_TASK_RESOURCE_DISTRIBUTION: [
-                {
-                    "task_id": "t1",
-                    "resources": [
-                        {
-                            "resource_id": "r1",
-                            "distribution_name": "expon",
-                            "distribution_params": [{"value": 120.0}],
-                        }
-                    ],
-                }
-            ],
-        }
-        assert task_mean_duration_s(data, "t1") == pytest.approx(120.0)
+    @pytest.mark.parametrize(
+        "distribution_name, values, expected",
+        [
+            ("expon", [120.0], 120.0),  # first param is the mean
+            ("exponential", [60.0], 60.0),  # alias of expon
+            ("norm", [300.0, 30.0], 300.0),  # first param is the mean (2nd is std)
+            ("normal", [180.0, 20.0], 180.0),  # alias of norm
+        ],
+    )
+    def test_first_param_is_mean(self, distribution_name, values, expected):
+        data = _distribution_json(distribution_name, values)
+        assert task_mean_duration_s(data, "t1") == pytest.approx(expected)
 
-    def test_exponential_alias_also_accepted(self):
-        data = {
-            KEY_RESOURCE_PROFILES: [],
-            KEY_TASK_RESOURCE_DISTRIBUTION: [
-                {
-                    "task_id": "t1",
-                    "resources": [
-                        {
-                            "resource_id": "r1",
-                            "distribution_name": "exponential",
-                            "distribution_params": [{"value": 60.0}],
-                        }
-                    ],
-                }
-            ],
-        }
-        assert task_mean_duration_s(data, "t1") == pytest.approx(60.0)
-
-    def test_norm_distribution_uses_first_param_as_mean(self):
-        data = {
-            KEY_RESOURCE_PROFILES: [],
-            KEY_TASK_RESOURCE_DISTRIBUTION: [
-                {
-                    "task_id": "t1",
-                    "resources": [
-                        {
-                            "resource_id": "r1",
-                            "distribution_name": "norm",
-                            "distribution_params": [{"value": 300.0}, {"value": 30.0}],
-                        }
-                    ],
-                }
-            ],
-        }
-        assert task_mean_duration_s(data, "t1") == pytest.approx(300.0)
-
-    def test_normal_alias_also_accepted(self):
-        data = {
-            KEY_RESOURCE_PROFILES: [],
-            KEY_TASK_RESOURCE_DISTRIBUTION: [
-                {
-                    "task_id": "t1",
-                    "resources": [
-                        {
-                            "resource_id": "r1",
-                            "distribution_name": "normal",
-                            "distribution_params": [{"value": 180.0}, {"value": 20.0}],
-                        }
-                    ],
-                }
-            ],
-        }
-        assert task_mean_duration_s(data, "t1") == pytest.approx(180.0)
+    def test_unrecognised_distribution_returns_none(self):
+        # only uniform/fix/expon/norm are understood; gamma is skipped, so a
+        # task with no recognised distribution yields None
+        data = _distribution_json("gamma", [1.0, 2.0, 3.0])
+        assert task_mean_duration_s(data, "t1") is None
 
 
 # ── resource_selector_config ──────────────────────────────────────────────────
@@ -218,32 +188,32 @@ class TestTaskMeanDurationS:
 
 class TestResourceSelectorConfig:
     def test_no_resources_returns_empty(self):
-        data = _prosimos_sel("task_1", [])
-        cfg = resource_selector_config(data, "task_1")
-        assert cfg.selectable == []
-        assert cfg.frozen == []
-        assert cfg.fallback_pool_size is None
+        data = _selector_json("task_1", [])
+        config = resource_selector_config(data, "task_1")
+        assert config.selectable == []
+        assert config.frozen == []
+        assert config.fallback_pool_size is None
 
     def test_single_resource_auto_selectable(self):
-        data = _prosimos_sel("task_1", [{"id": "r1", "name": "Alice"}])
-        cfg = resource_selector_config(data, "task_1")
-        assert len(cfg.selectable) == 1
-        assert cfg.selectable[0]["id"] == "r1"
-        assert cfg.frozen == []
-        assert cfg.fallback_pool_size is None
+        data = _selector_json("task_1", [{"id": "r1", "name": "Alice"}])
+        config = resource_selector_config(data, "task_1")
+        assert len(config.selectable) == 1
+        assert config.selectable[0]["id"] == "r1"
+        assert config.frozen == []
+        assert config.fallback_pool_size is None
 
     def test_multiple_resources_none_shared(self):
-        data = _prosimos_sel(
+        data = _selector_json(
             "task_1",
             [
                 {"id": "r1", "name": "Alice"},
                 {"id": "r2", "name": "Bob"},
             ],
         )
-        cfg = resource_selector_config(data, "task_1")
-        assert {r["id"] for r in cfg.selectable} == {"r1", "r2"}
-        assert cfg.frozen == []
-        assert cfg.fallback_pool_size is None
+        config = resource_selector_config(data, "task_1")
+        assert {r["id"] for r in config.selectable} == {"r1", "r2"}
+        assert config.frozen == []
+        assert config.fallback_pool_size is None
 
     def test_multiple_resources_partial_shared(self):
         """One resource shared with another task → frozen; other is selectable."""
@@ -268,10 +238,10 @@ class TestResourceSelectorConfig:
                 {"task_id": "task_2", "resources": [{"resource_id": "r1"}]},
             ],
         }
-        cfg = resource_selector_config(data, "task_1")
-        assert [r["id"] for r in cfg.selectable] == ["r2"]
-        assert [r["id"] for r in cfg.frozen] == ["r1"]
-        assert cfg.fallback_pool_size is None
+        config = resource_selector_config(data, "task_1")
+        assert [r["id"] for r in config.selectable] == ["r2"]
+        assert [r["id"] for r in config.frozen] == ["r1"]
+        assert config.fallback_pool_size is None
 
     def test_all_resources_shared_returns_fallback_pool_size(self):
         """Both resources on task_1 are also on another task → all frozen."""
@@ -302,10 +272,10 @@ class TestResourceSelectorConfig:
                 },
             ],
         }
-        cfg = resource_selector_config(data, "task_1")
-        assert cfg.selectable == []
-        assert len(cfg.frozen) == 2
-        assert cfg.fallback_pool_size == 3  # pool size of the first resource
+        config = resource_selector_config(data, "task_1")
+        assert config.selectable == []
+        assert len(config.frozen) == 2
+        assert config.fallback_pool_size == 3  # pool size of the first resource
 
     def test_all_resources_shared_pool_unknown_when_not_in_profile(self):
         """fallback_pool_size is None when no resource appears in any profile."""
@@ -328,13 +298,13 @@ class TestResourceSelectorConfig:
                 },
             ],
         }
-        cfg = resource_selector_config(data, "task_1")
-        assert cfg.selectable == []
-        assert cfg.fallback_pool_size is None
+        config = resource_selector_config(data, "task_1")
+        assert config.selectable == []
+        assert config.fallback_pool_size is None
 
     def test_unknown_task_returns_empty(self):
-        data = _prosimos_sel("task_1", [{"id": "r1", "name": "Alice"}])
-        cfg = resource_selector_config(data, "nonexistent_task")
-        assert cfg.selectable == []
-        assert cfg.frozen == []
-        assert cfg.fallback_pool_size is None
+        data = _selector_json("task_1", [{"id": "r1", "name": "Alice"}])
+        config = resource_selector_config(data, "nonexistent_task")
+        assert config.selectable == []
+        assert config.frozen == []
+        assert config.fallback_pool_size is None
