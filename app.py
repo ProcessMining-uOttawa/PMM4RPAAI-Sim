@@ -609,7 +609,7 @@ if ss.results is not None:
             data=store.group_zip(bpmn_file, json_paths, stats_csv)
             if (bpmn_file and json_paths)
             else b"",
-            file_name="export.zip",
+            file_name="model_bundle.zip",
             mime="application/zip",
             use_container_width=True,
             disabled=not (bpmn_file and json_paths),
