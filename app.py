@@ -33,7 +33,7 @@ from ui.run_manager import (
     commit_result,
 )
 from ui.table import prepare_ranked_display
-from ui.widgets import level_input_kwargs
+from ui.param_inputs import number_input_kwargs
 
 st.set_page_config(
     page_title="Automation What-If Simulator", page_icon="⚙", layout="wide"
@@ -373,7 +373,7 @@ with col2:
             if p.frozen:
                 row[1].number_input(
                     f"{p.id}_frozen",
-                    **level_input_kwargs(p.kind, p.levels[0]),
+                    **number_input_kwargs(p.kind, p.levels[0]),
                     label_visibility="collapsed",
                     key=f"{p.id}_frozen_{p.levels[0]}",
                     disabled=True,
@@ -385,7 +385,7 @@ with col2:
                     new.append(
                         row[i + 1].number_input(
                             f"{p.id}_{i}",
-                            **level_input_kwargs(p.kind, p.levels[i]),
+                            **number_input_kwargs(p.kind, p.levels[i]),
                             label_visibility="collapsed",
                             key=f"{p.id}_{i}_{p.levels[i]}",
                         )

@@ -4,6 +4,8 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import Any, Literal
 
+ParameterKind = Literal["percentage", "duration_s", "cost", "categorical"]
+
 
 class ScenarioParams:
     """Base class for pattern-specific simulation parameters derived from a Scenario.
@@ -20,7 +22,7 @@ class Parameter:
     id: str
     label: str
     levels: list[Any]  # exactly 3 values for L9/L18/L27
-    kind: Literal["percentage", "duration_s", "cost", "categorical"] = "percentage"
+    kind: ParameterKind = "percentage"
     frozen: bool = False  # if True, excluded from OA; levels[0] used in all scenarios
 
 
