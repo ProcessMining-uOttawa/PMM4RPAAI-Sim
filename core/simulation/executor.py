@@ -3,8 +3,8 @@
 from __future__ import annotations
 import dataclasses
 import os
-from concurrent.futures import ThreadPoolExecutor, wait, FIRST_COMPLETED
-from dataclasses import dataclass, field
+from concurrent.futures import ThreadPoolExecutor, wait, FIRST_COMPLETED, Future
+from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Callable
 
@@ -19,7 +19,7 @@ class SimulationTask:
     out_log: Path
     out_stat: Path | None
     proc_log: Path | None
-    metadata: Any = field(default=None)
+    metadata: Any = None
     max_retries: int = 0
 
 
@@ -40,7 +40,7 @@ def run_all(
 
     with ThreadPoolExecutor(max_workers=workers) as pool:
 
-        def _submit(task: SimulationTask):
+        def _submit(task: SimulationTask) -> Future[Path]:
             return pool.submit(
                 runner.simulate,
                 task.bpmn_path,
@@ -51,19 +51,23 @@ def run_all(
                 proc_log=task.proc_log,
             )
 
-        pending: dict = {_submit(task): task for task in tasks}
+        pending: dict[Future[Path], SimulationTask] = {
+            _submit(task): task for task in tasks
+        }
 
         while pending:
             done_set, _ = wait(pending.keys(), return_when=FIRST_COMPLETED)
-            for f in done_set:
+            for future in done_set:
                 if stop_check is not None and stop_check():
                     pool.shutdown(wait=False, cancel_futures=True)
                     return False
-                task = pending.pop(f)
+                task = pending.pop(future)
                 try:
-                    exc = f.exception()
+                    exc = future.exception()
                     if exc is not None:
                         if task.max_retries > 0:
+                            # proc_log=None so the retry doesn't overwrite the
+                            # failed attempt's captured subprocess log.
                             retried = dataclasses.replace(
                                 task, max_retries=task.max_retries - 1, proc_log=None
                             )
