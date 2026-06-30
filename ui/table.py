@@ -18,7 +18,7 @@ def prepare_ranked_display(
 
     Columns included, in order:
       rank · Scenario · [factor cols] · per-case KPI means ·
-      per-goal score (0–100) · per-goal met flags · overall score
+      per-goal score (0–100) · overall score
     """
     include: list[tuple[str, str]] = [("scenario_id", "Scenario")]
 
@@ -32,16 +32,13 @@ def prepare_ranked_display(
         )  # rankable() guarantees per_case
         include.append((col_r, name_r))
 
-    met_cols: list[str] = []
     for m in goal_metrics:
         col = m.per_case_column
         label = m.per_case_compact_label
         assert (
             col is not None and label is not None
         )  # goal_metrics are rankable metrics with per_case
-        met_col = f"{col}_met"
         include.append((f"{col}_score", f"{label} Score"))
-        met_cols.append(met_col)
 
     include.append(("score", "Overall Score"))
 
@@ -49,9 +46,5 @@ def prepare_ranked_display(
     rename = {col: name for col, name in include if col in ranked.columns}
 
     result = ranked[src_cols].copy()
-    for met_col in met_cols:
-        if met_col in result.columns:
-            result[met_col] = result[met_col].map({True: "✓", False: "✗"})
-
     result.insert(0, "rank", range(1, len(result) + 1))
     return result.rename(columns=rename)

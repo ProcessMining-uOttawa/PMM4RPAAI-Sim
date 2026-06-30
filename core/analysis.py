@@ -146,10 +146,9 @@ def main_effects(results: pd.DataFrame, metric: Metric) -> pd.DataFrame:
 
 
 def rank(agg: pd.DataFrame, goals: list[Goal]) -> pd.DataFrame:
-    """Adds per-goal '{metric}_score' and '{metric}_met' columns, plus aggregate 'score'.
+    """Adds per-goal '{metric}_score' columns plus an aggregate 'score'.
 
     Per-goal score: piecewise linear 0–100 (100 = target met, 50 = at baseline, 0 = at worst).
-    Per-goal met: True when the goal's score reaches 100 (metric hits or beats target).
     Aggregate score: min of all per-goal scores (weakest-link rule).
     Scenarios are sorted descending by aggregate score (higher is better).
     """
@@ -158,7 +157,6 @@ def rank(agg: pd.DataFrame, goals: list[Goal]) -> pd.DataFrame:
     for goal in goals:
         goal_scores = out[goal.metric].apply(goal.score)
         out[f"{goal.metric}_score"] = goal_scores.round(1)
-        out[f"{goal.metric}_met"] = goal_scores >= 100.0
         per_goal_scores.append(goal_scores)
     if per_goal_scores:
         out["score"] = pd.concat(per_goal_scores, axis=1).min(axis=1).round(1)
