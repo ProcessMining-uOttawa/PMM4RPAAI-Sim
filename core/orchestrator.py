@@ -143,10 +143,10 @@ def run_experiment(
                     bpmn_path=bpmn_tr.bpmn_path,
                     json_path=baseline_json_path,
                     n_cases=n_cases,
-                    out_log=store.baseline_log(experiment_dir, rep, n_cases),
-                    out_stat=store.baseline_stats(experiment_dir, rep, n_cases),
+                    out_log=store.baseline_log(experiment_dir, n_cases, rep),
+                    out_stat=store.baseline_stats(experiment_dir, n_cases, rep),
                     proc_log=store.baseline_subprocess_log(
-                        experiment_dir, rep, n_cases
+                        experiment_dir, n_cases, rep
                     ),
                     metadata=BaselineMeta(n_cases=n_cases, rep=rep),
                     max_retries=max_retries,

@@ -5,6 +5,9 @@ import os
 import subprocess
 from pathlib import Path
 
+SIMOD_EXE = Path("tools/simod-venv/Scripts/simod.exe")
+PROSIMOS_EXE = Path("tools/prosimos-venv/Scripts/prosimos.exe")
+
 
 def _tail_lines(path: Path, n: int) -> str:
     try:
@@ -14,7 +17,7 @@ def _tail_lines(path: Path, n: int) -> str:
         return "(log unreadable)"
 
 
-def _run_logged(cmd: list, proc_log: Path | None, **kwargs) -> None:
+def _run_logged(cmd: list[str], proc_log: Path | None, **kwargs) -> None:
     """Run a subprocess, optionally capturing stdout+stderr to proc_log.
     Raises CalledProcessError with the last 20 log lines on failure."""
     if proc_log is None:
@@ -26,10 +29,6 @@ def _run_logged(cmd: list, proc_log: Path | None, **kwargs) -> None:
         raise subprocess.CalledProcessError(
             result.returncode, cmd, output=_tail_lines(proc_log, 20)
         )
-
-
-SIMOD_EXE = Path("tools/simod-venv/Scripts/simod.exe")
-PROSIMOS_EXE = Path("tools/prosimos-venv/Scripts/prosimos.exe")
 
 
 def xes_to_simod_csv(xes_path: Path, csv_path: Path) -> Path:
@@ -46,8 +45,9 @@ def xes_to_simod_csv(xes_path: Path, csv_path: Path) -> Path:
     NS = "{http://www.xes-standard.org/}"
 
     def _attr(elem, tag: str, key: str) -> str | None:
+        tag_name = f"{NS}{tag}"
         child = next(
-            (c for c in elem if c.tag == f"{NS}{tag}" and c.get("key") == key), None
+            (c for c in elem if c.tag == tag_name and c.get("key") == key), None
         )
         return child.get("value") if child is not None else None
 
@@ -97,10 +97,38 @@ def _subproc_env(java_home_override: str | None) -> dict:
     env = os.environ.copy()
     if java_home_override:
         env["JAVA_HOME"] = java_home_override
+        # Prepend Corretto-8's bin so Simod's child `java` resolves to it ahead
+        # of any system Java on PATH (JAVA_HOME alone doesn't affect PATH lookup).
         env["PATH"] = (
             str(Path(java_home_override) / "bin") + os.pathsep + env.get("PATH", "")
         )
     return env
+
+
+def _locate_simod_outputs(out_dir: Path) -> tuple[Path, Path]:
+    """Find the (BPMN, Prosimos params JSON) pair in Simod's output tree.
+
+    Simod writes exactly one BPMN; the params JSON normally sits beside it with
+    the same stem, falling back to any sibling JSON that isn't one of Simod's
+    bookkeeping files (runtimes / canonical model).
+    """
+    bpmns = list(out_dir.rglob("*.bpmn"))
+    if len(bpmns) != 1:
+        raise RuntimeError(
+            f"Expected exactly 1 BPMN from Simod, found {len(bpmns)}: {bpmns}"
+        )
+    bpmn = bpmns[0]
+    params_path = bpmn.with_suffix(".json")
+    if not params_path.exists():
+        candidates = [
+            p
+            for p in bpmn.parent.glob("*.json")
+            if p.name not in {"runtimes.json", "canonical_model.json"}
+        ]
+        if not candidates:
+            raise RuntimeError(f"No Prosimos params JSON next to {bpmn}")
+        params_path = candidates[0]
+    return bpmn, params_path
 
 
 def discover(
@@ -136,25 +164,7 @@ def discover(
         cwd=str(run_dir),
         env=_subproc_env(java_home),
     )
-    bpmns = list(out_dir.rglob("*.bpmn"))
-    if len(bpmns) != 1:
-        raise RuntimeError(
-            f"Expected exactly 1 BPMN from Simod, found {len(bpmns)}: {bpmns}"
-        )
-    bpmn = bpmns[0]
-    # Prosimos simulation params JSON sits next to the BPMN with the same stem.
-    params = bpmn.with_suffix(".json")
-    if not params.exists():
-        # Fallback: any sibling JSON that isn't runtimes/canonical.
-        cands = [
-            p
-            for p in bpmn.parent.glob("*.json")
-            if p.name not in {"runtimes.json", "canonical_model.json"}
-        ]
-        if not cands:
-            raise RuntimeError(f"No Prosimos params JSON next to {bpmn}")
-        params = cands[0]
-    return bpmn, params
+    return _locate_simod_outputs(out_dir)
 
 
 # --- Prosimos ---------------------------------------------------------------

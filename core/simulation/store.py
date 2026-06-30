@@ -20,11 +20,11 @@ def _rep_path(base: Path, rep: int, suffix: str) -> Path:
 
 
 def new_experiment(name: str) -> Path:
-    eid = f"{time.strftime('%Y%m%d-%H%M%S')}-{uuid.uuid4().hex[:6]}"
-    d = ROOT / eid
-    (d / "scenarios").mkdir(parents=True)
-    (d / "meta.json").write_text(json.dumps({"id": eid, "name": name}))
-    return d
+    exp_id = f"{time.strftime('%Y%m%d-%H%M%S')}-{uuid.uuid4().hex[:6]}"
+    exp_dir = ROOT / exp_id
+    (exp_dir / "scenarios").mkdir(parents=True)
+    (exp_dir / "meta.json").write_text(json.dumps({"id": exp_id, "name": name}))
+    return exp_dir
 
 
 def discovery_log(exp: Path) -> Path:
@@ -35,9 +35,9 @@ def discovery_log(exp: Path) -> Path:
 
 
 def scenario_dir(exp: Path, scenario_id: str) -> Path:
-    d = exp / "scenarios" / scenario_id
-    d.mkdir(parents=True, exist_ok=True)
-    return d
+    path = exp / "scenarios" / scenario_id
+    path.mkdir(parents=True, exist_ok=True)
+    return path
 
 
 def replication_log(exp: Path, scenario_id: str, replication: int) -> Path:
@@ -56,27 +56,27 @@ def replication_subprocess_log(exp: Path, scenario_id: str, replication: int) ->
 
 
 def baseline_dir(exp: Path, n_cases: int) -> Path:
-    d = exp / "baseline" / f"cases_{n_cases}"
-    d.mkdir(parents=True, exist_ok=True)
-    return d
+    path = exp / "baseline" / f"cases_{n_cases}"
+    path.mkdir(parents=True, exist_ok=True)
+    return path
 
 
 def baseline_params_path(exp: Path) -> Path:
     """The single shared baseline params.json — one config reused across all n_cases."""
-    d = exp / "baseline"
-    d.mkdir(parents=True, exist_ok=True)
-    return d / "params.json"
+    base_dir = exp / "baseline"
+    base_dir.mkdir(parents=True, exist_ok=True)
+    return base_dir / "params.json"
 
 
-def baseline_log(exp: Path, replication: int, n_cases: int) -> Path:
+def baseline_log(exp: Path, n_cases: int, replication: int) -> Path:
     return _rep_path(baseline_dir(exp, n_cases), replication, "log.csv")
 
 
-def baseline_stats(exp: Path, replication: int, n_cases: int) -> Path:
+def baseline_stats(exp: Path, n_cases: int, replication: int) -> Path:
     return _rep_path(baseline_dir(exp, n_cases), replication, "stats.csv")
 
 
-def baseline_subprocess_log(exp: Path, replication: int, n_cases: int) -> Path:
+def baseline_subprocess_log(exp: Path, n_cases: int, replication: int) -> Path:
     return _rep_path(baseline_dir(exp, n_cases), replication, "prosimos.log")
 
 
@@ -85,9 +85,16 @@ def baseline_subprocess_log(exp: Path, replication: int, n_cases: int) -> Path:
 
 def _build_zip(populate: Callable[[zipfile.ZipFile], None]) -> bytes:
     buf = io.BytesIO()
-    with zipfile.ZipFile(buf, "w", zipfile.ZIP_DEFLATED) as z:
-        populate(z)
+    with zipfile.ZipFile(buf, "w", zipfile.ZIP_DEFLATED) as archive:
+        populate(archive)
     return buf.getvalue()
+
+
+def _write_scenario_params(
+    archive: zipfile.ZipFile, json_paths: dict[str, Path]
+) -> None:
+    for sid, params_path in sorted(json_paths.items()):
+        archive.writestr(f"scenarios/{sid}_params.json", params_path.read_text())
 
 
 def json_zip(json_paths: dict[str, Path]) -> bytes:
@@ -95,9 +102,8 @@ def json_zip(json_paths: dict[str, Path]) -> bytes:
     if not json_paths:
         return b""
 
-    def _populate(z: zipfile.ZipFile) -> None:
-        for sid, p in sorted(json_paths.items()):
-            z.writestr(f"scenarios/{sid}_params.json", p.read_text())
+    def _populate(archive: zipfile.ZipFile) -> None:
+        _write_scenario_params(archive, json_paths)
 
     return _build_zip(_populate)
 
@@ -105,11 +111,10 @@ def json_zip(json_paths: dict[str, Path]) -> bytes:
 def group_zip(bpmn_path: Path, json_paths: dict[str, Path], stats_csv: str) -> bytes:
     """Pack BPMN, scenario params, and statistics CSV into a single ZIP archive."""
 
-    def _populate(z: zipfile.ZipFile) -> None:
-        z.write(str(bpmn_path), arcname="model.bpmn")
-        z.writestr("statistics.csv", stats_csv)
-        for sid, p in sorted(json_paths.items()):
-            z.writestr(f"scenarios/{sid}_params.json", p.read_text())
+    def _populate(archive: zipfile.ZipFile) -> None:
+        archive.write(bpmn_path, arcname="model.bpmn")
+        archive.writestr("statistics.csv", stats_csv)
+        _write_scenario_params(archive, json_paths)
 
     return _build_zip(_populate)
 
@@ -122,14 +127,16 @@ def event_logs_zip(
     if not scenario_log_paths and not baseline_log_paths:
         return b""
 
-    def _populate(z: zipfile.ZipFile) -> None:
+    def _populate(archive: zipfile.ZipFile) -> None:
         for sid, paths in sorted(scenario_log_paths.items()):
-            for p in paths:
-                if p.exists():
-                    z.write(p, arcname=f"scenarios/{sid}/{p.name}")
+            for log_path in paths:
+                if log_path.exists():
+                    archive.write(log_path, arcname=f"scenarios/{sid}/{log_path.name}")
         for n_cases, paths in sorted(baseline_log_paths.items()):
-            for p in paths:
-                if p.exists():
-                    z.write(p, arcname=f"baseline/cases_{n_cases}/{p.name}")
+            for log_path in paths:
+                if log_path.exists():
+                    archive.write(
+                        log_path, arcname=f"baseline/cases_{n_cases}/{log_path.name}"
+                    )
 
     return _build_zip(_populate)
