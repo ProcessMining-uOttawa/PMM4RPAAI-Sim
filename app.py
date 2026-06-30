@@ -12,7 +12,6 @@ from pathlib import Path
 from core import analysis, demo, orchestrator
 from core.bpmn.query import find_task_by_name, list_activities
 from core.simulation.prosimos.query import (
-    resource_pool_size,
     resource_selector_config,
     task_mean_duration_s,
 )
@@ -34,6 +33,7 @@ from ui.run_manager import (
 )
 from ui.table import prepare_ranked_display
 from ui.param_inputs import number_input_kwargs
+from ui.interactive.resource_selector import select_resource
 
 st.set_page_config(
     page_title="Automation What-If Simulator", page_icon="⚙", layout="wide"
@@ -80,20 +80,6 @@ def _clear_log() -> None:
     ss.bpmn_path = None
     ss.json_path = None
     ss.log_fingerprint = None
-
-
-def _halt_if_unresolved(pool_size: int | None) -> None:
-    """Stop with a clear error when a task resource resolves to no profile.
-
-    Should never happen with valid Simod output — Prosimos itself rejects such a
-    model — so we surface it loudly rather than fabricating human-pool levels.
-    """
-    if pool_size is None:
-        st.error(
-            "A resource referenced by this task is not defined in any profile — "
-            "the model JSON appears malformed."
-        )
-        st.stop()
 
 
 # --- header ------------------------------------------------------------------
@@ -301,45 +287,18 @@ with col1:
                 _resource_cfg = resource_selector_config(prosimos_data, _task_id)
 
         # Resource selector — runs in demo mode too (demo points bpmn/json at the
-        # pre-baked model). Renders a picker only when the task exposes selectable
-        # or frozen resources; otherwise the pools stay None (the no-info fallback).
+        # pre-baked model). The interactive component renders a picker only when
+        # the task exposes selectable or frozen resources; otherwise it returns an
+        # empty selection (pools stay None, the no-info fallback).
         selected_resource_id: str | None = None
         selected_pool_size: int | None = None
         frozen_pool_size: int | None = None
 
         if _resource_cfg is not None and prosimos_data is not None:
-            cfg = _resource_cfg
-            if cfg.selectable or cfg.frozen:
-                if not cfg.selectable:
-                    st.selectbox(
-                        "Manual resource",
-                        [r["name"] for r in cfg.frozen],
-                        disabled=True,
-                    )
-                    _halt_if_unresolved(cfg.fallback_pool_size)
-                    st.warning(
-                        "All resources are shared across tasks — "
-                        "Human pool size is frozen at its current value."
-                    )
-                    frozen_pool_size = cfg.fallback_pool_size
-                else:
-                    if cfg.frozen:
-                        st.caption(
-                            f"Shared (frozen): {', '.join(r['name'] for r in cfg.frozen)}"
-                        )
-                    if len(cfg.selectable) == 1:
-                        selected_resource_id = cfg.selectable[0]["id"]
-                    else:
-                        _sel_name = st.selectbox(
-                            "Manual resource", [r["name"] for r in cfg.selectable]
-                        )
-                        selected_resource_id = next(
-                            r["id"] for r in cfg.selectable if r["name"] == _sel_name
-                        )
-                    selected_pool_size = resource_pool_size(
-                        prosimos_data, selected_resource_id
-                    )
-                    _halt_if_unresolved(selected_pool_size)
+            _selection = select_resource(_resource_cfg, prosimos_data)
+            selected_resource_id = _selection.selected_resource_id
+            selected_pool_size = _selection.selected_pool_size
+            frozen_pool_size = _selection.frozen_pool_size
 
         pattern_id = st.selectbox(
             "Substitution pattern",
