@@ -56,10 +56,6 @@ class Goal:
         span = worst_ - baseline_ref_
         return -(val - baseline_ref_) / span * 50.0 + 50.0 if span else 0.0
 
-    def is_met(self, value: float) -> bool:
-        """True when the metric hits or beats the target (score == 100)."""
-        return self.score(value) >= 100.0
-
     @classmethod
     def from_metric(cls, metric: Metric, baseline: dict[str, float]) -> Goal:
         """Construct a Goal for a Metric using its per-case baseline value from a baseline dict.

@@ -135,26 +135,6 @@ class TestGoalScore:
         assert goal.score(105.0) == pytest.approx(75.0)
 
 
-# ── Goal.is_met ───────────────────────────────────────────────────────────────
-
-
-class TestGoalIsMet:
-    def _sib_goal(self) -> Goal:
-        return Goal.from_baseline("col", 100.0, MetricDirection.SMALLER_IS_BETTER)
-
-    def test_at_target_is_met(self):
-        assert self._sib_goal().is_met(90.0)
-
-    def test_below_target_is_met(self):
-        assert self._sib_goal().is_met(50.0)
-
-    def test_at_baseline_ref_not_met(self):
-        assert not self._sib_goal().is_met(100.0)
-
-    def test_nan_not_met(self):
-        assert not self._sib_goal().is_met(float("nan"))
-
-
 # ── baseline_per_case ─────────────────────────────────────────────────────────
 
 
