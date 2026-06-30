@@ -81,7 +81,11 @@ def cancel_experiment(ss: Any) -> None:
 
 
 def commit_result(ss: Any, result: ExperimentResult) -> None:
-    """Write an ExperimentResult's fields into session state. Counterpart to _clear_results()."""
+    """Write an ExperimentResult's fields into session state.
+
+    The positive counterpart to app._clear_results(): keep this field list in
+    sync with ExperimentResult and _clear_results() when adding a result field.
+    """
     ss.results = result.results
     ss.experiment_bpmn_path = result.experiment_bpmn_path
     ss.scenario_json_paths = result.scenario_json_paths

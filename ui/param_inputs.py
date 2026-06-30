@@ -1,10 +1,14 @@
-"""Streamlit widget helpers for the factor-levels panel."""
+"""st.number_input config for the factor-levels panel, keyed on Parameter.kind."""
 
 from __future__ import annotations
 
+from typing import Any
 
-def level_input_kwargs(kind: str, value) -> dict:
-    """Map Parameter.kind to st.number_input constraints."""
+from core.parameters import ParameterKind
+
+
+def number_input_kwargs(kind: ParameterKind, value: float) -> dict[str, Any]:
+    """Map a Parameter.kind to the st.number_input kwargs for one factor level."""
     if kind == "percentage":
         return {
             "value": float(value),
