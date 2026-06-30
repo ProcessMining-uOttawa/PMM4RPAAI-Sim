@@ -24,13 +24,13 @@ CORRETTO_ROOTS = [
 def _detect_corretto8() -> str | None:
     for root in CORRETTO_ROOTS:
         if root.is_dir():
-            for d in sorted(root.iterdir()):
+            for jdk_dir in sorted(root.iterdir()):
                 if (
-                    d.is_dir()
-                    and d.name.startswith("jdk1.8")
-                    and (d / "bin" / "java.exe").exists()
+                    jdk_dir.is_dir()
+                    and jdk_dir.name.startswith("jdk1.8")
+                    and (jdk_dir / "bin" / "java.exe").exists()
                 ):
-                    return str(d)
+                    return str(jdk_dir)
     return None
 
 
@@ -44,11 +44,11 @@ class Check:
 
 def _which_simod_python() -> str | None:
     # Windows py launcher
-    for cand in ("py", "py.exe"):
-        if shutil.which(cand):
-            r = subprocess.run(
+    for candidate in ("py", "py.exe"):
+        if shutil.which(candidate):
+            proc = subprocess.run(
                 [
-                    cand,
+                    candidate,
                     f"-{SIMOD_PYTHON_VERSION}",
                     "-c",
                     "import sys;print(sys.version)",
@@ -56,29 +56,49 @@ def _which_simod_python() -> str | None:
                 capture_output=True,
                 text=True,
             )
-            if r.returncode == 0:
-                return f"{cand} -{SIMOD_PYTHON_VERSION}"
+            if proc.returncode == 0:
+                return f"{candidate} -{SIMOD_PYTHON_VERSION}"
     # Plain python3.x
-    for cand in (f"python{SIMOD_PYTHON_VERSION}", f"python{SIMOD_PYTHON_VERSION}.exe"):
-        if shutil.which(cand):
-            return cand
+    for candidate in (
+        f"python{SIMOD_PYTHON_VERSION}",
+        f"python{SIMOD_PYTHON_VERSION}.exe",
+    ):
+        if shutil.which(candidate):
+            return candidate
     return None
 
 
 def _java_major(java_exe: str = "java") -> int | None:
     if not shutil.which(java_exe):
         return None
-    r = subprocess.run([java_exe, "-version"], capture_output=True, text=True)
-    out = (r.stderr or "") + (r.stdout or "")
-    m = re.search(r'version "(\d+)(?:\.(\d+))?', out)
-    if not m:
+    proc = subprocess.run([java_exe, "-version"], capture_output=True, text=True)
+    output = (proc.stderr or "") + (proc.stdout or "")
+    match = re.search(r'version "(\d+)(?:\.(\d+))?', output)
+    if not match:
         return None
-    major, minor = int(m.group(1)), int(m.group(2) or 0)
+    major, minor = int(match.group(1)), int(match.group(2) or 0)
     return minor if major == 1 else major  # "1.8.0" → 8, "24.0.2" → 24
 
 
-def _venv_has_simod() -> bool:
-    return SIMOD_EXE.exists()
+def _java_exe_from_home() -> str:
+    """Path to java.exe under JAVA_HOME if present, else the bare 'java' on PATH."""
+    java_home = os.environ.get("JAVA_HOME")
+    if not java_home:
+        return "java"
+    candidate = Path(java_home, "bin", "java.exe")
+    return candidate.as_posix() if candidate.exists() else "java"
+
+
+def _venv_check(exe: Path, package: str, py_cmd: str) -> Check:
+    """Build the venv Check for `package`, reporting `exe` and its create command."""
+    ok = exe.exists()
+    return Check(
+        f"{package.capitalize()} venv",
+        ok,
+        f"{exe.name} at {exe}" if ok else f"missing {exe}",
+        f"Create it: `{py_cmd} -m venv tools\\{package}-venv && "
+        f"tools\\{package}-venv\\Scripts\\pip install {package}`.",
+    )
 
 
 def run_checks() -> tuple[list[Check], str | None]:
@@ -86,10 +106,10 @@ def run_checks() -> tuple[list[Check], str | None]:
 
     suggested_java_home is the Corretto 8 path when auto-detected, or None.
     """
-    out: list[Check] = []
+    checks: list[Check] = []
 
     py = _which_simod_python()
-    out.append(
+    checks.append(
         Check(
             f"Python {SIMOD_PYTHON_VERSION}",
             py is not None,
@@ -100,7 +120,7 @@ def run_checks() -> tuple[list[Check], str | None]:
 
     corretto = _detect_corretto8()
     if corretto:
-        out.append(
+        checks.append(
             Check(
                 f"Java {REQUIRED_JAVA_MAJOR} (for SplitMiner)",
                 True,
@@ -108,14 +128,8 @@ def run_checks() -> tuple[list[Check], str | None]:
             )
         )
     else:
-        java_home = os.environ.get("JAVA_HOME")
-        java_exe = (
-            Path(java_home, "bin", "java.exe").as_posix()
-            if java_home and Path(java_home, "bin", "java.exe").exists()
-            else "java"
-        )
-        major = _java_major(java_exe)
-        out.append(
+        major = _java_major(_java_exe_from_home())
+        checks.append(
             Check(
                 f"Java {REQUIRED_JAVA_MAJOR} (for SplitMiner)",
                 major == REQUIRED_JAVA_MAJOR,
@@ -125,28 +139,9 @@ def run_checks() -> tuple[list[Check], str | None]:
         )
 
     py_cmd = py or f"py -{SIMOD_PYTHON_VERSION}"
-    simod_ok = _venv_has_simod()
-    out.append(
-        Check(
-            "Simod venv",
-            simod_ok,
-            f"simod.exe at {SIMOD_EXE}" if simod_ok else f"missing {SIMOD_EXE}",
-            f"Create it: `{py_cmd} -m venv tools\\simod-venv && "
-            f"tools\\simod-venv\\Scripts\\pip install simod`.",
-        )
-    )
-    out.append(
-        Check(
-            "Prosimos venv",
-            PROSIMOS_EXE.exists(),
-            f"prosimos.exe at {PROSIMOS_EXE}"
-            if PROSIMOS_EXE.exists()
-            else f"missing {PROSIMOS_EXE}",
-            f"Create it: `{py_cmd} -m venv tools\\prosimos-venv && "
-            f"tools\\prosimos-venv\\Scripts\\pip install prosimos`.",
-        )
-    )
-    return out, corretto
+    checks.append(_venv_check(SIMOD_EXE, "simod", py_cmd))
+    checks.append(_venv_check(PROSIMOS_EXE, "prosimos", py_cmd))
+    return checks, corretto
 
 
 def all_ok(checks: list[Check]) -> bool:
