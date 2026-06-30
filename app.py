@@ -24,7 +24,6 @@ from core.simulation import runner, store
 from core.transformations import REGISTRY
 
 from ui import preflight
-from ui.goals import GOAL_METRICS
 from ui.plots import factor_label_map, main_effects_chart
 from ui.run_manager import (
     start_experiment,
@@ -238,7 +237,7 @@ with st.sidebar:
 
         _chosen: list[Metric] = []
         for _i in range(_n_goals):
-            _avail = [m for m in GOAL_METRICS if m not in _chosen]
+            _avail = [m for m in MetricRegistry.rankable() if m not in _chosen]
             _k = f"goal_metric_{_i}"
             if ss.get(_k) not in _avail:
                 ss[_k] = _avail[0]
