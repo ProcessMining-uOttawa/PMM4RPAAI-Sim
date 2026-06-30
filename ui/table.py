@@ -26,11 +26,9 @@ def prepare_ranked_display(
         include += [(p.id, p.label) for p in params if not p.frozen]
 
     for m in MetricRegistry.rankable():
-        col_r, name_r = m.per_case_column, m.per_case_display_name
-        assert (
-            col_r is not None and name_r is not None
-        )  # rankable() guarantees per_case
-        include.append((col_r, name_r))
+        col, name = m.per_case_column, m.per_case_display_name
+        assert col is not None and name is not None  # rankable() guarantees per_case
+        include.append((col, name))
 
     for m in goal_metrics:
         col = m.per_case_column
@@ -42,8 +40,9 @@ def prepare_ranked_display(
 
     include.append(("score", "Overall Score"))
 
-    src_cols = [col for col, _ in include if col in ranked.columns]
-    rename = {col: name for col, name in include if col in ranked.columns}
+    present = [(col, name) for col, name in include if col in ranked.columns]
+    src_cols = [col for col, _ in present]
+    rename = dict(present)
 
     result = ranked[src_cols].copy()
     result.insert(0, "rank", range(1, len(result) + 1))
