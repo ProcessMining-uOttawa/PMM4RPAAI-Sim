@@ -11,10 +11,7 @@ from pathlib import Path
 
 from core import analysis, demo, orchestrator
 from core.bpmn.query import find_task_by_name, list_activities
-from core.simulation.prosimos.query import (
-    resource_selector_config,
-    task_mean_duration_s,
-)
+from core.simulation.prosimos.query import resource_selector_config
 from core.constants import COL_MEAN_COST
 from core.taguchi import build_scenarios
 from core.goals import Goal, GOAL_IMPROVEMENT_PCT, baseline_per_case
@@ -32,8 +29,8 @@ from ui.run_manager import (
     commit_result,
 )
 from ui.table import prepare_ranked_display
-from ui.param_inputs import number_input_kwargs
 from ui.interactive.resource_selector import select_resource
+from ui.interactive.factor_levels import configure_factor_levels
 
 st.set_page_config(
     page_title="Automation What-If Simulator", page_icon="⚙", layout="wide"
@@ -310,55 +307,17 @@ with col2:
     with st.container(border=True):
         st.markdown("##### 2 · Factor levels")
         transformation = REGISTRY[pattern_id]
-        # Prepopulate Non-Auto-Time from Simod's discovered duration when available.
-        current_dur = None
-        if _task_id is not None and prosimos_data is not None:
-            current_dur = task_mean_duration_s(prosimos_data, _task_id)
-        params = transformation.parameters(
+        parameters = configure_factor_levels(
+            transformation,
             target,
-            current_duration_s=current_dur,
-            selected_pool_size=selected_pool_size,
-            frozen_pool_size=frozen_pool_size,
+            prosimos_data,
+            _task_id,
+            selected_pool_size,
+            frozen_pool_size,
         )
-        if current_dur is not None:
-            st.caption(f"Non-Auto-Time pre-filled from Simod ({current_dur:.0f} s)")
-        hdr = st.columns([3, 1, 1, 1])
-        hdr[0].caption("Factor")
-        for i, lbl in enumerate(("Low", "Mid", "High")):
-            hdr[i + 1].caption(lbl)
-        # The computed level value is part of each widget key so the input
-        # re-defaults when its level changes — e.g. switching target gives a new
-        # t_manual mean, switching resource a new num_manual pool. A stable key
-        # would pin the widget to its first-render value and ignore the new
-        # `value=` (the "value is only the initial value" trap — see §6); fixed
-        # factors keep a constant key, so user edits to them survive a target switch.
-        for p in params:
-            row = st.columns([3, 1, 1, 1])
-            row[0].markdown(f"**{p.label}**")
-            if p.frozen:
-                row[1].number_input(
-                    f"{p.id}_frozen",
-                    **number_input_kwargs(p.kind, p.levels[0]),
-                    label_visibility="collapsed",
-                    key=f"{p.id}_frozen_{p.levels[0]}",
-                    disabled=True,
-                )
-                row[2].caption("frozen")
-            else:
-                new = []
-                for i in range(3):
-                    new.append(
-                        row[i + 1].number_input(
-                            f"{p.id}_{i}",
-                            **number_input_kwargs(p.kind, p.levels[i]),
-                            label_visibility="collapsed",
-                            key=f"{p.id}_{i}_{p.levels[i]}",
-                        )
-                    )
-                p.levels = new
 
 # --- Design + execution panel ------------------------------------------------
-array_name, scenarios = build_scenarios(params, transformation.id, target)
+array_name, scenarios = build_scenarios(parameters, transformation.id, target)
 ss.array_name, ss.scenarios = array_name, scenarios
 total_runs = len(scenarios) * n_reps
 
@@ -503,12 +462,12 @@ if ss.results is not None:
             "Show Taguchi factors", value=False, key="show_factors"
         )
         st.dataframe(
-            prepare_ranked_display(ranked, _goal_specs, params, show_factors),
+            prepare_ranked_display(ranked, _goal_specs, parameters, show_factors),
             use_container_width=True,
             hide_index=True,
         )
         st.markdown("###### Main effects")
-        label_map = factor_label_map(params)
+        label_map = factor_label_map(parameters)
         _me_metrics = MetricRegistry.rankable()
         # rankable() guarantees per_case is set, so per_case_display_name is non-None.
         _me_labels: list[str] = []
