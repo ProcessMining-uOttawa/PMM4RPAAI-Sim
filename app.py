@@ -30,7 +30,7 @@ from ui.run_manager import (
 )
 from ui.table import prepare_ranked_display
 from ui.interactive.resource_selector import select_resource
-from ui.interactive.factor_levels import render_factor_levels
+from ui.interactive.factor_levels import configure_factor_levels
 
 st.set_page_config(
     page_title="Automation What-If Simulator", page_icon="⚙", layout="wide"
@@ -307,7 +307,7 @@ with col2:
     with st.container(border=True):
         st.markdown("##### 2 · Factor levels")
         transformation = REGISTRY[pattern_id]
-        params = render_factor_levels(
+        parameters = configure_factor_levels(
             transformation,
             target,
             prosimos_data,
@@ -317,7 +317,7 @@ with col2:
         )
 
 # --- Design + execution panel ------------------------------------------------
-array_name, scenarios = build_scenarios(params, transformation.id, target)
+array_name, scenarios = build_scenarios(parameters, transformation.id, target)
 ss.array_name, ss.scenarios = array_name, scenarios
 total_runs = len(scenarios) * n_reps
 
@@ -462,12 +462,12 @@ if ss.results is not None:
             "Show Taguchi factors", value=False, key="show_factors"
         )
         st.dataframe(
-            prepare_ranked_display(ranked, _goal_specs, params, show_factors),
+            prepare_ranked_display(ranked, _goal_specs, parameters, show_factors),
             use_container_width=True,
             hide_index=True,
         )
         st.markdown("###### Main effects")
-        label_map = factor_label_map(params)
+        label_map = factor_label_map(parameters)
         _me_metrics = MetricRegistry.rankable()
         # rankable() guarantees per_case is set, so per_case_display_name is non-None.
         _me_labels: list[str] = []
