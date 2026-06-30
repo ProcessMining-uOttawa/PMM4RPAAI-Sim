@@ -277,7 +277,11 @@ col1, col2 = st.columns(2)
 with col1:
     with st.container(border=True):
         st.markdown("##### 1 · Activity & pattern")
-        target = st.selectbox("Target activity", ss.activities, index=1)
+        # Default to the 2nd activity (skip the typical start step), clamped so a
+        # single-activity log doesn't raise an out-of-range StreamlitAPIException.
+        target = st.selectbox(
+            "Target activity", ss.activities, index=min(1, len(ss.activities) - 1)
+        )
 
         # Load model info — results shared with col2 (duration prepopulation).
         _task_id: str | None = None
@@ -296,7 +300,9 @@ with col1:
             if _task_id is not None and prosimos_data is not None:
                 _resource_cfg = resource_selector_config(prosimos_data, _task_id)
 
-        # Resource selector — only shown in non-demo mode when task has multiple resources.
+        # Resource selector — runs in demo mode too (demo points bpmn/json at the
+        # pre-baked model). Renders a picker only when the task exposes selectable
+        # or frozen resources; otherwise the pools stay None (the no-info fallback).
         selected_resource_id: str | None = None
         selected_pool_size: int | None = None
         frozen_pool_size: int | None = None
@@ -512,10 +518,27 @@ if ss.results is not None:
                 "Cost goals are marked unmet.",
                 icon="⚠️",
             )
-        _baseline = baseline_per_case(
-            ss.baseline_agg if ss.baseline_agg is not None else demo.demo_baseline_agg()
-        )
-        goals = [Goal.from_metric(_m, _baseline) for _m in _goal_specs]
+        # Goal targets come from the baseline. In demo mode there is no real
+        # baseline, so demo constants are the correct reference. In real mode a
+        # missing baseline means every baseline replication failed — refuse to
+        # score goals against fabricated demo targets, and say so loudly.
+        if ss.baseline_agg is not None:
+            _baseline: dict[str, float] | None = baseline_per_case(ss.baseline_agg)
+        elif demo_mode:
+            _baseline = baseline_per_case(demo.demo_baseline_agg())
+        else:
+            _baseline = None
+
+        if _baseline is None:
+            st.error(
+                "Goal scoring is unavailable — all baseline replications failed, so "
+                "there are no real targets to score against. Re-run to restore goal "
+                "rankings. Scenario KPIs, main effects, and exports below remain valid.",
+                icon="🚫",
+            )
+            goals: list[Goal] = []
+        else:
+            goals = [Goal.from_metric(_m, _baseline) for _m in _goal_specs]
         ranked = analysis.rank(agg, goals)
         show_factors = st.checkbox(
             "Show Taguchi factors", value=False, key="show_factors"
