@@ -40,9 +40,9 @@ mkdir -p ~/Library/Java/JavaVirtualMachines
 curl -sSL https://corretto.aws/downloads/latest/amazon-corretto-8-aarch64-macos-jdk.tar.gz \
   | tar xz -C ~/Library/Java/JavaVirtualMachines
 
-# tool venvs
-/opt/homebrew/opt/python@3.9/bin/python3.9 -m venv tools/simod-venv
-/opt/homebrew/opt/python@3.9/bin/python3.9 -m venv tools/prosimos-venv
+# tool venvs (brew --prefix works on both Apple Silicon and Intel)
+"$(brew --prefix python@3.9)/bin/python3.9" -m venv tools/simod-venv
+"$(brew --prefix python@3.9)/bin/python3.9" -m venv tools/prosimos-venv
 tools/simod-venv/bin/pip install simod
 tools/prosimos-venv/bin/pip install prosimos
 
@@ -51,7 +51,6 @@ python3 -m pip install -r requirements.txt
 python3 -m streamlit run app.py     # or just: streamlit run app.py
 ```
 
-On Intel Macs the Homebrew prefix is `/usr/local` instead of `/opt/homebrew`.
 The app's preflight auto-detects the JDK 8 in `~/Library/Java/JavaVirtualMachines`
 and injects it as `JAVA_HOME` for Simod's subprocess only — your system Java
 (11/17/21/…) is untouched.
