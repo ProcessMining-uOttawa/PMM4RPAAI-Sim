@@ -20,7 +20,6 @@ from core.simulation import runner, store
 from core.transformations import REGISTRY
 
 from ui import preflight
-from ui.plots import factor_label_map, main_effects_chart
 from ui.run_manager import (
     start_experiment,
     cancel_experiment,
@@ -31,6 +30,7 @@ from ui.run_manager import (
 from ui.table import prepare_ranked_display
 from ui.interactive.resource_selector import select_resource
 from ui.interactive.factor_levels import configure_factor_levels
+from ui.interactive.main_effects import render_main_effects
 
 st.set_page_config(
     page_title="Automation What-If Simulator", page_icon="⚙", layout="wide"
@@ -467,21 +467,7 @@ if ss.results is not None:
             hide_index=True,
         )
         st.markdown("###### Main effects")
-        label_map = factor_label_map(parameters)
-        _me_metrics = MetricRegistry.rankable()
-        # rankable() guarantees per_case is set, so per_case_display_name is non-None.
-        _me_labels: list[str] = []
-        for _m in _me_metrics:
-            assert _m.per_case_display_name is not None
-            _me_labels.append(_m.per_case_display_name)
-        _tabs = st.tabs(_me_labels)
-        for _tab, _metric, _label in zip(_tabs, _me_metrics, _me_labels):
-            with _tab:
-                me = analysis.main_effects(ss.results, _metric)
-                st.plotly_chart(
-                    main_effects_chart(me, label_map, _label),
-                    use_container_width=True,
-                )
+        render_main_effects(ss.results, parameters)
 
         _raw_bpmn_path = ss.get("experiment_bpmn_path")
         bpmn_file: Path | None = (
