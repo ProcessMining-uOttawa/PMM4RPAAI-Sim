@@ -5,8 +5,11 @@ import os
 import subprocess
 from pathlib import Path
 
-SIMOD_EXE = Path("tools/simod-venv/Scripts/simod.exe")
-PROSIMOS_EXE = Path("tools/prosimos-venv/Scripts/prosimos.exe")
+# Venv layout differs by platform: Windows puts console scripts in Scripts\*.exe,
+# POSIX puts them in bin/ with no suffix.
+_VENV_BIN, _EXE_SUFFIX = ("Scripts", ".exe") if os.name == "nt" else ("bin", "")
+SIMOD_EXE = Path("tools/simod-venv") / _VENV_BIN / f"simod{_EXE_SUFFIX}"
+PROSIMOS_EXE = Path("tools/prosimos-venv") / _VENV_BIN / f"prosimos{_EXE_SUFFIX}"
 
 
 def _tail_lines(path: Path, n: int) -> str:

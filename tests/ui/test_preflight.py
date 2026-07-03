@@ -15,10 +15,14 @@ class TestVenvCheck:
         assert "missing" in check.detail
 
     def test_fix_string_uses_package_and_cmd(self):
-        check = _venv_check(Path("nope/x/prosimos.exe"), "prosimos", "py -3.9")
+        # The venv dir and pip path in the fix message are derived from the exe
+        # argument (exe.parent.parent, and pip beside the exe with its suffix).
+        check = _venv_check(
+            Path("tools/prosimos-venv/bin/prosimos"), "prosimos", "py -3.9"
+        )
         assert check.name == "Prosimos venv"
-        assert "py -3.9 -m venv tools\\prosimos-venv" in check.fix
-        assert "pip install prosimos" in check.fix
+        assert f"py -3.9 -m venv {Path('tools', 'prosimos-venv')}" in check.fix
+        assert f"{Path('tools/prosimos-venv/bin/pip')} install prosimos" in check.fix
 
     def test_existing_exe_is_ok(self, tmp_path):
         exe = tmp_path / "simod.exe"
