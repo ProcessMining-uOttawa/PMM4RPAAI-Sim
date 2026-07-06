@@ -50,7 +50,7 @@ def render_ranked_scenarios(
         )
         goals: list[Goal] = []
     else:
-        goals = [Goal.from_metric(m, baseline) for m in goal_specs]
+        goals = [Goal.from_metric(metric, baseline) for metric in goal_specs]
     ranked = analysis.rank(agg, goals)
 
     show_factors = st.checkbox("Show Taguchi factors", value=False, key="show_factors")
