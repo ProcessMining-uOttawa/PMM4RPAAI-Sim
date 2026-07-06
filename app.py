@@ -14,7 +14,7 @@ from core.bpmn.query import find_task_by_name, list_activities
 from core.simulation.prosimos.query import resource_selector_config
 from core.constants import COL_MEAN_COST
 from core.taguchi import build_scenarios
-from core.goals import Goal, GOAL_IMPROVEMENT_PCT, baseline_per_case
+from core.goals import GOAL_IMPROVEMENT_PCT
 from core.metrics import Metric, MetricRegistry
 from core.simulation import runner, store
 from core.transformations import REGISTRY
@@ -27,10 +27,10 @@ from ui.run_manager import (
     current_run,
     commit_result,
 )
-from ui.table import prepare_ranked_display
 from ui.interactive.resource_selector import select_resource
 from ui.interactive.factor_levels import configure_factor_levels
 from ui.interactive.main_effects import render_main_effects
+from ui.interactive.ranked_scenarios import render_ranked_scenarios
 
 st.set_page_config(
     page_title="Automation What-If Simulator", page_icon="⚙", layout="wide"
@@ -436,35 +436,8 @@ if ss.results is not None:
                 "Cost goals are marked unmet.",
                 icon="⚠️",
             )
-        # Goal targets come from the baseline. In demo mode there is no real
-        # baseline, so demo constants are the correct reference. In real mode a
-        # missing baseline means every baseline replication failed — refuse to
-        # score goals against fabricated demo targets, and say so loudly.
-        if ss.baseline_agg is not None:
-            _baseline: dict[str, float] | None = baseline_per_case(ss.baseline_agg)
-        elif demo_mode:
-            _baseline = baseline_per_case(demo.demo_baseline_agg())
-        else:
-            _baseline = None
-
-        if _baseline is None:
-            st.error(
-                "Goal scoring is unavailable — all baseline replications failed, so "
-                "there are no real targets to score against. Re-run to restore goal "
-                "rankings. Scenario KPIs, main effects, and exports below remain valid.",
-                icon="🚫",
-            )
-            goals: list[Goal] = []
-        else:
-            goals = [Goal.from_metric(_m, _baseline) for _m in _goal_specs]
-        ranked = analysis.rank(agg, goals)
-        show_factors = st.checkbox(
-            "Show Taguchi factors", value=False, key="show_factors"
-        )
-        st.dataframe(
-            prepare_ranked_display(ranked, _goal_specs, parameters, show_factors),
-            use_container_width=True,
-            hide_index=True,
+        ranked = render_ranked_scenarios(
+            agg, _goal_specs, parameters, ss.baseline_agg, demo_mode
         )
         st.markdown("###### Main effects")
         render_main_effects(ss.results, parameters)
