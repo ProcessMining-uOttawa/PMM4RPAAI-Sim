@@ -25,6 +25,7 @@ class ReplicationMetrics:
     total_cost: float
     total_rework_count: float
     rework_rate: float
+    total_bot_failure_count: float
 
 
 # ── Prosimos stats CSV: section header names ───────────────────────────────────
@@ -72,42 +73,20 @@ def _require_column(headers: list[str], column: str, source: Path) -> int:
         raise ValueError(f"'{column}' column missing in {source}")
 
 
-def _rework_metrics(
-    event_log: pd.DataFrame,
-    bot_task_name: str | None = None,
-    original_task_name: str | None = None,
-) -> dict:
-    """Process-wide rework from an event log DataFrame.
+def _rework_metrics(event_log: pd.DataFrame) -> dict:
+    """Process-wide repeated-activity rework from an event log DataFrame.
 
-    Counts two sources:
-    - Standard rework: (occurrences - 1) for any activity appearing more than
-      once in the same case.
-    - Bot-failure rework: +1 per case where both bot_task_name and
-      original_task_name appear (bot ran and failed, human had to redo the work).
+    Counts (occurrences - 1) for any activity appearing more than once in the
+    same case. Bot failures are deliberately NOT rework — they are tracked
+    separately by _bot_failure_count().
     """
     if "activity" not in event_log.columns:
         return {COL_TOTAL_REWORK_COUNT: 0.0, COL_REWORK_RATE: 0.0}
 
-    # Standard rework: each repeat of an activity within a case counts once.
+    # Each repeat of an activity within a case counts once.
     activity_counts = event_log.groupby(["case_id", "activity"]).size()
     excess = activity_counts[activity_counts > 1] - 1  # type: ignore[index]
     rework_per_case: pd.Series = excess.groupby(level="case_id").sum()  # type: ignore[assignment]
-
-    # Bot-failure rework: +1 per case where the bot ran AND the human redid the
-    # same work, i.e. both task names appear in the case.
-    if bot_task_name and original_task_name:
-        cases_with_bot = set(
-            event_log.loc[event_log["activity"] == bot_task_name, "case_id"]
-        )
-        cases_with_orig = set(
-            event_log.loc[event_log["activity"] == original_task_name, "case_id"]
-        )
-        bot_failure_cases = cases_with_bot & cases_with_orig
-        if bot_failure_cases:
-            rework_per_case = rework_per_case.add(
-                pd.Series(1.0, index=list(bot_failure_cases)),
-                fill_value=0.0,
-            )
 
     # Restore cases with no rework so the rate denominator is every case.
     rework_per_case = rework_per_case.reindex(
@@ -117,6 +96,30 @@ def _rework_metrics(
         COL_TOTAL_REWORK_COUNT: float(rework_per_case.sum()),
         COL_REWORK_RATE: float((rework_per_case > 0).mean()) * 100.0,
     }
+
+
+def _bot_failure_count(
+    event_log: pd.DataFrame,
+    bot_task_name: str | None,
+    original_task_name: str | None,
+) -> float:
+    """Cases where the bot ran AND a human redid the work (both tasks appear).
+
+    Binary per case: a case counts once regardless of how often the pair
+    appears. Returns 0.0 when the task names are unknown or the log has no
+    activity column.
+    """
+    if not bot_task_name or not original_task_name:
+        return 0.0
+    if "activity" not in event_log.columns:
+        return 0.0
+    cases_with_bot = set(
+        event_log.loc[event_log["activity"] == bot_task_name, "case_id"]
+    )
+    cases_with_original = set(
+        event_log.loc[event_log["activity"] == original_task_name, "case_id"]
+    )
+    return float(len(cases_with_bot & cases_with_original))
 
 
 def total_metrics(stats_csv: Path) -> dict:
@@ -176,7 +179,7 @@ def replication_metrics(
     )
     cycle_h = (per_case["end"] - per_case["start"]).dt.total_seconds().div(3600)
     totals = total_metrics(stats_csv)
-    rework = _rework_metrics(event_log, bot_task_name, original_task_name)
+    rework = _rework_metrics(event_log)
     return ReplicationMetrics(
         mean_cycle_h=float(cycle_h.mean()),
         mean_cost=totals[COL_TOTAL_COST] / len(per_case),
@@ -184,4 +187,7 @@ def replication_metrics(
         total_cost=totals[COL_TOTAL_COST],
         total_rework_count=rework[COL_TOTAL_REWORK_COUNT],
         rework_rate=rework[COL_REWORK_RATE],
+        total_bot_failure_count=_bot_failure_count(
+            event_log, bot_task_name, original_task_name
+        ),
     )

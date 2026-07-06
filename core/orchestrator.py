@@ -21,6 +21,8 @@ from .constants import (
     COL_REWORK_RATE,
     COL_TOTAL_REWORK_COUNT_MEAN,
     COL_REWORK_RATE_MEAN,
+    COL_TOTAL_BOT_FAILURE_COUNT,
+    COL_TOTAL_BOT_FAILURE_COUNT_MEAN,
     F_NUM_CASES,
 )
 from .parameters import Scenario
@@ -249,6 +251,9 @@ def run_experiment(
             COL_TOTAL_COST_MEAN: means[COL_TOTAL_COST],
             COL_TOTAL_REWORK_COUNT_MEAN: means[COL_TOTAL_REWORK_COUNT],
             COL_REWORK_RATE_MEAN: means[COL_REWORK_RATE],
+            # Structurally 0 at 0% automation (no case reaches the bot), but
+            # read from the data rather than hardcoded — Panel 5 needs the key.
+            COL_TOTAL_BOT_FAILURE_COUNT_MEAN: means[COL_TOTAL_BOT_FAILURE_COUNT],
         }
 
     return ExperimentResult(

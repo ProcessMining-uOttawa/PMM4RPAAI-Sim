@@ -402,7 +402,9 @@ if ss.results is not None:
             st.caption(
                 "Total metrics averaged across replications. Δ values are relative to "
                 "the 0%-automation baseline — the pattern with every case on the human "
-                "path, at Simod-discovered durations and staffing."
+                "path, at Simod-discovered durations and staffing. Bot failures are "
+                "structurally zero in the baseline (no case reaches the bot), so its "
+                "Δ is the scenario's own count."
             )
             st.dataframe(
                 analysis.compare_to_baseline(agg, baseline_agg),

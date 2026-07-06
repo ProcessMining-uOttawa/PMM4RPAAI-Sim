@@ -26,6 +26,7 @@ from .constants import (
     COL_TOTAL_COST,
     COL_TOTAL_REWORK_COUNT,
     COL_REWORK_RATE,
+    COL_TOTAL_BOT_FAILURE_COUNT,
     COL_TOTAL_CYCLE_S_MEAN,
     COL_TOTAL_COST_MEAN,
     COL_REWORK_RATE_MEAN,
@@ -53,6 +54,7 @@ class _SimResult:
     total_cost: float
     total_rework_count: float
     rework_rate: float
+    total_bot_failure_count: float
 
 
 def demo_baseline_agg() -> dict[int, dict]:
@@ -97,22 +99,21 @@ def _fake_simulate(
         * resource_scale
         * rng.uniform(0.9, 1.1)
     )
+    # Expected fraction of cases the bot attempts but fails (redirected to a human).
+    bot_failure_fraction = (pct_auto / 100) * (1 - pct_ok / 100)
     # Expected fraction of cases still handled by a human: direct manual path + bot failures.
-    expected_human_fraction = (1 - pct_auto / 100) + (pct_auto / 100) * (
-        1 - pct_ok / 100
-    )
+    expected_human_fraction = (1 - pct_auto / 100) + bot_failure_fraction
     human_cost = BASELINE_COST * expected_human_fraction * rng.uniform(0.9, 1.1)
     bot_cost_per_case = (pct_auto / 100) * (t_auto / 3600) * bot_cost_per_hour
     cost = human_cost + bot_cost_per_case
+    # Rework is repeated-activity work by humans, so it scales with the full
+    # human-touched fraction (direct path + failed-bot redos) — mirroring the
+    # cost model. Bot failures themselves are a separate metric, not rework.
     rework_rate = min(
-        (
-            pct_auto / 100 * (1 - pct_ok / 100)
-            + BASELINE_REWORK_RATE / 100 * (1 - pct_auto / 100)
-        )
-        * 100.0
-        * rng.uniform(0.9, 1.1),
+        BASELINE_REWORK_RATE * expected_human_fraction * rng.uniform(0.9, 1.1),
         100.0,
     )
+    bot_failure_count = bot_failure_fraction * n_cases * rng.uniform(0.9, 1.1)
 
     return _SimResult(
         mean_cycle_h=round(cycle, 2),
@@ -121,6 +122,7 @@ def _fake_simulate(
         total_cost=round(cost * n_cases, 2),
         total_rework_count=round(rework_rate / 100 * n_cases, 2),
         rework_rate=round(rework_rate, 2),
+        total_bot_failure_count=round(bot_failure_count, 2),
     )
 
 
@@ -151,6 +153,7 @@ def run_experiment(
                     COL_TOTAL_COST: r.total_cost,
                     COL_TOTAL_REWORK_COUNT: r.total_rework_count,
                     COL_REWORK_RATE: r.rework_rate,
+                    COL_TOTAL_BOT_FAILURE_COUNT: r.total_bot_failure_count,
                     **s.values,
                 }
             )
