@@ -80,11 +80,28 @@ def cancel_experiment(ss: Any) -> None:
         ev.set()
 
 
+def clear_results(ss: Any) -> None:
+    """Reset all run-level session state keys.
+
+    The negative counterpart to commit_result(): keep this field list in sync
+    with ExperimentResult and commit_result() when adding a result field. Called
+    both to blank Panel 4 at the start of a new run and, via app._clear_log(),
+    when the loaded log itself is reset.
+    """
+    ss.results = None
+    ss.experiment_bpmn_path = None
+    ss.scenario_json_paths = {}
+    ss.baseline_agg = None
+    ss.scenario_log_paths = {}
+    ss.baseline_log_paths = {}
+    ss.failed_replications = []
+
+
 def commit_result(ss: Any, result: ExperimentResult) -> None:
     """Write an ExperimentResult's fields into session state.
 
-    The positive counterpart to app._clear_results(): keep this field list in
-    sync with ExperimentResult and _clear_results() when adding a result field.
+    The positive counterpart to clear_results(): keep this field list in sync
+    with ExperimentResult and clear_results() when adding a result field.
     """
     ss.results = result.results
     ss.experiment_bpmn_path = result.experiment_bpmn_path
