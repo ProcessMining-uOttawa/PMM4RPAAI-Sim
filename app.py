@@ -19,7 +19,6 @@ from core.metrics import Metric, MetricRegistry
 from core.simulation import runner, store
 from core.transformations import REGISTRY
 
-from ui import preflight
 from ui.run_manager import (
     start_experiment,
     cancel_experiment,
@@ -31,6 +30,7 @@ from ui.interactive.resource_selector import select_resource
 from ui.interactive.factor_levels import configure_factor_levels
 from ui.interactive.main_effects import render_main_effects
 from ui.interactive.ranked_scenarios import render_ranked_scenarios
+from ui.interactive.simod_preflight import render_simod_preflight
 
 st.set_page_config(
     page_title="Automation What-If Simulator", page_icon="⚙", layout="wide"
@@ -98,24 +98,7 @@ with st.sidebar:
         "click through the UI without external tools.",
     )
 
-    if not demo_mode:
-        with st.expander("Simod preflight", expanded=True):
-            checks, detected_java = preflight.run_checks()
-            for c in checks:
-                st.markdown(f"{'✅' if c.ok else '❌'} **{c.name}** — {c.detail}")
-                if not c.ok and c.fix:
-                    st.caption(c.fix)
-            preflight_ok = preflight.all_ok(checks)
-            java_home = (
-                st.text_input(
-                    "JAVA_HOME for Simod",
-                    value=detected_java or "",
-                    help="Used only for Simod's subprocess; leaves your system Java alone.",
-                )
-                or None
-            )
-    else:
-        preflight_ok, java_home = True, None
+    preflight_ok, java_home = render_simod_preflight(demo_mode)
 
     uploaded = st.file_uploader("Event log (XES or CSV)", type=["xes", "csv"])
     use_sample = st.button(
