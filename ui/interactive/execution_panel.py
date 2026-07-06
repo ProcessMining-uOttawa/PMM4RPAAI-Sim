@@ -74,28 +74,31 @@ def render_execution_panel(
                 "🧪 Demo run — results are illustrative (synthetic), not a real simulation."
             )
 
-        _rs = current_run(ss)
-        if _rs is not None:
-            _pct = _rs.done / _rs.total if _rs.total > 0 else 0.0
-            st.progress(_pct, text=f"Scenario {_rs.label} · rep {_rs.rep + 1}/{n_reps}")
+        run_state = current_run(ss)
+        if run_state is not None:
+            progress = run_state.done / run_state.total if run_state.total > 0 else 0.0
+            st.progress(
+                progress,
+                text=f"Scenario {run_state.label} · rep {run_state.rep + 1}/{n_reps}",
+            )
             if right.button("✕ Cancel", use_container_width=True):
                 cancel_experiment(ss)
 
-            if _rs.outcome is None:
+            if run_state.outcome is None:
                 time.sleep(0.5)
-                st.rerun()  # fragment-scoped: only Panel 3 re-renders during polling
+                st.rerun()  # fragment-scoped: only this panel re-renders during polling
             else:
-                if _rs.outcome.cancelled:
+                if run_state.outcome.cancelled:
                     st.toast("Run cancelled.", icon="⚠️")
-                elif _rs.outcome.error is not None:
-                    st.toast(f"Simulation failed: {_rs.outcome.error}", icon="❌")
+                elif run_state.outcome.error is not None:
+                    st.toast(f"Simulation failed: {run_state.outcome.error}", icon="❌")
                 else:
                     # Not cancelled and no error → result is set (RunOutcome invariant).
-                    assert _rs.outcome.result is not None
-                    commit_result(ss, _rs.outcome.result)
+                    assert run_state.outcome.result is not None
+                    commit_result(ss, run_state.outcome.result)
                     st.toast(f"Completed {total_runs} simulations.", icon="✅")
                 clear_run(ss)
-                st.rerun(scope="app")  # full rerun: Panel 4 needs to appear
+                st.rerun(scope="app")  # full rerun: the results panel needs to appear
         else:
             if right.button(
                 "▶ Run all scenarios", type="primary", use_container_width=True
@@ -106,7 +109,7 @@ def render_execution_panel(
 
                 if demo_mode:
 
-                    def _fn(progress_cb, stop_ev):
+                    def experiment_fn(progress_cb, stop_ev):
                         return demo.run_experiment(
                             scenarios,
                             n_reps,
@@ -115,28 +118,29 @@ def render_execution_panel(
                             stop_event=stop_ev,
                         )
                 else:
-                    _experiment_dir = store.new_experiment(ss.log_name or "run")
-                    _bpmn_path = ss.bpmn_path
-                    _json_path = ss.json_path
-                    _target_activity = target
-                    _selected_resource_id = selected_resource_id
+                    # Snapshot ss-derived values into locals before the thread
+                    # starts (§6 threading rules). Function parameters need no
+                    # snapshot — they are already call-time-frozen locals.
+                    experiment_dir = store.new_experiment(ss.log_name or "run")
+                    bpmn_path = ss.bpmn_path
+                    json_path = ss.json_path
 
-                    def _fn(progress_cb, stop_ev):
+                    def experiment_fn(progress_cb, stop_ev):
                         return orchestrator.run_experiment(
                             transformation=transformation,
-                            bpmn_path=_bpmn_path,
-                            json_path=_json_path,
-                            target_activity=_target_activity,
+                            bpmn_path=bpmn_path,
+                            json_path=json_path,
+                            target_activity=target,
                             scenarios=scenarios,
                             n_reps=n_reps,
-                            experiment_dir=_experiment_dir,
+                            experiment_dir=experiment_dir,
                             on_progress=progress_cb,
-                            selected_resource_id=_selected_resource_id,
+                            selected_resource_id=selected_resource_id,
                             bot_cost_per_hour=bot_cost_per_hour,
                             stop_event=stop_ev,
                             max_workers=max_workers,
                         )
 
                 clear_results(ss)
-                start_experiment(ss, _fn)
-                st.rerun()  # fragment-scoped: switches Panel 3 to progress view
+                start_experiment(ss, experiment_fn)
+                st.rerun()  # fragment-scoped: switches this panel to progress view

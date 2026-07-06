@@ -25,6 +25,11 @@ class ResourceSelection:
     frozen_pool_size: int | None = None
 
 
+def _names(resources: list[dict]) -> list[str]:
+    """Display names of a resource list ([{id, name}] dicts from core)."""
+    return [resource["name"] for resource in resources]
+
+
 def _halt_if_unresolved(pool_size: int | None) -> None:
     """Stop with a clear error when a task resource resolves to no profile.
 
@@ -40,34 +45,36 @@ def _halt_if_unresolved(pool_size: int | None) -> None:
 
 
 def select_resource(
-    cfg: ResourceSelectorConfig, prosimos_data: dict
+    config: ResourceSelectorConfig, prosimos_data: dict
 ) -> ResourceSelection:
     """Render the manual-resource picker and resolve the chosen pool size.
 
     Returns an empty selection (all None) when the task exposes no selectable or
     frozen resources — the no-info fallback that leaves the human pool unchanged.
     """
-    if not (cfg.selectable or cfg.frozen):
+    if not (config.selectable or config.frozen):
         return ResourceSelection()
 
-    if not cfg.selectable:
+    if not config.selectable:
         # Every resource is shared across tasks — nothing is pickable.
-        st.selectbox("Manual resource", [r["name"] for r in cfg.frozen], disabled=True)
-        _halt_if_unresolved(cfg.fallback_pool_size)
+        st.selectbox("Manual resource", _names(config.frozen), disabled=True)
+        _halt_if_unresolved(config.fallback_pool_size)
         st.warning(
             "All resources are shared across tasks — "
             "Human pool size is frozen at its current value."
         )
-        return ResourceSelection(frozen_pool_size=cfg.fallback_pool_size)
+        return ResourceSelection(frozen_pool_size=config.fallback_pool_size)
 
-    if cfg.frozen:
-        st.caption(f"Shared (frozen): {', '.join(r['name'] for r in cfg.frozen)}")
-    if len(cfg.selectable) == 1:
-        selected_resource_id = cfg.selectable[0]["id"]
+    if config.frozen:
+        st.caption(f"Shared (frozen): {', '.join(_names(config.frozen))}")
+    if len(config.selectable) == 1:
+        selected_resource_id = config.selectable[0]["id"]
     else:
-        sel_name = st.selectbox("Manual resource", [r["name"] for r in cfg.selectable])
+        selected_name = st.selectbox("Manual resource", _names(config.selectable))
         selected_resource_id = next(
-            r["id"] for r in cfg.selectable if r["name"] == sel_name
+            resource["id"]
+            for resource in config.selectable
+            if resource["name"] == selected_name
         )
     selected_pool_size = resource_pool_size(prosimos_data, selected_resource_id)
     _halt_if_unresolved(selected_pool_size)

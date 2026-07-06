@@ -19,7 +19,7 @@ from ui.param_inputs import number_input_kwargs
 
 
 def _level_input(
-    col, parameter: Parameter, *, idx: int, suffix: str, disabled: bool = False
+    column, parameter: Parameter, *, idx: int, suffix: str, disabled: bool = False
 ):
     """Render one factor-level number_input and return its value.
 
@@ -29,7 +29,7 @@ def _level_input(
     "value is only the initial value" trap — see §6); factors with target-independent
     levels keep a constant key, so user edits survive a target switch.
     """
-    return col.number_input(
+    return column.number_input(
         f"{parameter.id}_{suffix}",
         **number_input_kwargs(parameter.kind, parameter.levels[idx]),
         label_visibility="collapsed",
