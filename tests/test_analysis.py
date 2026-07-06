@@ -28,6 +28,8 @@ from core.constants import (
     COL_REWORK_RATE,
     COL_TOTAL_REWORK_COUNT_MEAN,
     COL_REWORK_RATE_MEAN,
+    COL_TOTAL_BOT_FAILURE_COUNT,
+    COL_TOTAL_BOT_FAILURE_COUNT_MEAN,
 )
 
 
@@ -47,6 +49,7 @@ def _results_df() -> pd.DataFrame:
                 COL_TOTAL_COST: 500.0,
                 COL_TOTAL_REWORK_COUNT: 2.0,
                 COL_REWORK_RATE: 10.0,
+                COL_TOTAL_BOT_FAILURE_COUNT: 1.0,
             },
             {
                 "scenario_id": "S01",
@@ -58,6 +61,7 @@ def _results_df() -> pd.DataFrame:
                 COL_TOTAL_COST: 700.0,
                 COL_TOTAL_REWORK_COUNT: 4.0,
                 COL_REWORK_RATE: 20.0,
+                COL_TOTAL_BOT_FAILURE_COUNT: 3.0,
             },
             {
                 "scenario_id": "S02",
@@ -69,6 +73,7 @@ def _results_df() -> pd.DataFrame:
                 COL_TOTAL_COST: 1000.0,
                 COL_TOTAL_REWORK_COUNT: 0.0,
                 COL_REWORK_RATE: 0.0,
+                COL_TOTAL_BOT_FAILURE_COUNT: 0.0,
             },
             {
                 "scenario_id": "S02",
@@ -80,6 +85,7 @@ def _results_df() -> pd.DataFrame:
                 COL_TOTAL_COST: 1200.0,
                 COL_TOTAL_REWORK_COUNT: 2.0,
                 COL_REWORK_RATE: 10.0,
+                COL_TOTAL_BOT_FAILURE_COUNT: 2.0,
             },
         ]
     )
@@ -150,6 +156,11 @@ class TestAggregate:
         assert row[COL_TOTAL_REWORK_COUNT_MEAN] == pytest.approx(3.0)  # (2 + 4) / 2
         assert row[COL_REWORK_RATE_MEAN] == pytest.approx(15.0)  # (10.0 + 20.0) / 2
 
+    def test_bot_failure_mean_correct(self):
+        agg = aggregate(_results_df())
+        row = agg[agg["scenario_id"] == "S01"].iloc[0]
+        assert row[COL_TOTAL_BOT_FAILURE_COUNT_MEAN] == pytest.approx(2.0)  # (1+3)/2
+
     def test_nan_cost_propagates(self):
         df = pd.DataFrame(
             [
@@ -163,6 +174,7 @@ class TestAggregate:
                     COL_TOTAL_COST: 500.0,
                     COL_TOTAL_REWORK_COUNT: 2.0,
                     COL_REWORK_RATE: 5.0,
+                    COL_TOTAL_BOT_FAILURE_COUNT: 1.0,
                 }
             ]
         )
@@ -184,6 +196,7 @@ class TestCompareToBaseline:
                     COL_TOTAL_COST_MEAN: 200.0,
                     COL_TOTAL_REWORK_COUNT_MEAN: 5.0,
                     COL_REWORK_RATE_MEAN: 10.0,
+                    COL_TOTAL_BOT_FAILURE_COUNT_MEAN: 6.0,
                 },
                 {
                     "scenario_id": "S02",
@@ -192,6 +205,7 @@ class TestCompareToBaseline:
                     COL_TOTAL_COST_MEAN: 80.0,
                     COL_TOTAL_REWORK_COUNT_MEAN: 2.0,
                     COL_REWORK_RATE_MEAN: 4.0,
+                    COL_TOTAL_BOT_FAILURE_COUNT_MEAN: 3.0,
                 },
             ]
         )
@@ -203,6 +217,7 @@ class TestCompareToBaseline:
                 COL_TOTAL_COST_MEAN: 100.0,
                 COL_TOTAL_REWORK_COUNT_MEAN: 4.0,
                 COL_REWORK_RATE_MEAN: 8.0,
+                COL_TOTAL_BOT_FAILURE_COUNT_MEAN: 0.0,  # structurally 0 at 0% auto
             }
         }
 
@@ -242,6 +257,18 @@ class TestCompareToBaseline:
         assert s02["Rework Rate (%)"] == pytest.approx(4.0)
         assert s02["Δ Rate (pp)"] == pytest.approx(-4.0)
 
+    def test_bot_failure_columns(self):
+        df = compare_to_baseline(self._agg(), self._baseline())
+        baseline = df.iloc[0]
+        s02 = df[df["Scenario"] == "S02"].iloc[0]
+        assert baseline["Bot Failures"] == 0.0
+        assert baseline["Δ Bot Failures"] == 0.0
+        # Zero baseline → the delta IS the scenario's own count.
+        assert s02["Bot Failures"] == pytest.approx(3.0)
+        assert s02["Δ Bot Failures"] == pytest.approx(3.0)
+        # No percent-change column: pct vs a structurally-zero baseline is undefined.
+        assert not any("Bot Failures (%)" in c for c in df.columns)
+
     def test_multiple_levels_produce_multiple_baseline_rows(self):
         agg = pd.DataFrame(
             [
@@ -252,6 +279,7 @@ class TestCompareToBaseline:
                     COL_TOTAL_COST_MEAN: 100.0,
                     COL_TOTAL_REWORK_COUNT_MEAN: 4.0,
                     COL_REWORK_RATE_MEAN: 8.0,
+                    COL_TOTAL_BOT_FAILURE_COUNT_MEAN: 2.0,
                 },
                 {
                     "scenario_id": "S02",
@@ -260,6 +288,7 @@ class TestCompareToBaseline:
                     COL_TOTAL_COST_MEAN: 100.0,
                     COL_TOTAL_REWORK_COUNT_MEAN: 4.0,
                     COL_REWORK_RATE_MEAN: 8.0,
+                    COL_TOTAL_BOT_FAILURE_COUNT_MEAN: 20.0,
                 },
             ]
         )
@@ -269,12 +298,14 @@ class TestCompareToBaseline:
                 COL_TOTAL_COST_MEAN: 100.0,
                 COL_TOTAL_REWORK_COUNT_MEAN: 4.0,
                 COL_REWORK_RATE_MEAN: 8.0,
+                COL_TOTAL_BOT_FAILURE_COUNT_MEAN: 0.0,
             },
             1000: {
                 COL_TOTAL_CYCLE_S_MEAN: 36000.0,
                 COL_TOTAL_COST_MEAN: 1000.0,
                 COL_TOTAL_REWORK_COUNT_MEAN: 40.0,
                 COL_REWORK_RATE_MEAN: 8.0,
+                COL_TOTAL_BOT_FAILURE_COUNT_MEAN: 0.0,
             },
         }
         df = compare_to_baseline(agg, baseline)

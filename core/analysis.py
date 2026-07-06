@@ -18,6 +18,8 @@ from .constants import (
     COL_REWORK_RATE,
     COL_TOTAL_REWORK_COUNT_MEAN,
     COL_REWORK_RATE_MEAN,
+    COL_TOTAL_BOT_FAILURE_COUNT,
+    COL_TOTAL_BOT_FAILURE_COUNT_MEAN,
 )
 from .goals import Goal
 from .metrics import Metric, MetricDirection, MetricRegistry
@@ -34,6 +36,7 @@ _NON_FACTOR_COLS = frozenset(
         COL_TOTAL_COST,
         COL_TOTAL_REWORK_COUNT,
         COL_REWORK_RATE,
+        COL_TOTAL_BOT_FAILURE_COUNT,
     }
 )
 
@@ -43,7 +46,7 @@ def _factor_cols(df: pd.DataFrame) -> list[str]:
 
 
 def aggregate(results: pd.DataFrame) -> pd.DataFrame:
-    """results: scenario_id, replication, + all six metric cols (+ factor cols)."""
+    """results: scenario_id, replication, + all seven metric cols (+ factor cols)."""
     factor_cols = _factor_cols(results)
     agg_spec: dict = {
         COL_MEAN_CYCLE_H_MEAN: (COL_MEAN_CYCLE_H, "mean"),
@@ -54,6 +57,7 @@ def aggregate(results: pd.DataFrame) -> pd.DataFrame:
         COL_TOTAL_COST_MEAN: (COL_TOTAL_COST, "mean"),
         COL_TOTAL_REWORK_COUNT_MEAN: (COL_TOTAL_REWORK_COUNT, "mean"),
         COL_REWORK_RATE_MEAN: (COL_REWORK_RATE, "mean"),
+        COL_TOTAL_BOT_FAILURE_COUNT_MEAN: (COL_TOTAL_BOT_FAILURE_COUNT, "mean"),
     }
     return results.groupby(["scenario_id", *factor_cols], as_index=False).agg(
         **agg_spec

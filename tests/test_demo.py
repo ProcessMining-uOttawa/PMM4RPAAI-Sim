@@ -8,6 +8,8 @@ import xml.etree.ElementTree as ET
 import pytest
 
 from core import demo
+from core.demo import _fake_simulate
+from core.parameters import Scenario
 from core.bpmn.query import find_task_by_name, list_activities
 from core.simulation.prosimos.query import task_mean_duration_s
 from core.constants import (
@@ -17,6 +19,7 @@ from core.constants import (
     COL_TOTAL_COST,
     COL_TOTAL_REWORK_COUNT,
     COL_REWORK_RATE,
+    COL_TOTAL_BOT_FAILURE_COUNT,
     COL_TOTAL_CYCLE_S_MEAN,
     COL_TOTAL_COST_MEAN,
     COL_REWORK_RATE_MEAN,
@@ -55,6 +58,7 @@ class TestDemoRunExperiment:
             COL_TOTAL_COST,
             COL_TOTAL_REWORK_COUNT,
             COL_REWORK_RATE,
+            COL_TOTAL_BOT_FAILURE_COUNT,
         }
         assert required <= set(result.results.columns)
 
@@ -90,6 +94,7 @@ class TestDemoRunExperiment:
         assert (df[COL_TOTAL_REWORK_COUNT] >= 0).all()
         assert (df[COL_REWORK_RATE] >= 0).all()
         assert (df[COL_REWORK_RATE] <= 100.0).all()
+        assert (df[COL_TOTAL_BOT_FAILURE_COUNT] >= 0).all()
 
     def test_nonzero_bot_cost_increases_cost(self):
         scenarios = _scenarios()
@@ -157,9 +162,6 @@ class TestExperimentCancellation:
 
 class TestDemoMonotonicity:
     def test_larger_resource_pool_reduces_cycle_time(self):
-        from core.demo import _fake_simulate as fake_simulate
-        from core.parameters import Scenario
-
         def _mean_cycle(num_bots: int, num_man: int, n_reps: int = 20) -> float:
             s = Scenario(
                 "S01",
@@ -175,6 +177,40 @@ class TestDemoMonotonicity:
                 "t_id",
                 "Act",
             )
-            return sum(fake_simulate(s, r).mean_cycle_h for r in range(n_reps)) / n_reps
+            return (
+                sum(_fake_simulate(s, r).mean_cycle_h for r in range(n_reps)) / n_reps
+            )
 
         assert _mean_cycle(3, 3) < _mean_cycle(1, 1)
+
+
+class TestDemoBotFailures:
+    @staticmethod
+    def _simulate(pct_auto: int, pct_ok: int):
+        s = Scenario(
+            "S01",
+            {
+                "pct_auto": pct_auto,
+                "pct_ok": pct_ok,
+                "t_auto": 30,
+                "t_manual": 300,
+                "num_bots": 2,
+                "num_manual_resources": 2,
+                "num_cases": 500,
+            },
+            "t_id",
+            "Act",
+        )
+        return _fake_simulate(s, 0)
+
+    def test_perfect_bot_has_zero_failures(self):
+        assert self._simulate(pct_auto=50, pct_ok=100).total_bot_failure_count == 0.0
+
+    def test_zero_automation_has_zero_failures(self):
+        assert self._simulate(pct_auto=0, pct_ok=80).total_bot_failure_count == 0.0
+
+    def test_lower_pct_ok_means_more_failures(self):
+        assert (
+            self._simulate(pct_auto=50, pct_ok=80).total_bot_failure_count
+            > self._simulate(pct_auto=50, pct_ok=95).total_bot_failure_count
+        )

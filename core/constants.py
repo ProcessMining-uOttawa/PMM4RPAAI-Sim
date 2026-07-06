@@ -19,13 +19,20 @@ COL_TOTAL_COST = "total_cost"
 COL_TOTAL_CYCLE_S_MEAN = "total_cycle_s_mean"
 COL_TOTAL_COST_MEAN = "total_cost_mean"
 
-# per-replication rework metrics
-COL_TOTAL_REWORK_COUNT = "total_rework_count"  # total extra activity occurrences + bot-failure events across all cases
+# per-replication rework metrics (repeated-activity rework only)
+COL_TOTAL_REWORK_COUNT = (
+    "total_rework_count"  # total extra activity occurrences across all cases
+)
 COL_REWORK_RATE = "rework_rate"  # percentage of cases with any rework (0–100)
 
-# mean of rework metrics across replications (used in aggregate() and compare_to_baseline())
+# per-replication bot-failure metric: cases where the bot ran and a human redid
+# the work — its own output metric, deliberately NOT counted as rework
+COL_TOTAL_BOT_FAILURE_COUNT = "total_bot_failure_count"
+
+# means across replications (used in aggregate() and compare_to_baseline())
 COL_TOTAL_REWORK_COUNT_MEAN = "total_rework_count_mean"
 COL_REWORK_RATE_MEAN = "rework_rate_mean"
+COL_TOTAL_BOT_FAILURE_COUNT_MEAN = "total_bot_failure_count_mean"
 
 # ── Prosimos JSON schema: top-level section keys ──────────────────────────────
 KEY_RESOURCE_PROFILES = "resource_profiles"

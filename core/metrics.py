@@ -16,6 +16,7 @@ from .constants import (
     COL_TOTAL_CYCLE_S_MEAN,
     COL_TOTAL_COST_MEAN,
     COL_TOTAL_REWORK_COUNT_MEAN,
+    COL_TOTAL_BOT_FAILURE_COUNT_MEAN,
 )
 
 
@@ -74,7 +75,7 @@ class Metric:
     sn_floor: float = 0.0
 
     def _require_per_case(self) -> PerCaseMetric:
-        """per_case, raising on metrics that have none (only REWORK_COUNT).
+        """per_case, raising on metrics without one (REWORK_COUNT, BOT_FAILURE_COUNT).
 
         The per-case accessors below are non-Optional so consumers gated on
         rankable() need no assert-narrowing; calling them on a per_case-less
@@ -188,9 +189,29 @@ class MetricRegistry:
         sn_floor=0.01,
     )
 
+    # Display-only, like REWORK_COUNT. Not rankable — the count is input-derivable
+    # in expectation, so a goal on it would reward configuration, not discovery.
+    # No pct_change_name: the baseline value is structurally 0 (see CLAUDE.md §8).
+    BOT_FAILURE_COUNT: Metric = Metric(
+        per_case=None,
+        aggregate=MetricSpec(
+            column=COL_TOTAL_BOT_FAILURE_COUNT_MEAN,
+            display_name="Bot Failures",
+            decimal_places=2,
+            delta_name="Δ Bot Failures",
+        ),
+        rankable=False,
+    )
+
     @classmethod
     def all(cls) -> list[Metric]:
-        return [cls.CYCLE_TIME, cls.COST, cls.REWORK_COUNT, cls.REWORK_RATE]
+        return [
+            cls.CYCLE_TIME,
+            cls.COST,
+            cls.REWORK_COUNT,
+            cls.REWORK_RATE,
+            cls.BOT_FAILURE_COUNT,
+        ]
 
     @classmethod
     def rankable(cls) -> list[Metric]:

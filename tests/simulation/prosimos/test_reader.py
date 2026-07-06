@@ -10,6 +10,7 @@ import pytest
 from core.simulation.prosimos.reader import (
     _parse_section,
     _rework_metrics,
+    _bot_failure_count,
     total_metrics,
     replication_metrics,
     ReplicationMetrics,
@@ -28,6 +29,9 @@ from core.constants import (
 
 
 # ── Helpers ───────────────────────────────────────────────────────────────────
+
+BOT = "Auto Fix Bug"
+ORIG = "Fix Bug"
 
 
 def _write_log(path: Path, cases: list[tuple]) -> None:
@@ -301,6 +305,20 @@ class TestReplicationMetrics:
         assert combined.total_cycle_s == pytest.approx(total[COL_TOTAL_CYCLE_S])
         assert combined.total_cost == pytest.approx(total[COL_TOTAL_COST])
 
+    def test_bot_failure_count_field(self, tmp_path):
+        log = tmp_path / "log.csv"
+        stats = tmp_path / "stats.csv"
+        with open(log, "w", newline="") as f:
+            w = csv.writer(f)
+            w.writerow(["case_id", "activity", "start_time", "end_time"])
+            w.writerow(["c1", BOT, "2025-01-01T08:00:00", "2025-01-01T09:00:00"])
+            w.writerow(["c1", ORIG, "2025-01-01T09:00:00", "2025-01-01T10:00:00"])
+            w.writerow(["c2", BOT, "2025-01-01T08:00:00", "2025-01-01T09:00:00"])
+        _write_full_stats(stats, [("task_a", 100.0)], accumulated_cycle_s=3600.0)
+        m = replication_metrics(log, stats, bot_task_name=BOT, original_task_name=ORIG)
+        assert m.total_bot_failure_count == 1.0
+        assert m.total_rework_count == 0.0  # the failure pair is not rework
+
     def test_missing_stats_file_raises(self, tmp_path):
         log = tmp_path / "log.csv"
         _write_log(log, [("c1", "2025-01-01T08:00:00", "2025-01-01T09:00:00")])
@@ -317,9 +335,6 @@ class TestReplicationMetrics:
 
 
 # ── _rework_metrics ───────────────────────────────────────────────────────────
-
-BOT = "Auto Fix Bug"
-ORIG = "Fix Bug"
 
 
 def _df(*rows: tuple[str, str]) -> pd.DataFrame:
@@ -357,42 +372,20 @@ class TestReworkMetrics:
         r = _rework_metrics(df)
         assert r[COL_TOTAL_REWORK_COUNT] == 2.0
 
-    def test_bot_failure_adds_one(self):
-        df = _df(("C1", BOT), ("C1", ORIG), ("C2", BOT))
-        r = _rework_metrics(df, bot_task_name=BOT, original_task_name=ORIG)
-        assert r[COL_TOTAL_REWORK_COUNT] == 1.0
-
-    def test_bot_failure_rate(self):
-        df = _df(("C1", BOT), ("C1", ORIG), ("C2", BOT))
-        r = _rework_metrics(df, bot_task_name=BOT, original_task_name=ORIG)
-        assert r[COL_REWORK_RATE] == pytest.approx(50.0)
-
-    def test_bot_success_no_rework(self):
-        df = _df(("C1", BOT), ("C2", BOT))
-        r = _rework_metrics(df, bot_task_name=BOT, original_task_name=ORIG)
-        assert r[COL_TOTAL_REWORK_COUNT] == 0.0
-        assert r[COL_REWORK_RATE] == 0.0
-
-    def test_manual_path_no_bot_failure_rework(self):
-        df = _df(("C1", ORIG), ("C2", ORIG))
-        r = _rework_metrics(df, bot_task_name=BOT, original_task_name=ORIG)
-        assert r[COL_TOTAL_REWORK_COUNT] == 0.0
-
-    def test_combined_rework_count(self):
-        df = _df(("C1", BOT), ("C1", ORIG), ("C1", ORIG))
-        r = _rework_metrics(df, bot_task_name=BOT, original_task_name=ORIG)
-        assert r[COL_TOTAL_REWORK_COUNT] == 2.0
-
-    def test_combined_rate_all_cases(self):
-        df = _df(("C1", BOT), ("C1", ORIG), ("C1", ORIG))
-        r = _rework_metrics(df, bot_task_name=BOT, original_task_name=ORIG)
-        assert r[COL_REWORK_RATE] == 100.0
-
-    def test_bot_failure_ignored_without_params(self):
+    def test_bot_failure_pair_is_not_rework(self):
+        # A bot run followed by a human redo is NOT rework — neither activity
+        # repeats, and bot failures are their own metric (_bot_failure_count).
         df = _df(("C1", BOT), ("C1", ORIG), ("C2", BOT))
         r = _rework_metrics(df)
         assert r[COL_TOTAL_REWORK_COUNT] == 0.0
         assert r[COL_REWORK_RATE] == 0.0
+
+    def test_repeated_activity_alongside_bot_pair(self):
+        # Only the repeated ORIG counts; the bot pair contributes nothing.
+        df = _df(("C1", BOT), ("C1", ORIG), ("C1", ORIG))
+        r = _rework_metrics(df)
+        assert r[COL_TOTAL_REWORK_COUNT] == 1.0
+        assert r[COL_REWORK_RATE] == 100.0
 
     def test_rework_count_sums_across_cases(self):
         df = _df(
@@ -402,6 +395,40 @@ class TestReworkMetrics:
             ("C2", ORIG),
             ("C3", ORIG),
         )
-        r = _rework_metrics(df, bot_task_name=BOT, original_task_name=ORIG)
-        assert r[COL_TOTAL_REWORK_COUNT] == 2.0
-        assert r[COL_REWORK_RATE] == pytest.approx(200 / 3)
+        r = _rework_metrics(df)
+        assert r[COL_TOTAL_REWORK_COUNT] == 1.0  # C1's repeat; C2's pair is not rework
+        assert r[COL_REWORK_RATE] == pytest.approx(100 / 3)
+
+
+# ── _bot_failure_count ────────────────────────────────────────────────────────
+
+
+class TestBotFailureCount:
+    def test_failure_pair_counts_one(self):
+        df = _df(("C1", BOT), ("C1", ORIG), ("C2", BOT))
+        assert _bot_failure_count(df, BOT, ORIG) == 1.0
+
+    def test_bot_success_zero(self):
+        df = _df(("C1", BOT), ("C2", BOT))
+        assert _bot_failure_count(df, BOT, ORIG) == 0.0
+
+    def test_manual_only_zero(self):
+        df = _df(("C1", ORIG), ("C2", ORIG))
+        assert _bot_failure_count(df, BOT, ORIG) == 0.0
+
+    def test_binary_per_case(self):
+        # A case counts once no matter how often the pair appears.
+        df = _df(("C1", BOT), ("C1", ORIG), ("C1", BOT), ("C1", ORIG))
+        assert _bot_failure_count(df, BOT, ORIG) == 1.0
+
+    def test_sums_across_cases(self):
+        df = _df(("C1", BOT), ("C1", ORIG), ("C2", BOT), ("C2", ORIG), ("C3", BOT))
+        assert _bot_failure_count(df, BOT, ORIG) == 2.0
+
+    def test_unknown_task_names_zero(self):
+        df = _df(("C1", BOT), ("C1", ORIG))
+        assert _bot_failure_count(df, None, None) == 0.0
+
+    def test_missing_activity_column_zero(self):
+        df = pd.DataFrame({"case_id": ["C1"]})
+        assert _bot_failure_count(df, BOT, ORIG) == 0.0

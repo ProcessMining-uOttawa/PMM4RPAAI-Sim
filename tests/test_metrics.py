@@ -16,6 +16,12 @@ class TestMetricRegistryRankable:
     def test_rankable_excludes_rework_count(self):
         assert not MetricRegistry.REWORK_COUNT.rankable
 
+    def test_rankable_excludes_bot_failure_count(self):
+        assert not MetricRegistry.BOT_FAILURE_COUNT.rankable
+
+    def test_all_includes_bot_failure_count(self):
+        assert MetricRegistry.BOT_FAILURE_COUNT in MetricRegistry.all()
+
     def test_rankable_includes_cycle_time(self):
         rankable_columns = {
             m.per_case.mean.column for m in MetricRegistry.rankable() if m.per_case
