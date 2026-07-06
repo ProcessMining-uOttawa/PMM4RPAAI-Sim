@@ -347,18 +347,6 @@ if ss.results is not None:
             if Path(p).exists()
         }
 
-        if json_paths:
-            st.markdown("###### Scenario parameters (params.json)")
-            sel = st.selectbox(
-                "Scenario",
-                sorted(json_paths),
-                key="params_sel",
-                format_func=lambda s: f"Scenario {s}",
-            )
-            if sel:
-                with st.expander("View params.json"):
-                    st.json(json_paths[sel].read_text())
-
         st.markdown("###### Export")
         stats_csv = ranked.to_csv(index=False)
         col_bpmn, col_json, col_stats, col_logs, col_all = st.columns(5)
