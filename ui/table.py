@@ -26,17 +26,12 @@ def prepare_ranked_display(
         include += [(p.id, p.label) for p in params if not p.frozen]
 
     for m in MetricRegistry.rankable():
-        col, name = m.per_case_column, m.per_case_display_name
-        assert col is not None and name is not None  # rankable() guarantees per_case
-        include.append((col, name))
+        include.append((m.per_case_column, m.per_case_display_name))
 
     for m in goal_metrics:
-        col = m.per_case_column
-        label = m.per_case_compact_label
-        assert (
-            col is not None and label is not None
-        )  # goal_metrics are rankable metrics with per_case
-        include.append((f"{col}_score", f"{label} Score"))
+        include.append(
+            (f"{m.per_case_column}_score", f"{m.per_case_compact_label} Score")
+        )
 
     include.append(("score", "Overall Score"))
 

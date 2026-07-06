@@ -57,22 +57,32 @@ class Metric:
     rankable: bool
     sn_floor: float = 0.0
 
-    @property
-    def per_case_column(self) -> str | None:
-        return self.per_case.mean.column if self.per_case else None
+    def _require_per_case(self) -> PerCaseMetric:
+        """per_case, raising on metrics that have none (only REWORK_COUNT).
+
+        The per-case accessors below are non-Optional so consumers gated on
+        rankable() need no assert-narrowing; calling them on a per_case-less
+        metric is a programming error, surfaced loudly.
+        """
+        if self.per_case is None:
+            raise ValueError(
+                f"per-case accessor requires a metric with per_case data; got {self}"
+            )
+        return self.per_case
 
     @property
-    def per_case_display_name(self) -> str | None:
-        return self.per_case.mean.display_name if self.per_case else None
+    def per_case_column(self) -> str:
+        return self._require_per_case().mean.column
 
     @property
-    def per_case_compact_label(self) -> str | None:
+    def per_case_display_name(self) -> str:
+        return self._require_per_case().mean.display_name
+
+    @property
+    def per_case_compact_label(self) -> str:
         """short_label when available, falling back to display_name."""
-        return (
-            (self.per_case.mean.short_label or self.per_case.mean.display_name)
-            if self.per_case
-            else None
-        )
+        mean = self._require_per_case().mean
+        return mean.short_label or mean.display_name
 
 
 class MetricRegistry:
@@ -167,15 +177,3 @@ class MetricRegistry:
     @classmethod
     def rankable(cls) -> list[Metric]:
         return [m for m in cls.all() if m.rankable]
-
-    @classmethod
-    def by_column(cls, col: str) -> MetricSpec | None:
-        for m in cls.all():
-            if m.per_case:
-                if m.per_case.mean.column == col:
-                    return m.per_case.mean
-                if m.per_case.std and m.per_case.std.column == col:
-                    return m.per_case.std
-            if m.aggregate and m.aggregate.column == col:
-                return m.aggregate
-        return None

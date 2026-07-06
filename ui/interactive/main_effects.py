@@ -22,11 +22,7 @@ def render_main_effects(results: pd.DataFrame, parameters: list[Parameter]) -> N
     """Render one main-effects chart tab per rankable metric."""
     label_map = factor_label_map(parameters)
     metrics = MetricRegistry.rankable()
-    # rankable() guarantees per_case, so per_case_display_name is non-None.
-    labels: list[str] = []
-    for metric in metrics:
-        assert metric.per_case_display_name is not None
-        labels.append(metric.per_case_display_name)
+    labels = [metric.per_case_display_name for metric in metrics]
     tabs = st.tabs(labels)
     for tab, metric, label in zip(tabs, metrics, labels):
         with tab:
