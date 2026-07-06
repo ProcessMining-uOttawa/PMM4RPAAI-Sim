@@ -21,7 +21,7 @@ class Parameter:
 
     id: str
     label: str
-    levels: list[Any]  # exactly 3 values for L9/L18/L27
+    levels: list[Any]  # exactly 3 values for L9/L18
     kind: ParameterKind = "percentage"
     frozen: bool = False  # if True, excluded from OA; levels[0] used in all scenarios
 

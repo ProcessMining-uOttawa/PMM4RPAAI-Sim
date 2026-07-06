@@ -40,37 +40,6 @@ L18 = [
     [2, 1, 0, 2, 0, 1, 2],
     [2, 2, 1, 0, 1, 2, 0],
 ]
-# L27 (3^13): up to 13 factors. Source: York University OA tables.
-L27 = [
-    [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
-    [0, 0, 0, 0, 1, 1, 1, 1, 1, 1, 1, 1, 1],
-    [0, 0, 0, 0, 2, 2, 2, 2, 2, 2, 2, 2, 2],
-    [0, 1, 1, 1, 0, 0, 0, 1, 1, 1, 2, 2, 2],
-    [0, 1, 1, 1, 1, 1, 1, 2, 2, 2, 0, 0, 0],
-    [0, 1, 1, 1, 2, 2, 2, 0, 0, 0, 1, 1, 1],
-    [0, 2, 2, 2, 0, 0, 0, 2, 2, 2, 1, 1, 1],
-    [0, 2, 2, 2, 1, 1, 1, 0, 0, 0, 2, 2, 2],
-    [0, 2, 2, 2, 2, 2, 2, 1, 1, 1, 0, 0, 0],
-    [1, 0, 1, 2, 0, 1, 2, 0, 1, 2, 0, 1, 2],
-    [1, 0, 1, 2, 1, 2, 0, 1, 2, 0, 1, 2, 0],
-    [1, 0, 1, 2, 2, 0, 1, 2, 0, 1, 2, 0, 1],
-    [1, 1, 2, 0, 0, 1, 2, 1, 2, 0, 2, 0, 1],
-    [1, 1, 2, 0, 1, 2, 0, 2, 0, 1, 0, 1, 2],
-    [1, 1, 2, 0, 2, 0, 1, 0, 1, 2, 1, 2, 0],
-    [1, 2, 0, 1, 0, 1, 2, 2, 0, 1, 1, 2, 0],
-    [1, 2, 0, 1, 1, 2, 0, 0, 1, 2, 2, 0, 1],
-    [1, 2, 0, 1, 2, 0, 1, 1, 2, 0, 0, 1, 2],
-    [2, 0, 2, 1, 0, 2, 1, 0, 2, 1, 0, 2, 1],
-    [2, 0, 2, 1, 1, 0, 2, 1, 0, 2, 1, 0, 2],
-    [2, 0, 2, 1, 2, 1, 0, 2, 1, 0, 2, 1, 0],
-    [2, 1, 0, 2, 0, 2, 1, 1, 0, 2, 2, 1, 0],
-    [2, 1, 0, 2, 1, 0, 2, 2, 1, 0, 0, 2, 1],
-    [2, 1, 0, 2, 2, 1, 0, 0, 2, 1, 1, 0, 2],
-    [2, 2, 1, 0, 0, 2, 1, 2, 1, 0, 1, 0, 2],
-    [2, 2, 1, 0, 1, 0, 2, 0, 2, 1, 2, 1, 0],
-    [2, 2, 1, 0, 2, 1, 0, 1, 0, 2, 0, 2, 1],
-]
-
 # ── pick_array ────────────────────────────────────────────────────────────────
 
 
@@ -113,23 +82,10 @@ class TestPickArray:
         assert arr == L18
         assert cols == len(arr[0])
 
-    def test_eight_factors_gives_l27(self):
-        arr_label, arr, cols = pick_array(8)
-
-        assert arr_label == "L27"
-        assert arr == L27
-        assert cols == len(arr[0])
-
-    def test_thirteen_factors_gives_l27(self):
-        arr_label, arr, cols = pick_array(13)
-
-        assert arr_label == "L27"
-        assert arr == L27
-        assert cols == len(arr[0])
-
-    def test_fourteen_factors_raises(self):
+    def test_eight_factors_raises(self):
+        # No L27: the single pattern tops out at 7 factors, so 8+ has no OA.
         with pytest.raises(ValueError):
-            pick_array(14)
+            pick_array(8)
 
 
 # ── build_scenarios ───────────────────────────────────────────────────────────
@@ -151,11 +107,12 @@ class TestBuildScenarios:
         )
         assert name == "L18" and len(scenarios) == 18
 
-    def test_eight_active_factors_gives_l27_twentyseven_scenarios(self):
+    def test_seven_active_factors_gives_l18_eighteen_scenarios(self):
+        # The real pattern's factor count (7) — the largest supported design.
         name, scenarios = build_scenarios(
-            self._params(8), "xor_split_automation", "Check credit"
+            self._params(7), "xor_split_automation", "Check credit"
         )
-        assert name == "L27" and len(scenarios) == 27
+        assert name == "L18" and len(scenarios) == 18
 
     def test_frozen_factor_constant_across_all_scenarios(self):
         params = [
