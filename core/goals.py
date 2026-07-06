@@ -60,7 +60,7 @@ class Goal:
     def from_metric(cls, metric: Metric, baseline: dict[str, float]) -> Goal:
         """Construct a Goal for a Metric using its per-case baseline value from a baseline dict.
 
-        Reads per_case_column and per_case_direction from the Metric internally.
+        Reads the per-case column and direction from the Metric internally.
         Raises ValueError if the metric has no per_case data.
         """
         if metric.per_case is None:

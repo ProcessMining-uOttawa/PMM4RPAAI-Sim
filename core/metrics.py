@@ -24,20 +24,27 @@ class MetricDirection(str, Enum):
     LARGER_IS_BETTER = "larger_is_better"
 
 
-def _id(v: float) -> float:
-    return v
+def _identity(value: float) -> float:
+    return value
 
 
-def _s_to_h(v: float) -> float:
-    return v / 3600
+def _seconds_to_hours(value: float) -> float:
+    return value / 3600
 
 
 class MetricSpec(NamedTuple):
+    """One displayable representation of a metric: a column plus its display config.
+
+    display_fn converts the stored value to display units (only the aggregate
+    cycle-time spec converts — seconds to hours); named functions, not lambdas,
+    so specs stay picklable.
+    """
+
     column: str
     display_name: str
     decimal_places: int
     direction: MetricDirection = MetricDirection.SMALLER_IS_BETTER
-    display_fn: Callable[[float], float] = _id
+    display_fn: Callable[[float], float] = _identity
     delta_name: str | None = None
     pct_change_name: str | None = None
     short_label: str | None = None  # name without unit, for compact displays
@@ -45,6 +52,8 @@ class MetricSpec(NamedTuple):
 
 @dataclass(frozen=True)
 class PerCaseMetric:
+    """A metric's per-case representation: its raw results column + display specs."""
+
     results_column: str  # column in the raw per-replication results DataFrame
     mean: MetricSpec
     std: MetricSpec | None = None  # hidden by default; registered for future toggle
@@ -52,30 +61,49 @@ class PerCaseMetric:
 
 @dataclass(frozen=True)
 class Metric:
+    """A KPI composed of optional per-case and aggregate representations.
+
+    rankable and sn_floor are policy about the metric as a whole: whether it can
+    be a ranking goal, and the offset that keeps S/N finite for metrics that
+    legitimately reach zero.
+    """
+
     per_case: PerCaseMetric | None
     aggregate: MetricSpec | None
     rankable: bool
     sn_floor: float = 0.0
 
-    @property
-    def per_case_column(self) -> str | None:
-        return self.per_case.mean.column if self.per_case else None
+    def _require_per_case(self) -> PerCaseMetric:
+        """per_case, raising on metrics that have none (only REWORK_COUNT).
+
+        The per-case accessors below are non-Optional so consumers gated on
+        rankable() need no assert-narrowing; calling them on a per_case-less
+        metric is a programming error, surfaced loudly.
+        """
+        if self.per_case is None:
+            raise ValueError(
+                f"per-case accessor requires a metric with per_case data; got {self}"
+            )
+        return self.per_case
 
     @property
-    def per_case_display_name(self) -> str | None:
-        return self.per_case.mean.display_name if self.per_case else None
+    def per_case_column(self) -> str:
+        return self._require_per_case().mean.column
 
     @property
-    def per_case_compact_label(self) -> str | None:
+    def per_case_display_name(self) -> str:
+        return self._require_per_case().mean.display_name
+
+    @property
+    def per_case_compact_label(self) -> str:
         """short_label when available, falling back to display_name."""
-        return (
-            (self.per_case.mean.short_label or self.per_case.mean.display_name)
-            if self.per_case
-            else None
-        )
+        mean = self._require_per_case().mean
+        return mean.short_label or mean.display_name
 
 
 class MetricRegistry:
+    """The four KPIs as class-level singletons; all() order is the display order."""
+
     CYCLE_TIME: Metric = Metric(
         per_case=PerCaseMetric(
             results_column=COL_MEAN_CYCLE_H,
@@ -95,7 +123,7 @@ class MetricRegistry:
             column=COL_TOTAL_CYCLE_S_MEAN,
             display_name="Total Cycle Time (h)",
             decimal_places=2,
-            display_fn=_s_to_h,
+            display_fn=_seconds_to_hours,
             delta_name="Δ Time (h)",
             pct_change_name="Δ Time (%)",
         ),
@@ -166,16 +194,4 @@ class MetricRegistry:
 
     @classmethod
     def rankable(cls) -> list[Metric]:
-        return [m for m in cls.all() if m.rankable]
-
-    @classmethod
-    def by_column(cls, col: str) -> MetricSpec | None:
-        for m in cls.all():
-            if m.per_case:
-                if m.per_case.mean.column == col:
-                    return m.per_case.mean
-                if m.per_case.std and m.per_case.std.column == col:
-                    return m.per_case.std
-            if m.aggregate and m.aggregate.column == col:
-                return m.aggregate
-        return None
+        return [metric for metric in cls.all() if metric.rankable]

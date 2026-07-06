@@ -2,12 +2,13 @@
 
 from __future__ import annotations
 
+import pytest
+
 from core.metrics import MetricRegistry
 from core.constants import (
     COL_MEAN_CYCLE_H_MEAN,
     COL_MEAN_COST_MEAN,
     COL_REWORK_RATE_MEAN,
-    COL_TOTAL_REWORK_COUNT_MEAN,
 )
 
 
@@ -34,33 +35,16 @@ class TestMetricRegistryRankable:
         assert COL_REWORK_RATE_MEAN in aggregate_columns
 
 
-class TestMetricRegistryByColumn:
-    def test_finds_per_case_mean_column(self):
-        spec = MetricRegistry.by_column(COL_MEAN_CYCLE_H_MEAN)
-        assert spec is not None
-        assert spec.column == COL_MEAN_CYCLE_H_MEAN
-
-    def test_finds_aggregate_column(self):
-        spec = MetricRegistry.by_column(COL_TOTAL_REWORK_COUNT_MEAN)
-        assert spec is not None
-        assert spec.column == COL_TOTAL_REWORK_COUNT_MEAN
-
-    def test_returns_none_for_unknown_column(self):
-        assert MetricRegistry.by_column("nonexistent_column") is None
-
-    def test_finds_cost_per_case_mean(self):
-        spec = MetricRegistry.by_column(COL_MEAN_COST_MEAN)
-        assert spec is not None
-        assert spec.column == COL_MEAN_COST_MEAN
-
-
 class TestMetricPerCaseProperties:
-    def test_per_case_column_returns_none_for_rework_count(self):
-        # REWORK_COUNT has per_case=None; property must return None, not raise
-        assert MetricRegistry.REWORK_COUNT.per_case_column is None
+    def test_per_case_column_raises_for_rework_count(self):
+        # REWORK_COUNT has per_case=None; the accessors raise (instead of
+        # returning None) so rankable()-gated consumers need no assert-narrowing.
+        with pytest.raises(ValueError, match="per_case"):
+            _ = MetricRegistry.REWORK_COUNT.per_case_column
 
-    def test_per_case_display_name_returns_none_for_rework_count(self):
-        assert MetricRegistry.REWORK_COUNT.per_case_display_name is None
+    def test_per_case_display_name_raises_for_rework_count(self):
+        with pytest.raises(ValueError, match="per_case"):
+            _ = MetricRegistry.REWORK_COUNT.per_case_display_name
 
     def test_per_case_column_returns_string_for_cycle_time(self):
         assert MetricRegistry.CYCLE_TIME.per_case_column == COL_MEAN_CYCLE_H_MEAN
@@ -92,5 +76,6 @@ class TestMetricPerCaseProperties:
         )
         assert m.per_case_compact_label == "Full Display Name"
 
-    def test_per_case_compact_label_returns_none_when_per_case_none(self):
-        assert MetricRegistry.REWORK_COUNT.per_case_compact_label is None
+    def test_per_case_compact_label_raises_when_per_case_none(self):
+        with pytest.raises(ValueError, match="per_case"):
+            _ = MetricRegistry.REWORK_COUNT.per_case_compact_label

@@ -178,7 +178,7 @@ with st.sidebar:
         )
         _n_goals = st.radio(
             "Goals",
-            [1, 2, 3],
+            list(range(1, len(MetricRegistry.rankable()) + 1)),
             index=0,
             horizontal=True,
             key="goal_count",
