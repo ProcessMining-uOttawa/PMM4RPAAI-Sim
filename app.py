@@ -3,13 +3,12 @@
 from __future__ import annotations
 import json
 import os
-import time
 import xml.etree.ElementTree as ET
 import streamlit as st
 
 from pathlib import Path
 
-from core import analysis, demo, orchestrator
+from core import analysis, demo
 from core.bpmn.query import find_task_by_name, list_activities
 from core.simulation.prosimos.query import resource_selector_config
 from core.constants import COL_MEAN_COST
@@ -19,18 +18,13 @@ from core.metrics import Metric, MetricRegistry
 from core.simulation import runner, store
 from core.transformations import REGISTRY
 
-from ui.run_manager import (
-    start_experiment,
-    cancel_experiment,
-    clear_run,
-    current_run,
-    commit_result,
-)
+from ui.run_manager import cancel_experiment, clear_results
 from ui.interactive.resource_selector import select_resource
 from ui.interactive.factor_levels import configure_factor_levels
 from ui.interactive.main_effects import render_main_effects
 from ui.interactive.ranked_scenarios import render_ranked_scenarios
 from ui.interactive.simod_preflight import render_simod_preflight
+from ui.interactive.execution_panel import render_execution_panel
 
 st.set_page_config(
     page_title="Automation What-If Simulator", page_icon="⚙", layout="wide"
@@ -59,18 +53,8 @@ ss.setdefault("baseline_agg", None)
 ss.setdefault("failed_replications", [])
 
 
-def _clear_results() -> None:
-    ss.results = None
-    ss.experiment_bpmn_path = None
-    ss.scenario_json_paths = {}
-    ss.baseline_agg = None
-    ss.scenario_log_paths = {}
-    ss.baseline_log_paths = {}
-    ss.failed_replications = []
-
-
 def _clear_log() -> None:
-    _clear_results()
+    clear_results(ss)
     ss.log_name = None
     ss.log_path = None
     ss.activities = []
@@ -223,8 +207,8 @@ with st.sidebar:
     max_workers = st.number_input(
         "Parallel workers",
         min_value=1,
-        max_value=os.cpu_count(),
-        value=os.cpu_count(),
+        max_value=os.cpu_count() or 1,
+        value=os.cpu_count() or 1,
         step=1,
         help="Number of Prosimos simulations to run in parallel. Higher values use more CPU.",
     )
@@ -302,94 +286,20 @@ with col2:
 # --- Design + execution panel ------------------------------------------------
 array_name, scenarios = build_scenarios(parameters, transformation.id, target)
 ss.array_name, ss.scenarios = array_name, scenarios
-total_runs = len(scenarios) * n_reps
 
-
-@st.fragment
-def _panel3() -> None:
-    with st.container(border=True):
-        left, right = st.columns([3, 1])
-        left.markdown(
-            f"##### 3 · Execution  "
-            f"<span style='background:#eef2ff;color:#3b6cf2;font-size:11px;"
-            f"padding:2px 8px;border-radius:10px'>{array_name} · "
-            f"{len(scenarios)} scenarios × {n_reps} reps = {total_runs} runs</span>",
-            unsafe_allow_html=True,
-        )
-        if demo_mode:
-            st.caption(
-                "🧪 Demo run — results are illustrative (synthetic), not a real simulation."
-            )
-
-        _rs = current_run(ss)
-        if _rs is not None:
-            _pct = _rs.done / _rs.total if _rs.total > 0 else 0.0
-            st.progress(_pct, text=f"Scenario {_rs.label} · rep {_rs.rep + 1}/{n_reps}")
-            if right.button("✕ Cancel", use_container_width=True):
-                cancel_experiment(ss)
-
-            if _rs.outcome is None:
-                time.sleep(0.5)
-                st.rerun()  # fragment-scoped: only Panel 3 re-renders during polling
-            else:
-                if _rs.outcome.cancelled:
-                    st.toast("Run cancelled.", icon="⚠️")
-                elif _rs.outcome.error is not None:
-                    st.toast(f"Simulation failed: {_rs.outcome.error}", icon="❌")
-                else:
-                    # Not cancelled and no error → result is set (RunOutcome invariant).
-                    assert _rs.outcome.result is not None
-                    commit_result(ss, _rs.outcome.result)
-                    st.toast(f"Completed {total_runs} simulations.", icon="✅")
-                clear_run(ss)
-                st.rerun(scope="app")  # full rerun: Panel 4 needs to appear
-        else:
-            if right.button(
-                "▶ Run all scenarios", type="primary", use_container_width=True
-            ):
-                if not demo_mode and (not ss.bpmn_path or not ss.json_path):
-                    st.error("No discovered model — upload a log first.")
-                    st.stop()
-
-                if demo_mode:
-
-                    def _fn(progress_cb, stop_ev):
-                        return demo.run_experiment(
-                            scenarios,
-                            n_reps,
-                            progress_cb,
-                            bot_cost_per_hour=bot_cost_per_hour,
-                            stop_event=stop_ev,
-                        )
-                else:
-                    _experiment_dir = store.new_experiment(ss.log_name or "run")
-                    _bpmn_path = ss.bpmn_path
-                    _json_path = ss.json_path
-                    _target_activity = target
-                    _selected_resource_id = selected_resource_id
-
-                    def _fn(progress_cb, stop_ev):
-                        return orchestrator.run_experiment(
-                            transformation=transformation,
-                            bpmn_path=_bpmn_path,
-                            json_path=_json_path,
-                            target_activity=_target_activity,
-                            scenarios=scenarios,
-                            n_reps=n_reps,
-                            experiment_dir=_experiment_dir,
-                            on_progress=progress_cb,
-                            selected_resource_id=_selected_resource_id,
-                            bot_cost_per_hour=bot_cost_per_hour,
-                            stop_event=stop_ev,
-                            max_workers=max_workers,
-                        )
-
-                _clear_results()
-                start_experiment(ss, _fn)
-                st.rerun()  # fragment-scoped: switches Panel 3 to progress view
-
-
-_panel3()
+render_execution_panel(
+    ss,
+    array_name,
+    scenarios,
+    n_reps,
+    demo_mode,
+    target,
+    transformation,
+    selected_resource_id,
+    bot_cost_per_hour,
+    max_workers,
+    title="3 · Execution",
+)
 
 # --- Results panel -----------------------------------------------------------
 if ss.results is not None:
