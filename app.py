@@ -326,7 +326,7 @@ if ss.results is not None:
             st.warning(
                 "Cost data is unavailable for one or more runs — Prosimos did not "
                 "produce a stats CSV with a parseable 'Individual Task Statistics' section. "
-                "Cost goals are marked unmet.",
+                "Cost goals score 0 for the affected scenarios.",
                 icon="⚠️",
             )
         ranked = render_ranked_scenarios(
