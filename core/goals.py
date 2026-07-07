@@ -29,6 +29,26 @@ class Goal:
     baseline_ref: float  # reference breakpoint → score 50 (baseline value)
     worst: float  # unacceptable breakpoint → score 0
 
+    def __post_init__(self) -> None:
+        """Reject breakpoints that cannot score coherently.
+
+        score() interpolates target → baseline_ref → worst; a baseline_ref
+        outside the [target, worst] span (either direction) would make the
+        interpolation discontinuous — a 75-point cliff across an epsilon —
+        so such a Goal is unconstructible. Callers taking user input must
+        validate before constructing.
+        """
+        if not (
+            min(self.target, self.worst)
+            <= self.baseline_ref
+            <= max(self.target, self.worst)
+        ):
+            raise ValueError(
+                f"Goal breakpoints out of order for {self.metric!r}: baseline_ref "
+                f"({self.baseline_ref}) must lie between target ({self.target}) "
+                f"and worst ({self.worst})"
+            )
+
     def score(self, value: float) -> float:
         """Piecewise linear score in [0, 100]: 100 at target, 50 at baseline_ref, 0 at worst.
 

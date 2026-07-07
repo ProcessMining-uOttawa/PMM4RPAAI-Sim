@@ -17,6 +17,10 @@ from core.simulation.prosimos.query import task_mean_duration_s
 from core.transformations import Transformation
 from ui.param_inputs import number_input_kwargs
 
+# Label column + three value cells. goal_config imports this so the two grids
+# stacked in the same panel stay column-aligned.
+ROW_LAYOUT = [3, 1, 1, 1]
+
 
 def _level_input(
     column, parameter: Parameter, *, idx: int, suffix: str, disabled: bool = False
@@ -61,12 +65,12 @@ def configure_factor_levels(
     )
     if current_duration_s is not None:
         st.caption(f"Non-Auto-Time pre-filled from Simod ({current_duration_s:.0f} s)")
-    header = st.columns([3, 1, 1, 1])
+    header = st.columns(ROW_LAYOUT)
     header[0].caption("Factor")
     for i, label in enumerate(("Low", "Mid", "High")):
         header[i + 1].caption(label)
     for parameter in parameters:
-        row = st.columns([3, 1, 1, 1])
+        row = st.columns(ROW_LAYOUT)
         row[0].markdown(f"**{parameter.label}**")
         if parameter.frozen:
             _level_input(row[1], parameter, idx=0, suffix="frozen", disabled=True)

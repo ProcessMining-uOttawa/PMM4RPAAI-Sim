@@ -64,15 +64,18 @@ class PerCaseMetric:
 class Metric:
     """A KPI composed of optional per-case and aggregate representations.
 
-    rankable and sn_floor are policy about the metric as a whole: whether it can
-    be a ranking goal, and the offset that keeps S/N finite for metrics that
-    legitimately reach zero.
+    rankable, sn_floor, and upper_bound are policy/domain facts about the
+    metric as a whole: whether it can be a ranking goal, the offset that keeps
+    S/N finite for metrics that legitimately reach zero, and the hard ceiling
+    of the metric's value domain (None = unbounded above; only the rework-rate
+    percentage is capped, at 100).
     """
 
     per_case: PerCaseMetric | None
     aggregate: MetricSpec | None
     rankable: bool
     sn_floor: float = 0.0
+    upper_bound: float | None = None
 
     def _require_per_case(self) -> PerCaseMetric:
         """per_case, raising on metrics without one (REWORK_COUNT, BOT_FAILURE_COUNT).
@@ -100,6 +103,10 @@ class Metric:
         """short_label when available, falling back to display_name."""
         mean = self._require_per_case().mean
         return mean.short_label or mean.display_name
+
+    @property
+    def per_case_decimal_places(self) -> int:
+        return self._require_per_case().mean.decimal_places
 
 
 class MetricRegistry:
@@ -187,6 +194,7 @@ class MetricRegistry:
         ),
         rankable=True,
         sn_floor=0.01,
+        upper_bound=100.0,
     )
 
     # Display-only, like REWORK_COUNT. Not rankable — the count is input-derivable
