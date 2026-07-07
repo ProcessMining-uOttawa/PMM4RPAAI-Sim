@@ -31,10 +31,15 @@ def render_ranked_scenarios(
     goal_metrics drives the display columns; scorable_goals (a subset when a
     slot's thresholds failed validation) drives the scoring. Returns the
     ranked DataFrame (also used by app.py for the Statistics CSV export).
-    With no scorable goals every scenario scores 0 and the per-goal score
-    columns are simply absent from the display.
+    With no scorable goals the table degrades to KPIs only.
     """
     ranked = analysis.rank(agg, scorable_goals)
+    if not scorable_goals:
+        # rank() fabricates an all-zero aggregate score when there is nothing
+        # to score; presented as data it misleads — and the Statistics CSV
+        # built from this frame escapes Panel 4's error banner — so drop it.
+        # The display's presence filter then yields a KPI-only table.
+        ranked = ranked.drop(columns=["score"])
 
     show_factors = st.checkbox("Show Taguchi factors", value=False, key="show_factors")
     st.dataframe(
