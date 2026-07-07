@@ -23,6 +23,7 @@ from .constants import (
 )
 from .goals import Goal
 from .metrics import Metric, MetricDirection, MetricRegistry
+from .parameters import Parameter
 from .constants import F_NUM_CASES
 
 
@@ -147,6 +148,55 @@ def main_effects(results: pd.DataFrame, metric: Metric) -> pd.DataFrame:
                 }
             )
     return pd.DataFrame(rows)
+
+
+def sn_ranking(effects: pd.DataFrame) -> pd.DataFrame:
+    """Add per-factor S/N delta and influence rank to a main_effects() frame.
+
+    delta_sn is max − min of a factor's level S/N values; rank 1 is the largest
+    delta — the most influential factor, the classic Taguchi response-table
+    ranking. Factors whose delta is NaN (all-NaN S/N) rank last. Rows are
+    sorted by rank; within a factor the level order from main_effects() is kept.
+    """
+    factor_deltas = effects.groupby("factor")["sn"].agg(lambda s: s.max() - s.min())
+    factor_ranks = factor_deltas.rank(
+        method="dense", ascending=False, na_option="bottom"
+    )
+    out = effects.copy()
+    out["delta_sn"] = out["factor"].map(factor_deltas)
+    out["rank"] = out["factor"].map(factor_ranks).astype(int)
+    return out.sort_values(["rank", "factor"], kind="stable").reset_index(drop=True)
+
+
+def sn_export_table(results: pd.DataFrame, parameters: list[Parameter]) -> pd.DataFrame:
+    """Ranked S/N response table across all rankable metrics, display-named.
+
+    One row per metric × factor × level. Rank 1 is the factor with the largest
+    S/N delta for that metric (most influential). Factor ids are translated to
+    their display labels. Display-named columns follow the compare_to_baseline
+    precedent — this frame is consumed as-is by the S/N CSV export.
+    """
+    label_map = {p.id: p.label for p in parameters}
+    frames = []
+    for metric in MetricRegistry.rankable():
+        ranked = sn_ranking(main_effects(results, metric))
+        ranked.insert(0, "Metric", metric.per_case_display_name)
+        frames.append(ranked)
+    table = pd.concat(frames, ignore_index=True)
+    table["factor"] = table["factor"].map(lambda factor: label_map.get(factor, factor))
+    table = table.rename(
+        columns={
+            "factor": "Factor",
+            "rank": "Rank",
+            "delta_sn": "Δ S/N",
+            "level": "Level",
+            "mean": "Level Mean",
+            "sn": "Level S/N",
+        }
+    )
+    return table[
+        ["Metric", "Factor", "Rank", "Δ S/N", "Level", "Level Mean", "Level S/N"]
+    ]
 
 
 def rank(agg: pd.DataFrame, goals: list[Goal]) -> pd.DataFrame:

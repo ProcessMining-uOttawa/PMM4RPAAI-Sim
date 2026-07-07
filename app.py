@@ -349,7 +349,8 @@ if ss.results is not None:
 
         st.markdown("###### Export")
         stats_csv = ranked.to_csv(index=False)
-        col_bpmn, col_json, col_stats, col_logs, col_all = st.columns(5)
+        sn_csv = analysis.sn_export_table(ss.results, parameters).to_csv(index=False)
+        col_bpmn, col_json, col_stats, col_sn, col_logs, col_all = st.columns(6)
         col_json.download_button(
             "⬇ Params (ZIP)",
             data=store.json_zip(json_paths),
@@ -362,6 +363,13 @@ if ss.results is not None:
             "⬇ Statistics (CSV)",
             stats_csv,
             file_name="statistics.csv",
+            mime="text/csv",
+            use_container_width=True,
+        )
+        col_sn.download_button(
+            "⬇ S/N (CSV)",
+            sn_csv,
+            file_name="signal_to_noise.csv",
             mime="text/csv",
             use_container_width=True,
         )
@@ -386,7 +394,7 @@ if ss.results is not None:
         )
         col_all.download_button(
             "⬇ Model (ZIP)",
-            data=store.group_zip(bpmn_file, json_paths, stats_csv)
+            data=store.group_zip(bpmn_file, json_paths, stats_csv, sn_csv)
             if (bpmn_file and json_paths)
             else b"",
             file_name="model_bundle.zip",

@@ -11,10 +11,13 @@ from core.analysis import (
     compare_to_baseline,
     main_effects,
     signal_to_noise,
+    sn_ranking,
+    sn_export_table,
     rank,
 )
 from core.goals import Goal
 from core.metrics import MetricDirection, MetricRegistry
+from core.parameters import Parameter
 from core.constants import (
     COL_MEAN_CYCLE_H,
     COL_MEAN_COST,
@@ -336,6 +339,93 @@ class TestMainEffects:
         me = main_effects(_results_df(), MetricRegistry.REWORK_RATE)
         low_mean = me[me["level"] == "low"]["mean"].iloc[0]
         assert low_mean == pytest.approx(15.0)  # (10.0 + 20.0) / 2
+
+
+# ── sn_ranking ────────────────────────────────────────────────────────────────
+
+
+class TestSnRanking:
+    def _effects(self) -> pd.DataFrame:
+        # f_a spans 6 S/N units, f_b spans 2 → f_a is the more influential factor.
+        return pd.DataFrame(
+            [
+                {"factor": "f_a", "level": 1, "mean": 10.0, "sn": -20.0},
+                {"factor": "f_a", "level": 2, "mean": 12.0, "sn": -26.0},
+                {"factor": "f_b", "level": 1, "mean": 10.0, "sn": -21.0},
+                {"factor": "f_b", "level": 2, "mean": 11.0, "sn": -23.0},
+            ]
+        )
+
+    def test_delta_is_max_minus_min(self):
+        ranked = sn_ranking(self._effects())
+        assert ranked[ranked["factor"] == "f_a"]["delta_sn"].iloc[0] == pytest.approx(
+            6.0
+        )
+
+    def test_most_influential_factor_ranks_first(self):
+        ranked = sn_ranking(self._effects())
+        assert ranked[ranked["factor"] == "f_a"]["rank"].iloc[0] == 1
+        assert ranked[ranked["factor"] == "f_b"]["rank"].iloc[0] == 2
+
+    def test_sorted_by_rank(self):
+        ranked = sn_ranking(self._effects())
+        assert list(ranked["factor"]) == ["f_a", "f_a", "f_b", "f_b"]
+
+    def test_tied_deltas_share_rank(self):
+        effects = pd.DataFrame(
+            [
+                {"factor": "f_a", "level": 1, "mean": 1.0, "sn": -20.0},
+                {"factor": "f_a", "level": 2, "mean": 1.0, "sn": -22.0},
+                {"factor": "f_b", "level": 1, "mean": 1.0, "sn": -30.0},
+                {"factor": "f_b", "level": 2, "mean": 1.0, "sn": -32.0},
+            ]
+        )
+        ranked = sn_ranking(effects)
+        assert set(ranked["rank"]) == {1}
+
+    def test_nan_delta_ranks_last(self):
+        effects = pd.DataFrame(
+            [
+                {"factor": "f_a", "level": 1, "mean": 1.0, "sn": -20.0},
+                {"factor": "f_a", "level": 2, "mean": 1.0, "sn": -26.0},
+                {"factor": "f_nan", "level": 1, "mean": 1.0, "sn": float("nan")},
+                {"factor": "f_nan", "level": 2, "mean": 1.0, "sn": float("nan")},
+            ]
+        )
+        ranked = sn_ranking(effects)
+        assert ranked[ranked["factor"] == "f_nan"]["rank"].iloc[0] == 2
+
+
+# ── sn_export_table ───────────────────────────────────────────────────────────
+
+
+class TestSnExportTable:
+    _COLUMNS = ["Metric", "Factor", "Rank", "Δ S/N", "Level", "Level Mean", "Level S/N"]
+
+    def _params(self) -> list[Parameter]:
+        return [Parameter("f_a", "Factor A", [1, 2, 3])]
+
+    def test_column_order(self):
+        table = sn_export_table(_results_df(), self._params())
+        assert list(table.columns) == self._COLUMNS
+
+    def test_one_block_per_rankable_metric(self):
+        table = sn_export_table(_results_df(), self._params())
+        expected = {m.per_case_display_name for m in MetricRegistry.rankable()}
+        assert set(table["Metric"]) == expected
+
+    def test_factor_ids_translated_to_labels(self):
+        table = sn_export_table(_results_df(), self._params())
+        assert set(table["Factor"]) == {"Factor A"}
+
+    def test_unlabelled_factor_id_passes_through(self):
+        table = sn_export_table(_results_df(), [])
+        assert set(table["Factor"]) == {"f_a"}
+
+    def test_rank_one_first_within_each_metric(self):
+        table = sn_export_table(_results_df(), self._params())
+        first_rows = table.groupby("Metric", sort=False).first()
+        assert (first_rows["Rank"] == 1).all()
 
 
 # ── rank ──────────────────────────────────────────────────────────────────────
