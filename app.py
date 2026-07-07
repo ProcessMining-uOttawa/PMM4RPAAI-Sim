@@ -18,9 +18,18 @@ from core.simulation import runner, store
 from core.transformations import REGISTRY
 
 from ui.run_manager import cancel_experiment, clear_results
+from ui.discovery_manager import (
+    DiscoveryPhase,
+    DiscoveryResult,
+    clear_discovery,
+    discovery_error,
+    discovery_phase,
+    start_discovery,
+)
 from ui.interactive.resource_selector import select_resource
 from ui.interactive.factor_levels import configure_factor_levels
 from ui.interactive.goal_config import configure_goals, reset_goal_thresholds
+from ui.interactive.discovery_panel import render_discovery_progress
 from ui.interactive.main_effects import render_main_effects
 from ui.interactive.ranked_scenarios import render_ranked_scenarios
 from ui.interactive.simod_preflight import render_simod_preflight
@@ -63,12 +72,13 @@ def _clear_process_state() -> None:
     """Clear everything derived from the currently loaded process.
 
     Cancels any in-flight run (its commit would land in the wrong session),
-    drops its results, the baseline (log-scoped — clear_results deliberately
-    keeps it), and the goal thresholds. Called when the log is reset or
-    replaced — the two events after which this state would describe a
-    different process.
+    abandons any in-flight discovery, drops its results, the baseline
+    (log-scoped — clear_results deliberately keeps it), and the goal thresholds.
+    Called when the log is reset or replaced — the two events after which this
+    state would describe a different process.
     """
     cancel_experiment(ss)
+    clear_discovery(ss)
     clear_results(ss)
     ss.baseline_agg = None
     reset_goal_thresholds()
@@ -110,81 +120,87 @@ with st.sidebar:
         "Use sample log", use_container_width=True, disabled=not demo_mode
     )
 
-    # Fingerprint the upload so we only discover ONCE per unique file.
-    # CRITICAL: Streamlit reruns the script top-to-bottom on every interaction,
-    # even while a slow synchronous subprocess is mid-flight. To prevent
-    # launching concurrent Simod processes we set the fingerprint BEFORE the
-    # subprocess call (so concurrent reruns short-circuit immediately) and
-    # also hold a per-session "discovering" lock.
+    # Discovery is an explicit state machine keyed by the upload fingerprint
+    # (ui/discovery_manager). Real discovery runs in a background thread — see §6,
+    # the interrupt corollary — so a mid-discovery rerun can't abort it; the
+    # sidebar routes on discovery_phase() for the file currently in the uploader.
     upload_fp = (uploaded.name, uploaded.size) if uploaded else None
     already_discovered = ss.get("log_fingerprint") == upload_fp and ss.activities
-    discovering = ss.get("discovering", False)
+    phase = discovery_phase(ss, upload_fp)
 
-    needs_discovery = (uploaded and not already_discovered and not discovering) or (
-        use_sample and demo_mode and not ss.activities
-    )
+    # RUNNING → poll via the fragment and hide the rest of the sidebar until it
+    # finishes (the fragment triggers a full app rerun on completion). Because
+    # discovery runs off-thread, a run-config nudge here just re-renders this
+    # progress view instead of interrupting Simod.
+    if phase is DiscoveryPhase.RUNNING:
+        render_discovery_progress(ss)
+        st.stop()
 
-    if discovering and uploaded:
-        st.warning("Simod discovery is already running. Wait or click **Cancel**.")
-        if st.button("Cancel discovery"):
-            ss.discovering = False
-            ss.log_fingerprint = None
+    # FAILED / CANCELLED → show the outcome and offer retry; don't auto-restart.
+    # A different upload makes this session irrelevant (phase becomes None), so
+    # the banner can never persist across a log change.
+    if phase in (DiscoveryPhase.FAILED, DiscoveryPhase.CANCELLED):
+        if phase is DiscoveryPhase.FAILED:
+            error = discovery_error(ss)
+            assert error is not None  # phase FAILED ⇒ outcome.error set
+            st.error("Simod discovery failed.")
+            st.exception(error)
+        else:
+            st.info("Discovery cancelled.")
+        if st.button("Retry discovery"):
+            clear_discovery(ss)  # back to idle → the block below re-discovers
             st.rerun()
         st.stop()
 
+    needs_discovery = (uploaded and not already_discovered) or (
+        use_sample and demo_mode and not ss.activities
+    )
+
     if needs_discovery:
-        # Claim the lock + fingerprint NOW, so any concurrent rerun short-circuits.
-        ss.discovering = True
+        # Fingerprint now so a concurrent rerun sees already_discovered and
+        # short-circuits. Replacing the log without "Reset log" must not carry
+        # over state from the previous process; the remaining log-level keys are
+        # assigned fresh values below.
         ss.log_fingerprint = upload_fp
-        # Replacing the log without "Reset log" must not carry over state from
-        # the previous process; the remaining log-level keys are assigned
-        # fresh values below, so they need no explicit clear.
         _clear_process_state()
         if demo_mode:
-            # Use the pre-baked demo model so the real activity-list +
-            # factor-prepopulation path runs (only the simulation is synthetic).
+            # Pre-baked model, no subprocess — instant, so stay synchronous.
+            # The real activity-list + factor-prepopulation path still runs
+            # (only the simulation is synthetic).
             ss.log_name = "LoanApp (demo)"
             ss.bpmn_path, ss.json_path = demo.DEMO_BPMN, demo.DEMO_JSON
             ss.activities = list_activities(ss.bpmn_path)
-            ss.discovering = False
+            st.rerun()
         else:
             # Non-demo discovery is only reached via needs_discovery's first
             # disjunct, which requires a truthy upload (demo_mode is False here).
-            assert uploaded is not None
+            assert uploaded is not None and upload_fp is not None
             if not preflight_ok:
-                ss.discovering = False
                 ss.log_fingerprint = None
                 st.error("Fix the preflight items above first.")
                 st.stop()
             run_dir = store.new_experiment(uploaded.name)
             log_path = run_dir / uploaded.name
             log_path.write_bytes(uploaded.getbuffer())
-            with st.status(
-                "Running Simod discovery (~2 min for 100k events)…", expanded=True
-            ) as s:
-                try:
-                    bpmn, params_path = runner.discover(
-                        log_path,
-                        run_dir,
-                        java_home=java_home,
-                        proc_log=store.discovery_log(run_dir),
-                    )
-                    ss.bpmn_path, ss.json_path = bpmn, params_path
-                    ss.activities = list_activities(bpmn)
-                    ss.log_name, ss.log_path = uploaded.name, log_path
-                    s.update(
-                        label=f"Discovered {len(ss.activities)} activities",
-                        state="complete",
-                    )
-                except Exception as e:
-                    ss.log_fingerprint = None
-                    s.update(label="Simod failed", state="error")
-                    st.exception(e)
-                    ss.discovering = False
-                    st.stop()
-                finally:
-                    ss.discovering = False
-        st.rerun()
+            # Snapshot everything the worker needs into locals before the thread
+            # starts — it must not touch ss or st.* (§6 threading rules).
+            log_name = uploaded.name
+            proc_log = store.discovery_log(run_dir)
+
+            def discover_fn() -> DiscoveryResult:
+                bpmn, params_path = runner.discover(
+                    log_path, run_dir, java_home=java_home, proc_log=proc_log
+                )
+                return DiscoveryResult(
+                    bpmn_path=bpmn,
+                    json_path=params_path,
+                    activities=list_activities(bpmn),
+                    log_name=log_name,
+                    log_path=log_path,
+                )
+
+            start_discovery(ss, upload_fp, discover_fn)
+            st.rerun()
 
     if ss.log_name:
         st.caption(f"📄 Loaded: **{ss.log_name}** · {len(ss.activities)} activities")
