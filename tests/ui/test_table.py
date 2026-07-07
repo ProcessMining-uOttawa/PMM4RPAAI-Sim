@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import pandas as pd
 
-from core.constants import COL_MEAN_CYCLE_H_MEAN
+from core.constants import COL_MEAN_COST_MEAN, COL_MEAN_CYCLE_H_MEAN
 from core.metrics import MetricRegistry
 from core.parameters import Parameter
 from ui.table import prepare_ranked_display
@@ -71,3 +71,17 @@ class TestPrepareRankedDisplay:
         # silently filtered out (the `col in ranked.columns` guard).
         result = prepare_ranked_display(_ranked(), [MetricRegistry.CYCLE_TIME], [])
         assert "Cost ($/case)" not in result.columns
+
+    def test_dropped_goal_keeps_kpi_but_skips_score_column(self):
+        # The dropped-goal shape from ui/interactive/goal_config.py: a goal whose
+        # thresholds failed validation is excluded from rank(), so its metric is
+        # in goal_metrics and its KPI column exists but its _score column does
+        # not — the display must keep the KPI and skip only the score.
+        ranked = _ranked()
+        ranked[COL_MEAN_COST_MEAN] = [3.0, 4.0]  # Cost KPI present, no cost score
+        result = prepare_ranked_display(
+            ranked, [MetricRegistry.CYCLE_TIME, MetricRegistry.COST], []
+        )
+        assert "Cost ($/case)" in result.columns
+        assert "Cost Score" not in result.columns
+        assert "Cycle Time Score" in result.columns

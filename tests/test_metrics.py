@@ -85,3 +85,27 @@ class TestMetricPerCaseProperties:
     def test_per_case_compact_label_raises_when_per_case_none(self):
         with pytest.raises(ValueError, match="per_case"):
             _ = MetricRegistry.REWORK_COUNT.per_case_compact_label
+
+    def test_per_case_decimal_places_returns_int_for_cycle_time(self):
+        assert MetricRegistry.CYCLE_TIME.per_case_decimal_places == 2
+
+    def test_per_case_decimal_places_rework_rate_is_1(self):
+        # The only metric with dp != 2 — drives the step-0.1 / %.1f widget kwargs.
+        assert MetricRegistry.REWORK_RATE.per_case_decimal_places == 1
+
+    def test_per_case_decimal_places_raises_when_per_case_none(self):
+        with pytest.raises(ValueError, match="per_case"):
+            _ = MetricRegistry.REWORK_COUNT.per_case_decimal_places
+
+
+class TestMetricUpperBound:
+    def test_rework_rate_is_capped_at_100(self):
+        # A percentage of cases — the domain ceiling that clamps goal-threshold
+        # widget seeds (a worst default of baseline × 1.1 can exceed 100).
+        assert MetricRegistry.REWORK_RATE.upper_bound == 100.0
+
+    def test_cycle_time_is_unbounded(self):
+        assert MetricRegistry.CYCLE_TIME.upper_bound is None
+
+    def test_cost_is_unbounded(self):
+        assert MetricRegistry.COST.upper_bound is None

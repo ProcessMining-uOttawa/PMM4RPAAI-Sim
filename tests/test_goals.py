@@ -78,6 +78,44 @@ class TestFromBaseline:
         assert goal.worst == pytest.approx(0.0)
 
 
+# ── Goal ordering guard ──────────────────────────────────────────────────────
+
+
+class TestGoalOrderingGuard:
+    """__post_init__ rejects breakpoints score() cannot interpolate coherently."""
+
+    def test_baseline_above_both_raises(self):
+        # SIB shape but baseline beyond worst: score() would cliff, so construction fails.
+        with pytest.raises(ValueError, match="must lie between"):
+            Goal(metric="col", target=90.0, baseline_ref=120.0, worst=110.0)
+
+    def test_baseline_below_both_raises(self):
+        with pytest.raises(ValueError, match="must lie between"):
+            Goal(metric="col", target=90.0, baseline_ref=80.0, worst=110.0)
+
+    def test_error_names_the_metric(self):
+        with pytest.raises(ValueError, match="mean_cost_mean"):
+            Goal(metric="mean_cost_mean", target=5.0, baseline_ref=20.0, worst=10.0)
+
+    def test_baseline_equal_target_is_allowed(self):
+        goal = Goal(metric="col", target=100.0, baseline_ref=100.0, worst=110.0)
+        assert goal.baseline_ref == pytest.approx(100.0)
+
+    def test_baseline_equal_worst_is_allowed(self):
+        goal = Goal(metric="col", target=90.0, baseline_ref=110.0, worst=110.0)
+        assert goal.baseline_ref == pytest.approx(110.0)
+
+    def test_degenerate_all_equal_is_allowed(self):
+        # from_baseline(0.0) produces this shape; score() handles the zero spans.
+        goal = Goal(metric="col", target=0.0, baseline_ref=0.0, worst=0.0)
+        assert goal.score(0.0) == pytest.approx(100.0)
+
+    def test_lib_ordering_is_allowed(self):
+        # Larger-is-better: target above worst, baseline between.
+        goal = Goal(metric="col", target=110.0, baseline_ref=100.0, worst=90.0)
+        assert goal.score(100.0) == pytest.approx(50.0)
+
+
 # ── Goal.score ────────────────────────────────────────────────────────────────
 
 

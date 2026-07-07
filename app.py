@@ -13,14 +13,14 @@ from core.bpmn.query import find_task_by_name, list_activities
 from core.simulation.prosimos.query import resource_selector_config
 from core.constants import COL_MEAN_COST
 from core.taguchi import build_scenarios
-from core.goals import GOAL_IMPROVEMENT_PCT
-from core.metrics import Metric, MetricRegistry
+from core.goals import baseline_per_case
 from core.simulation import runner, store
 from core.transformations import REGISTRY
 
 from ui.run_manager import cancel_experiment, clear_results
 from ui.interactive.resource_selector import select_resource
 from ui.interactive.factor_levels import configure_factor_levels
+from ui.interactive.goal_config import configure_goals, reset_goal_thresholds
 from ui.interactive.main_effects import render_main_effects
 from ui.interactive.ranked_scenarios import render_ranked_scenarios
 from ui.interactive.simod_preflight import render_simod_preflight
@@ -51,10 +51,31 @@ ss.setdefault("array_name", None)
 ss.setdefault("scenarios", [])
 ss.setdefault("baseline_agg", None)
 ss.setdefault("failed_replications", [])
+# metric-column -> {"target"/"worst": edited value}, plus the generation counter
+# embedded in the threshold widget keys. Log-level state (absolute thresholds are
+# meaningless against a different process): reset via _clear_process_state()
+# when the log changes, never by clear_results(), which runs at every run start.
+ss.setdefault("goal_threshold_overrides", {})
+ss.setdefault("goal_threshold_reset_generation", 0)
+
+
+def _clear_process_state() -> None:
+    """Clear everything derived from the currently loaded process.
+
+    Cancels any in-flight run (its commit would land in the wrong session),
+    drops its results, the baseline (log-scoped — clear_results deliberately
+    keeps it), and the goal thresholds. Called when the log is reset or
+    replaced — the two events after which this state would describe a
+    different process.
+    """
+    cancel_experiment(ss)
+    clear_results(ss)
+    ss.baseline_agg = None
+    reset_goal_thresholds()
 
 
 def _clear_log() -> None:
-    clear_results(ss)
+    _clear_process_state()
     ss.log_name = None
     ss.log_path = None
     ss.activities = []
@@ -115,6 +136,10 @@ with st.sidebar:
         # Claim the lock + fingerprint NOW, so any concurrent rerun short-circuits.
         ss.discovering = True
         ss.log_fingerprint = upload_fp
+        # Replacing the log without "Reset log" must not carry over state from
+        # the previous process; the remaining log-level keys are assigned
+        # fresh values below, so they need no explicit clear.
+        _clear_process_state()
         if demo_mode:
             # Use the pre-baked demo model so the real activity-list +
             # factor-prepopulation path runs (only the simulation is synthetic).
@@ -164,42 +189,8 @@ with st.sidebar:
     if ss.log_name:
         st.caption(f"📄 Loaded: **{ss.log_name}** · {len(ss.activities)} activities")
         if st.button("Reset log", use_container_width=True):
-            cancel_experiment(ss)
             _clear_log()
             st.rerun()
-
-    _goal_specs: list[Metric] = []
-    if ss.activities:
-        st.divider()
-        st.subheader("Goals")
-        st.caption(
-            f"Scoring: 100 = target (±{GOAL_IMPROVEMENT_PCT} % vs baseline), "
-            f"50 = baseline, 0 = worst"
-        )
-        _n_goals = st.radio(
-            "Goals",
-            list(range(1, len(MetricRegistry.rankable()) + 1)),
-            index=0,
-            horizontal=True,
-            key="goal_count",
-            label_visibility="collapsed",
-        )
-
-        _chosen: list[Metric] = []
-        for _i in range(_n_goals):
-            _avail = [m for m in MetricRegistry.rankable() if m not in _chosen]
-            _k = f"goal_metric_{_i}"
-            if ss.get(_k) not in _avail:
-                ss[_k] = _avail[0]
-            _m = st.selectbox(
-                f"Goal {_i + 1}",
-                options=_avail,
-                format_func=lambda m: m.per_case_display_name,
-                key=_k,
-                label_visibility="collapsed",
-            )
-            _chosen.append(_m)
-            _goal_specs.append(_m)
 
     st.divider()
     st.subheader("Run config")
@@ -220,6 +211,18 @@ with st.sidebar:
 if not ss.activities:
     st.info("Upload a log or click **Use sample log** in the sidebar to begin.")
     st.stop()
+
+# Resolved per-case baseline for goal thresholds and scoring. Real baseline when
+# one exists; demo constants in demo mode (demo runs commit baseline_agg=None);
+# None in real mode before the first run or when every baseline replication
+# failed. baseline_agg survives run start (log-scoped — see clear_results), so
+# Panel 2's threshold rows stay stable while a re-run is in flight.
+if ss.baseline_agg is not None:
+    per_case_baseline: dict[str, float] | None = baseline_per_case(ss.baseline_agg)
+elif demo_mode:
+    per_case_baseline = baseline_per_case(demo.demo_baseline_agg())
+else:
+    per_case_baseline = None
 
 # --- main: 2x2 dashboard -----------------------------------------------------
 col1, col2 = st.columns(2)
@@ -272,7 +275,7 @@ with col1:
 
 with col2:
     with st.container(border=True):
-        st.markdown("##### 2 · Factor levels")
+        st.markdown("##### 2 · Factor levels & goals")
         transformation = REGISTRY[pattern_id]
         parameters = configure_factor_levels(
             transformation,
@@ -282,6 +285,8 @@ with col2:
             selected_pool_size,
             frozen_pool_size,
         )
+        st.markdown("###### Goals")
+        goal_config = configure_goals(per_case_baseline)
 
 # --- Design + execution panel ------------------------------------------------
 array_name, scenarios = build_scenarios(parameters, transformation.id, target)
@@ -329,8 +334,17 @@ if ss.results is not None:
                 "Cost goals score 0 for the affected scenarios.",
                 icon="⚠️",
             )
+        # per_case_baseline is None here only in real mode (demo always
+        # resolves constants).
+        if per_case_baseline is None:
+            st.error(
+                "Goal scoring is unavailable — all baseline replications failed, so "
+                "there are no real targets to score against. Re-run to restore goal "
+                "rankings. Scenario KPIs, main effects, and exports below remain valid.",
+                icon="🚫",
+            )
         ranked = render_ranked_scenarios(
-            agg, _goal_specs, parameters, ss.baseline_agg, demo_mode
+            agg, goal_config.metrics, goal_config.scorable_goals, parameters
         )
         st.markdown("###### Main effects")
         render_main_effects(ss.results, parameters)
