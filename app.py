@@ -350,6 +350,9 @@ if ss.results is not None:
         st.markdown("###### Export")
         stats_csv = ranked.to_csv(index=False)
         sn_csv = analysis.sn_export_table(ss.results, parameters).to_csv(index=False)
+        # Downloaded files escape the illustrative-results banner, so in demo mode
+        # the filename itself carries the synthetic-data label.
+        _csv_suffix = "_demo" if demo_mode else ""
         col_bpmn, col_json, col_stats, col_sn, col_logs, col_all = st.columns(6)
         col_json.download_button(
             "⬇ Params (ZIP)",
@@ -362,14 +365,14 @@ if ss.results is not None:
         col_stats.download_button(
             "⬇ Statistics (CSV)",
             stats_csv,
-            file_name="statistics.csv",
+            file_name=f"statistics{_csv_suffix}.csv",
             mime="text/csv",
             use_container_width=True,
         )
         col_sn.download_button(
             "⬇ S/N (CSV)",
             sn_csv,
-            file_name="signal_to_noise.csv",
+            file_name=f"signal_to_noise{_csv_suffix}.csv",
             mime="text/csv",
             use_container_width=True,
         )
