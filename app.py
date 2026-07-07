@@ -115,10 +115,18 @@ with st.sidebar:
 
     preflight_ok, java_home = render_simod_preflight(demo_mode)
 
-    uploaded = st.file_uploader("Event log (XES or CSV)", type=["xes", "csv"])
+    uploaded = st.file_uploader(
+        "Event log (XES or CSV)", type=["xes", "csv"], disabled=demo_mode
+    )
     use_sample = st.button(
         "Use sample log", use_container_width=True, disabled=not demo_mode
     )
+    # Demo discovery loads the pre-baked model, so an uploaded log is never used.
+    # Treat it as absent — the uploader is disabled above, but a file uploaded
+    # before toggling demo on would otherwise linger in the widget and drive the
+    # fingerprint / discovery logic (tying log_fingerprint to an ignored upload).
+    if demo_mode:
+        uploaded = None
 
     # Discovery is an explicit state machine keyed by the upload fingerprint
     # (ui/discovery_manager). Real discovery runs in a background thread — see §6,
@@ -436,27 +444,29 @@ if ss.results is not None:
             disabled=not (bpmn_file and json_paths),
         )
 
+    # Panel 5 is real-mode only — demo produces no baseline, so it is hidden when
+    # baseline_agg is None in demo; in real mode it shows the comparison, or a
+    # warning if every baseline replication failed.
     baseline_agg = ss.get("baseline_agg")
-    if baseline_agg is not None:
+    if baseline_agg is not None or not demo_mode:
         with st.container(border=True):
             st.markdown("##### 5 · Baseline comparison")
-            st.caption(
-                "Total metrics averaged across replications. Δ values are relative to "
-                "the 0%-automation baseline — the pattern with every case on the human "
-                "path, at Simod-discovered durations and staffing. Bot failures are "
-                "structurally zero in the baseline (no case reaches the bot), so its "
-                "Δ is the scenario's own count."
-            )
-            st.dataframe(
-                analysis.compare_to_baseline(agg, baseline_agg),
-                use_container_width=True,
-                hide_index=True,
-            )
-    elif not demo_mode:
-        with st.container(border=True):
-            st.markdown("##### 5 · Baseline comparison")
-            st.warning(
-                "All baseline replications failed — baseline comparison is unavailable. "
-                "Check the run logs for details.",
-                icon="⚠️",
-            )
+            if baseline_agg is not None:
+                st.caption(
+                    "Total metrics averaged across replications. Δ values are relative to "
+                    "the 0%-automation baseline — the pattern with every case on the human "
+                    "path, at Simod-discovered durations and staffing. Bot failures are "
+                    "structurally zero in the baseline (no case reaches the bot), so its "
+                    "Δ is the scenario's own count."
+                )
+                st.dataframe(
+                    analysis.compare_to_baseline(agg, baseline_agg),
+                    use_container_width=True,
+                    hide_index=True,
+                )
+            else:
+                st.warning(
+                    "All baseline replications failed — baseline comparison is unavailable. "
+                    "Check the run logs for details.",
+                    icon="⚠️",
+                )
