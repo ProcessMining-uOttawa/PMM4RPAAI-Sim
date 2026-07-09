@@ -37,7 +37,7 @@ Ranking table + main-effects view + export (Statistics CSV, S/N CSV, Params ZIP,
 
 **`XORSplitAutomation` is the only substitution pattern and no second pattern will be added** — it is central to the client's thesis. The `Transformation` ABC and `REGISTRY` exist for clean encapsulation, not extensibility. Three contracts define that boundary:
 
-- **`Transformation`** ([core/transformations.py](core/transformations.py)) — abstract base with six abstract methods, plus a concrete `prepare_experiment()` that coordinates two of them:
+- **`Transformation`** ([core/transformations.py](core/transformations.py)) — abstract base declaring the pattern's contract (the abstract methods listed below), plus a concrete `prepare_experiment()` that coordinates two of them (`apply_pattern()` then `build_scenario_template()`):
   - `parameters(target_activity, current_duration_s, selected_pool_size, frozen_pool_size) → list[Parameter]`
     declares the factors the pattern exposes. The UI auto-renders them; the
     Taguchi designer auto-fits an OA. `selected_pool_size` is the discovered
