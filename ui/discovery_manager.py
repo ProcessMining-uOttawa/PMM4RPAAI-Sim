@@ -103,7 +103,7 @@ def discovery_phase(ss: Any, fingerprint: Fingerprint | None) -> DiscoveryPhase 
     None when there is no session, or the session is about a *different* upload
     (the fingerprint-keying that makes a stale terminal state irrelevant).
     """
-    session = ss.get("discovery")
+    session = current_discovery(ss)
     if session is None or session.fingerprint != fingerprint:
         return None
     if session.cancelled:
@@ -116,7 +116,7 @@ def discovery_phase(ss: Any, fingerprint: Fingerprint | None) -> DiscoveryPhase 
 def discovery_error(ss: Any) -> Exception | None:
     """The exception from a failed discovery, or None. Keeps the outcome.error
     navigation next to discovery_phase() rather than in the composition root."""
-    session = ss.get("discovery")
+    session = current_discovery(ss)
     if session is None or session.outcome is None:
         return None
     return session.outcome.error
@@ -141,7 +141,7 @@ def commit_discovery(
 
 def cancel_discovery(ss: Any) -> None:
     """Mark the in-flight discovery cancelled (the Simod subprocess keeps running)."""
-    session = ss.get("discovery")
+    session = current_discovery(ss)
     if session is not None:
         session.cancelled = True
 
