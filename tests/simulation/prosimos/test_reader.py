@@ -271,6 +271,24 @@ class TestReplicationMetrics:
         _write_full_stats(stats, [("task_a", 0.0)], accumulated_cycle_s=1.0)
         assert replication_metrics(log, stats).mean_cycle_h == pytest.approx(3.0)
 
+    def test_cycle_time_median(self, tmp_path):
+        log = tmp_path / "log.csv"
+        stats = tmp_path / "stats.csv"
+        _write_log(
+            log,
+            [
+                ("c1", "2025-01-01T08:00:00", "2025-01-01T10:00:00"),  # 2 h
+                ("c2", "2025-01-01T08:00:00", "2025-01-01T10:00:00"),  # 2 h
+                ("c3", "2025-01-01T08:00:00", "2025-01-01T16:00:00"),  # 8 h
+            ],
+        )
+        _write_full_stats(stats, [("task_a", 0.0)], accumulated_cycle_s=1.0)
+        m = replication_metrics(log, stats)
+        # Asymmetric [2, 2, 8]: the tail pulls the mean to 4.0 while the median
+        # stays 2.0 — a fixture that fails if median were computed as the mean.
+        assert m.mean_cycle_h == pytest.approx(4.0)
+        assert m.median_cycle_h == pytest.approx(2.0)
+
     def test_cost_per_case(self, tmp_path):
         log = tmp_path / "log.csv"
         stats = tmp_path / "stats.csv"

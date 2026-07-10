@@ -6,10 +6,15 @@ COL_MEAN_CYCLE_H = (
     "mean_cycle_h"  # mean cycle time per case in hours, for one replication
 )
 COL_MEAN_COST = "mean_cost"  # mean cost per case, for one replication
+# median cycle time per case in hours, for one replication — a scoring-only
+# second factor for the time goal; deliberately never wired into a total or the
+# total_cycle_s = mean_cycle_h × n × 3600 identity (mean carries that)
+COL_MEDIAN_CYCLE_H = "median_cycle_h"
 
 # mean of per-case metrics across replications (used in aggregate() and Panel 4)
 COL_MEAN_CYCLE_H_MEAN = "mean_cycle_h_mean"
 COL_MEAN_COST_MEAN = "mean_cost_mean"
+COL_MEDIAN_CYCLE_H_MEAN = "median_cycle_h_mean"
 
 # per-replication run totals (accumulated across all cases in one Prosimos run)
 COL_TOTAL_CYCLE_S = "total_cycle_s"

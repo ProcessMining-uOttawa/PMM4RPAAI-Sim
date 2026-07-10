@@ -8,9 +8,11 @@ from typing import Callable, NamedTuple
 
 from .constants import (
     COL_MEAN_CYCLE_H,
+    COL_MEDIAN_CYCLE_H,
     COL_MEAN_COST,
     COL_REWORK_RATE,
     COL_MEAN_CYCLE_H_MEAN,
+    COL_MEDIAN_CYCLE_H_MEAN,
     COL_MEAN_COST_MEAN,
     COL_REWORK_RATE_MEAN,
     COL_TOTAL_CYCLE_S_MEAN,
@@ -211,6 +213,25 @@ class MetricRegistry:
         rankable=False,
     )
 
+    # Sub-factor of CYCLE_TIME (the time goal's optional second factor), NOT an
+    # independent metric: deliberately excluded from all()/rankable() so it never
+    # surfaces as its own selectable goal, KPI column, S/N row, or Panel 5 row.
+    # Defined as a Metric only to reuse Goal.from_metric() + the threshold-input
+    # helpers in goal_config. See goals.Goal.secondary and the two-factor goal.
+    CYCLE_TIME_MEDIAN: Metric = Metric(
+        per_case=PerCaseMetric(
+            results_column=COL_MEDIAN_CYCLE_H,
+            mean=MetricSpec(
+                column=COL_MEDIAN_CYCLE_H_MEAN,
+                display_name="Median Cycle Time (h/case)",
+                decimal_places=2,
+                short_label="Median Cycle Time",
+            ),
+        ),
+        aggregate=None,
+        rankable=False,
+    )
+
     @classmethod
     def all(cls) -> list[Metric]:
         return [
@@ -224,3 +245,19 @@ class MetricRegistry:
     @classmethod
     def rankable(cls) -> list[Metric]:
         return [metric for metric in cls.all() if metric.rankable]
+
+    @classmethod
+    def second_factor(cls, metric: Metric) -> Metric | None:
+        """The optional weighted second scoring factor for a rankable metric.
+
+        Only the time goal has one (mean → median cycle time); every other metric
+        returns None. Centralized here (domain policy) so both goal construction
+        (ui.interactive.goal_config) and the ranked-table display (ui.table) read
+        one source rather than each hardcoding the pairing.
+
+        Compares by value (==), NOT identity (is): st.selectbox returns a
+        value-equal-but-not-identical Metric copy through session_state, so an
+        `is` check silently fails and drops the entire two-factor goal UI (the
+        bug the original _SECOND_FACTOR dict avoided via __eq__/__hash__).
+        """
+        return cls.CYCLE_TIME_MEDIAN if metric == cls.CYCLE_TIME else None

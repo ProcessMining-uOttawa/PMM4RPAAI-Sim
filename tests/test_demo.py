@@ -14,6 +14,7 @@ from core.bpmn.query import find_task_by_name, list_activities
 from core.simulation.prosimos.query import task_mean_duration_s
 from core.constants import (
     COL_MEAN_CYCLE_H,
+    COL_MEDIAN_CYCLE_H,
     COL_MEAN_COST,
     COL_TOTAL_CYCLE_S,
     COL_TOTAL_COST,
@@ -21,6 +22,7 @@ from core.constants import (
     COL_REWORK_RATE,
     COL_TOTAL_BOT_FAILURE_COUNT,
     COL_TOTAL_CYCLE_S_MEAN,
+    COL_MEDIAN_CYCLE_H_MEAN,
     COL_TOTAL_COST_MEAN,
     COL_REWORK_RATE_MEAN,
 )
@@ -53,6 +55,7 @@ class TestDemoRunExperiment:
             "scenario_id",
             "replication",
             COL_MEAN_CYCLE_H,
+            COL_MEDIAN_CYCLE_H,
             COL_MEAN_COST,
             COL_TOTAL_CYCLE_S,
             COL_TOTAL_COST,
@@ -96,6 +99,12 @@ class TestDemoRunExperiment:
         assert (df[COL_REWORK_RATE] <= 100.0).all()
         assert (df[COL_TOTAL_BOT_FAILURE_COUNT] >= 0).all()
 
+    def test_median_cycle_below_mean(self):
+        # The demo assumes right-skewed cycle times, so the synthetic median
+        # (a scoring-only second factor) sits below the mean in every row.
+        df = demo.run_experiment(_scenarios(), n_reps=1).results
+        assert (df[COL_MEDIAN_CYCLE_H] < df[COL_MEAN_CYCLE_H]).all()
+
     def test_nonzero_bot_cost_increases_cost(self):
         scenarios = _scenarios()
         free = demo.run_experiment(scenarios, n_reps=1, bot_cost_per_hour=0.0)
@@ -114,7 +123,12 @@ class TestDemoBaselineAgg:
 
     def test_contains_required_sub_keys(self):
         agg = demo.demo_baseline_agg()
-        required = {COL_TOTAL_CYCLE_S_MEAN, COL_TOTAL_COST_MEAN, COL_REWORK_RATE_MEAN}
+        required = {
+            COL_TOTAL_CYCLE_S_MEAN,
+            COL_MEDIAN_CYCLE_H_MEAN,
+            COL_TOTAL_COST_MEAN,
+            COL_REWORK_RATE_MEAN,
+        }
         assert required <= set(agg[1].keys())
 
     def test_values_are_positive(self):

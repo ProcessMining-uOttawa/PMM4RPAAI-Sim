@@ -1,9 +1,10 @@
 """Interactive goal configuration for Panel 2.
 
 Part of ui/interactive/, so this module renders st.* widgets directly. It owns
-the goal-count radio, the per-slot metric pickers, and the editable absolute
-threshold inputs (target / worst) that parameterize goal scoring, returning a
-typed GoalConfig. Has no pure surface, so it is exercised manually like app.py
+the goal-count radio, the per-slot metric pickers, the editable absolute
+threshold inputs (target / worst) that parameterize goal scoring, and — for the
+two-factor time goal — a second (median) threshold row plus a mean/median weight
+slider, returning a typed GoalConfig. Has no pure surface, so it is exercised manually like app.py
 rather than unit-tested.
 
 Threshold persistence: each input's widget key embeds its seed value (the §6
@@ -20,7 +21,9 @@ here.) The overrides are log-level state — absolute thresholds are meaningless
 against a different process — reset only when the log changes (via
 app._clear_process_state()), never by clear_results(). Switching demo → real
 mid-session hides the inputs until the first real run completes; overrides
-persist across the toggle because the loaded model is unchanged.
+persist across the toggle because the loaded model is unchanged. The two-factor
+time goal's mean/median weight rides in the same overrides dict (under the
+primary column's "weight" key), so Reset and log reset clear it identically.
 """
 
 from __future__ import annotations
@@ -146,18 +149,47 @@ def _baseline_display(column, metric: Metric, baseline_value: float) -> None:
     )
 
 
-def _configure_slot_goal(
+def _weight_input(container, primary_column: str, default: float = 0.5) -> float:
+    """Render a two-factor goal's primary weight (0–1 slider), persisting edits.
+
+    The weight rides in goal_threshold_overrides under the primary column's dict
+    (key "weight"), so the Reset button and log reset already clear it. Unlike a
+    threshold it has a fixed default that never drifts with the baseline, so its
+    key need not embed the seed — a stable key persists edits across re-runs and
+    the override survives widget unmount (demo → real). The reset generation is
+    embedded so "Reset to defaults" re-keys it too.
+    """
+    overrides: dict[str, dict[str, float]] = st.session_state.goal_threshold_overrides
+    saved = overrides.get(primary_column, {}).get("weight")
+    seed = saved if saved is not None else default
+    value = float(
+        container.slider(
+            "Mean weight (vs median)",
+            min_value=0.0,
+            max_value=1.0,
+            value=seed,
+            step=0.05,
+            key=f"goal_weight_{primary_column}"
+            f"_gen{st.session_state.goal_threshold_reset_generation}",
+            label_visibility="collapsed",
+        )
+    )
+    if value != seed:
+        overrides.setdefault(primary_column, {})["weight"] = value
+    return value
+
+
+def _configure_factor(
     target_cell,
     baseline_cell,
     worst_cell,
     metric: Metric,
     per_case_baseline: dict[str, float],
 ) -> Goal | None:
-    """Render one goal's threshold cells and return its validated Goal.
+    """Render one factor's threshold cells and return its validated single-factor Goal.
 
     Returns None — with a loud st.error naming the numbers — when the edited
-    thresholds cannot score coherently (baseline outside the target–worst
-    span), so the slot is excluded from ranking while the others still score.
+    thresholds cannot score coherently (baseline outside the target–worst span).
     """
     default_goal = Goal.from_metric(metric, per_case_baseline)
     decimal_places = metric.per_case_decimal_places
@@ -182,6 +214,50 @@ def _configure_slot_goal(
         target=target,
         baseline_ref=baseline_value,
         worst=worst,
+    )
+
+
+def _configure_slot_goal(
+    target_cell,
+    baseline_cell,
+    worst_cell,
+    metric: Metric,
+    per_case_baseline: dict[str, float],
+) -> Goal | None:
+    """Render one slot's factor(s) and return its validated Goal.
+
+    Most metrics are single-factor. A metric with a MetricRegistry.second_factor
+    (currently only Cycle Time → Median Cycle Time) renders a second threshold row
+    plus a weight slider and returns a two-factor Goal whose score is the weighted
+    sum of the two factors' scores (see analysis.rank). The whole slot is dropped
+    (None) if either factor's thresholds cannot score coherently.
+    """
+    primary = _configure_factor(
+        target_cell, baseline_cell, worst_cell, metric, per_case_baseline
+    )
+    second_metric = MetricRegistry.second_factor(metric)
+    if second_metric is None:
+        return primary
+    # Second factor: its own threshold row (same 4-col layout, so the header
+    # still applies) + a weight slider splitting the two factors' scores.
+    label_cell, sub_target, sub_baseline, sub_worst = st.columns(ROW_LAYOUT)
+    label_cell.caption(f"↳ {second_metric.per_case_compact_label}")
+    secondary = _configure_factor(
+        sub_target, sub_baseline, sub_worst, second_metric, per_case_baseline
+    )
+    weight_label, weight_cell = st.columns([1, 3])
+    weight_label.caption("↳ weight")
+    weight = _weight_input(weight_cell, metric.per_case_column)
+    weight_cell.caption(f"{weight:.0%} mean · {1 - weight:.0%} median")
+    if primary is None or secondary is None:
+        return None
+    return Goal(
+        metric=primary.metric,
+        target=primary.target,
+        baseline_ref=primary.baseline_ref,
+        worst=primary.worst,
+        secondary=secondary,
+        weight=weight,
     )
 
 
