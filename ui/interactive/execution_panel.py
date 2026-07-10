@@ -1,8 +1,11 @@
 """Interactive execution panel (Panel 3) — run/cancel controls and progress polling.
 
-Part of ui/interactive/, so this module renders st.* widgets directly, and it owns
-a Streamlit fragment: render_execution_panel is decorated with @st.fragment so
-progress polling reruns only this panel, not the whole page. Consumes
+Part of ui/interactive/, so this module renders st.* widgets directly. Progress
+polling lives in the module-level _render_run_progress fragment, driven by a
+`run_every` timer so its reruns are fragment-scoped (only the progress bar
+re-renders — no full-page flicker, mirroring discovery_panel); render_execution_panel
+is a plain renderer that delegates to it only while a run is in flight, so the
+timer never ticks when idle. Consumes
 ui/run_manager (a ui/interactive -> ui/ presentation-primitive dependency) for the
 background-thread lifecycle, and calls core.demo.run_experiment /
 core.orchestrator.run_experiment directly to launch a run — a "smart" component,
@@ -19,7 +22,6 @@ ui/run_manager.
 
 from __future__ import annotations
 
-import time
 from typing import Any
 
 import streamlit as st
@@ -38,7 +40,41 @@ from ui.run_manager import (
 )
 
 
-@st.fragment
+_POLL_SECONDS = 0.5  # progress-poll cadence; run_every reruns only this fragment
+
+
+@st.fragment(run_every=_POLL_SECONDS)
+def _render_run_progress(ss: Any, n_reps: int) -> None:
+    """Poll the in-flight run; commit on success, toast + clear on any terminal outcome.
+
+    The run_every timer re-runs only this fragment (fragment-scoped — no full-page
+    flicker, and no app-scoped st.rerun() storm to swallow the Cancel click, which
+    lives in the parent renderer). render_execution_panel calls this only while a run
+    is in flight, so the timer never ticks when idle. Mirrors discovery_panel.
+    """
+    run_state = current_run(ss)
+    if run_state is None:  # defensive — the panel only calls this while a run exists
+        return
+    progress = run_state.done / run_state.total if run_state.total > 0 else 0.0
+    st.progress(
+        progress,
+        text=f"Scenario {run_state.label} · rep {run_state.rep + 1}/{n_reps}",
+    )
+    if run_state.outcome is None:
+        return  # still running; the run_every timer re-polls (no sleep, no app rerun)
+    if run_state.outcome.cancelled:
+        st.toast("Run cancelled.", icon="⚠️")
+    elif run_state.outcome.error is not None:
+        st.toast(f"Simulation failed: {run_state.outcome.error}", icon="❌")
+    else:
+        # Not cancelled and no error → result is set (RunOutcome invariant).
+        assert run_state.outcome.result is not None
+        commit_result(ss, run_state.outcome.result)
+        st.toast(f"Completed {run_state.total} simulations.", icon="✅")
+    clear_run(ss)
+    st.rerun(scope="app")  # full rerun: show results panel; also stops the timer
+
+
 def render_execution_panel(
     ss: Any,
     array_name: str,
@@ -76,29 +112,9 @@ def render_execution_panel(
 
         run_state = current_run(ss)
         if run_state is not None:
-            progress = run_state.done / run_state.total if run_state.total > 0 else 0.0
-            st.progress(
-                progress,
-                text=f"Scenario {run_state.label} · rep {run_state.rep + 1}/{n_reps}",
-            )
             if right.button("✕ Cancel", use_container_width=True):
                 cancel_experiment(ss)
-
-            if run_state.outcome is None:
-                time.sleep(0.5)
-                st.rerun()  # fragment-scoped: only this panel re-renders during polling
-            else:
-                if run_state.outcome.cancelled:
-                    st.toast("Run cancelled.", icon="⚠️")
-                elif run_state.outcome.error is not None:
-                    st.toast(f"Simulation failed: {run_state.outcome.error}", icon="❌")
-                else:
-                    # Not cancelled and no error → result is set (RunOutcome invariant).
-                    assert run_state.outcome.result is not None
-                    commit_result(ss, run_state.outcome.result)
-                    st.toast(f"Completed {total_runs} simulations.", icon="✅")
-                clear_run(ss)
-                st.rerun(scope="app")  # full rerun: the results panel needs to appear
+            _render_run_progress(ss, n_reps)
         else:
             if right.button(
                 "▶ Run all scenarios", type="primary", use_container_width=True
@@ -143,4 +159,4 @@ def render_execution_panel(
 
                 clear_results(ss)
                 start_experiment(ss, experiment_fn)
-                st.rerun()  # fragment-scoped: switches this panel to progress view
+                st.rerun()  # one-shot app rerun: switches to the progress view
