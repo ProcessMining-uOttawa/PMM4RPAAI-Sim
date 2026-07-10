@@ -20,6 +20,7 @@ class ReplicationMetrics:
     """All per-replication metrics for one Prosimos simulation run."""
 
     mean_cycle_h: float
+    median_cycle_h: float
     mean_cost: float
     total_cycle_s: float
     total_cost: float
@@ -182,6 +183,8 @@ def replication_metrics(
     rework = _rework_metrics(event_log)
     return ReplicationMetrics(
         mean_cycle_h=float(cycle_h.mean()),
+        # median is a scoring-only second factor; it feeds no total (see constants)
+        median_cycle_h=float(cycle_h.median()),
         mean_cost=totals[COL_TOTAL_COST] / len(per_case),
         total_cycle_s=totals[COL_TOTAL_CYCLE_S],
         total_cost=totals[COL_TOTAL_COST],

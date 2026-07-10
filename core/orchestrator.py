@@ -13,6 +13,8 @@ from .simulation import store
 from .simulation.prosimos.reader import replication_metrics
 from .simulation.executor import SimulationTask, run_all
 from .constants import (
+    COL_MEDIAN_CYCLE_H,
+    COL_MEDIAN_CYCLE_H_MEAN,
     COL_TOTAL_CYCLE_S,
     COL_TOTAL_COST,
     COL_TOTAL_CYCLE_S_MEAN,
@@ -248,6 +250,7 @@ def run_experiment(
         means = pd.DataFrame(rep_list).mean()
         baseline_agg[n_cases] = {
             COL_TOTAL_CYCLE_S_MEAN: means[COL_TOTAL_CYCLE_S],
+            COL_MEDIAN_CYCLE_H_MEAN: means[COL_MEDIAN_CYCLE_H],
             COL_TOTAL_COST_MEAN: means[COL_TOTAL_COST],
             COL_TOTAL_REWORK_COUNT_MEAN: means[COL_TOTAL_REWORK_COUNT],
             COL_REWORK_RATE_MEAN: means[COL_REWORK_RATE],

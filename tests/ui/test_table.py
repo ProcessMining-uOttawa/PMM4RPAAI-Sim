@@ -4,7 +4,11 @@ from __future__ import annotations
 
 import pandas as pd
 
-from core.constants import COL_MEAN_COST_MEAN, COL_MEAN_CYCLE_H_MEAN
+from core.constants import (
+    COL_MEAN_COST_MEAN,
+    COL_MEAN_CYCLE_H_MEAN,
+    COL_MEDIAN_CYCLE_H_MEAN,
+)
 from core.metrics import MetricRegistry
 from core.parameters import Parameter
 from ui.table import prepare_ranked_display
@@ -71,6 +75,28 @@ class TestPrepareRankedDisplay:
         # silently filtered out (the `col in ranked.columns` guard).
         result = prepare_ranked_display(_ranked(), [MetricRegistry.CYCLE_TIME], [])
         assert "Cost ($/case)" not in result.columns
+
+    def test_median_shown_beside_cycle_when_time_goal_active(self):
+        # The two-factor time goal's median second factor appears right after the
+        # mean-cycle KPI so its input to the combined Cycle Time Score is visible.
+        ranked = _ranked()
+        ranked[COL_MEDIAN_CYCLE_H_MEAN] = [4.0, 5.0]
+        result = prepare_ranked_display(ranked, [MetricRegistry.CYCLE_TIME], [])
+        cols = list(result.columns)
+        assert "Median Cycle Time (h/case)" in cols
+        assert (
+            cols.index("Median Cycle Time (h/case)")
+            == cols.index("Cycle Time (h/case)") + 1
+        )
+
+    def test_median_hidden_when_time_goal_not_active(self):
+        # Median is the time goal's factor, not a standalone KPI — suppressed
+        # when Cycle Time is not among the chosen goals, even if the column exists.
+        ranked = _ranked()
+        ranked[COL_MEDIAN_CYCLE_H_MEAN] = [4.0, 5.0]
+        ranked[COL_MEAN_COST_MEAN] = [3.0, 4.0]
+        result = prepare_ranked_display(ranked, [MetricRegistry.COST], [])
+        assert "Median Cycle Time (h/case)" not in result.columns
 
     def test_dropped_goal_keeps_kpi_but_skips_score_column(self):
         # The dropped-goal shape from ui/interactive/goal_config.py: a goal whose

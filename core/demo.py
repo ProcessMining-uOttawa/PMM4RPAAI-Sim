@@ -21,6 +21,7 @@ from .constants import (
 )
 from .constants import (
     COL_MEAN_CYCLE_H,
+    COL_MEDIAN_CYCLE_H,
     COL_MEAN_COST,
     COL_TOTAL_CYCLE_S,
     COL_TOTAL_COST,
@@ -28,6 +29,7 @@ from .constants import (
     COL_REWORK_RATE,
     COL_TOTAL_BOT_FAILURE_COUNT,
     COL_TOTAL_CYCLE_S_MEAN,
+    COL_MEDIAN_CYCLE_H_MEAN,
     COL_TOTAL_COST_MEAN,
     COL_REWORK_RATE_MEAN,
 )
@@ -42,6 +44,9 @@ DEMO_BPMN = _DEMO_DIR / "model.bpmn"
 DEMO_JSON = _DEMO_DIR / "params.json"
 
 BASELINE_CYCLE_H = 31.2
+# Below the mean — cycle-time distributions are right-skewed (a few long cases
+# pull the mean up), so the synthetic median sits below the mean.
+BASELINE_MEDIAN_CYCLE_H = 28.0
 BASELINE_COST = 48.0
 BASELINE_REWORK_RATE = 5.0  # percentage (0–100), matches COL_REWORK_RATE storage unit
 
@@ -49,6 +54,7 @@ BASELINE_REWORK_RATE = 5.0  # percentage (0–100), matches COL_REWORK_RATE stor
 @dataclass
 class _SimResult:
     mean_cycle_h: float
+    median_cycle_h: float
     mean_cost: float
     total_cycle_s: float
     total_cost: float
@@ -67,6 +73,7 @@ def demo_baseline_agg() -> dict[int, dict]:
     return {
         1: {
             COL_TOTAL_CYCLE_S_MEAN: BASELINE_CYCLE_H * 3600,
+            COL_MEDIAN_CYCLE_H_MEAN: BASELINE_MEDIAN_CYCLE_H,
             COL_TOTAL_COST_MEAN: BASELINE_COST,
             COL_REWORK_RATE_MEAN: BASELINE_REWORK_RATE,
         }
@@ -114,9 +121,15 @@ def _fake_simulate(
         100.0,
     )
     bot_failure_count = bot_failure_fraction * n_cases * rng.uniform(0.9, 1.1)
+    # Median tracks the mean's scenario dependence but sits ~10 % below it
+    # (right-skew), with its own jitter. Drawn LAST so it does not shift the rng
+    # sequence of the metrics above. Scoring-only second factor.
+    median_ratio = BASELINE_MEDIAN_CYCLE_H / BASELINE_CYCLE_H
+    median_cycle = cycle * median_ratio * rng.uniform(0.95, 1.05)
 
     return _SimResult(
         mean_cycle_h=round(cycle, 2),
+        median_cycle_h=round(median_cycle, 2),
         mean_cost=round(cost, 2),
         total_cycle_s=round(cycle * 3600 * n_cases, 2),
         total_cost=round(cost * n_cases, 2),
@@ -148,6 +161,7 @@ def run_experiment(
                     "scenario_id": s.id,
                     "replication": rep,
                     COL_MEAN_CYCLE_H: r.mean_cycle_h,
+                    COL_MEDIAN_CYCLE_H: r.median_cycle_h,
                     COL_MEAN_COST: r.mean_cost,
                     COL_TOTAL_CYCLE_S: r.total_cycle_s,
                     COL_TOTAL_COST: r.total_cost,

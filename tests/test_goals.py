@@ -9,6 +9,7 @@ from core.goals import Goal, baseline_per_case
 from core.metrics import MetricDirection, MetricRegistry
 from core.constants import (
     COL_MEAN_CYCLE_H_MEAN,
+    COL_MEDIAN_CYCLE_H_MEAN,
     COL_MEAN_COST_MEAN,
     COL_REWORK_RATE_MEAN,
     COL_TOTAL_CYCLE_S_MEAN,
@@ -177,9 +178,16 @@ class TestGoalScore:
 
 
 class TestBaselinePerCase:
-    def _agg(self, total_cycle_s: float, total_cost: float, rework_rate: float) -> dict:
+    def _agg(
+        self,
+        total_cycle_s: float,
+        total_cost: float,
+        rework_rate: float,
+        median_cycle_h: float = 28.0,
+    ) -> dict:
         return {
             COL_TOTAL_CYCLE_S_MEAN: total_cycle_s,
+            COL_MEDIAN_CYCLE_H_MEAN: median_cycle_h,
             COL_TOTAL_COST_MEAN: total_cost,
             COL_REWORK_RATE_MEAN: rework_rate,
         }
@@ -201,6 +209,16 @@ class TestBaselinePerCase:
         result = baseline_per_case(agg)
         assert result[COL_REWORK_RATE_MEAN] == pytest.approx(12.5)
 
+    def test_median_cycle_passed_through(self):
+        # Median is a pass-through (per-case already), NOT total ÷ N cases.
+        agg = {
+            100: self._agg(
+                total_cycle_s=1.0, total_cost=0.0, rework_rate=0.0, median_cycle_h=27.5
+            )
+        }
+        result = baseline_per_case(agg)
+        assert result[COL_MEDIAN_CYCLE_H_MEAN] == pytest.approx(27.5)
+
     def test_picks_smallest_n_cases_when_multiple(self):
         agg = {
             100: self._agg(total_cycle_s=360000.0, total_cost=500.0, rework_rate=5.0),
@@ -209,3 +227,56 @@ class TestBaselinePerCase:
         result = baseline_per_case(agg)
         # n_ref=100: 360000/3600/100 = 1.0 h/case (not 500 entry)
         assert result[COL_MEAN_CYCLE_H_MEAN] == pytest.approx(1.0)
+
+
+# ── Goal.weighted_score (two-factor goal) ─────────────────────────────────────
+
+
+class TestWeightedGoal:
+    """Goal.secondary + weight — the two-factor time goal's weighted scoring."""
+
+    def _secondary(self) -> Goal:
+        # SIB: target=90, baseline=100, worst=110
+        return Goal.from_baseline(
+            COL_MEDIAN_CYCLE_H_MEAN, 100.0, MetricDirection.SMALLER_IS_BETTER
+        )
+
+    def _two_factor(self, weight: float) -> Goal:
+        return Goal(
+            metric=COL_MEAN_CYCLE_H_MEAN,
+            target=90.0,
+            baseline_ref=100.0,
+            worst=110.0,
+            secondary=self._secondary(),
+            weight=weight,
+        )
+
+    def test_single_factor_weighted_score_is_just_score(self):
+        goal = Goal.from_baseline(
+            COL_MEAN_CYCLE_H_MEAN, 100.0, MetricDirection.SMALLER_IS_BETTER
+        )
+        assert goal.weighted_score(100.0) == pytest.approx(goal.score(100.0))
+
+    def test_weighted_sum_of_two_factors(self):
+        # primary at target (100), secondary at worst (0), weight 0.75 → 75.
+        assert self._two_factor(0.75).weighted_score(90.0, 110.0) == pytest.approx(75.0)
+
+    def test_weight_one_ignores_secondary(self):
+        # secondary at worst would drag it down, but weight 1.0 ignores it.
+        assert self._two_factor(1.0).weighted_score(90.0, 110.0) == pytest.approx(100.0)
+
+    def test_nesting_beyond_two_factors_raises(self):
+        inner = self._two_factor(0.5)  # already has a secondary
+        with pytest.raises(ValueError, match="at most one secondary"):
+            Goal(metric="b", target=1.0, baseline_ref=2.0, worst=3.0, secondary=inner)
+
+    def test_weight_out_of_range_raises(self):
+        with pytest.raises(ValueError, match="weight must be in"):
+            self._two_factor(1.5)
+
+    def test_from_metric_builds_median_factor(self):
+        goal = Goal.from_metric(
+            MetricRegistry.CYCLE_TIME_MEDIAN, {COL_MEDIAN_CYCLE_H_MEAN: 50.0}
+        )
+        assert goal.metric == COL_MEDIAN_CYCLE_H_MEAN
+        assert goal.baseline_ref == pytest.approx(50.0)

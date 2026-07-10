@@ -7,6 +7,7 @@ import pytest
 from core.metrics import MetricRegistry
 from core.constants import (
     COL_MEAN_CYCLE_H_MEAN,
+    COL_MEDIAN_CYCLE_H_MEAN,
     COL_MEAN_COST_MEAN,
     COL_REWORK_RATE_MEAN,
 )
@@ -109,3 +110,48 @@ class TestMetricUpperBound:
 
     def test_cost_is_unbounded(self):
         assert MetricRegistry.COST.upper_bound is None
+
+
+class TestCycleTimeMedian:
+    """CYCLE_TIME_MEDIAN is the time goal's second factor, NOT an independent metric.
+
+    It exists as a Metric only to reuse Goal.from_metric + the threshold widgets,
+    so it must stay out of all()/rankable() (else it would surface as its own
+    selectable goal, KPI column, and S/N row).
+    """
+
+    def test_exists_with_median_column(self):
+        assert (
+            MetricRegistry.CYCLE_TIME_MEDIAN.per_case_column == COL_MEDIAN_CYCLE_H_MEAN
+        )
+
+    def test_not_rankable(self):
+        assert not MetricRegistry.CYCLE_TIME_MEDIAN.rankable
+
+    def test_excluded_from_all(self):
+        assert MetricRegistry.CYCLE_TIME_MEDIAN not in MetricRegistry.all()
+
+    def test_excluded_from_rankable(self):
+        assert MetricRegistry.CYCLE_TIME_MEDIAN not in MetricRegistry.rankable()
+
+    def test_second_factor_of_cycle_time_is_median(self):
+        assert (
+            MetricRegistry.second_factor(MetricRegistry.CYCLE_TIME)
+            is MetricRegistry.CYCLE_TIME_MEDIAN
+        )
+
+    def test_second_factor_of_other_metric_is_none(self):
+        assert MetricRegistry.second_factor(MetricRegistry.COST) is None
+        assert MetricRegistry.second_factor(MetricRegistry.REWORK_RATE) is None
+
+    def test_second_factor_matches_by_value_not_identity(self):
+        # st.selectbox returns a value-equal-but-not-identical Metric copy, so
+        # second_factor must match by == not `is` — else the two-factor goal UI
+        # (median row + weight slider) silently vanishes. Regression guard for
+        # the identity bug that unit tests miss (no Streamlit frontend).
+        import dataclasses
+
+        clone = dataclasses.replace(MetricRegistry.CYCLE_TIME)
+        assert clone is not MetricRegistry.CYCLE_TIME  # a distinct object
+        assert clone == MetricRegistry.CYCLE_TIME  # but value-equal
+        assert MetricRegistry.second_factor(clone) is MetricRegistry.CYCLE_TIME_MEDIAN

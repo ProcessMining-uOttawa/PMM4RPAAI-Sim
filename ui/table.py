@@ -17,8 +17,9 @@ def prepare_ranked_display(
     """Return a display-ready DataFrame from the ranked output of analysis.rank().
 
     Columns included, in order:
-      rank · Scenario · [factor cols] · per-case KPI means ·
-      per-goal score (0–100) · overall score
+      rank · Scenario · [factor cols] · per-case KPI means (+ the median second
+      factor when the two-factor time goal is active) · per-goal score (0–100) ·
+      overall score
     """
     include: list[tuple[str, str]] = [("scenario_id", "Scenario")]
 
@@ -27,6 +28,12 @@ def prepare_ranked_display(
 
     for m in MetricRegistry.rankable():
         include.append((m.per_case_column, m.per_case_display_name))
+        # The two-factor time goal's median second factor, shown beside its
+        # primary when that goal is active so its input to the combined score is
+        # visible (dropped by the presence filter below if not in `ranked`).
+        second = MetricRegistry.second_factor(m)
+        if second is not None and m in goal_metrics:
+            include.append((second.per_case_column, second.per_case_display_name))
 
     for m in goal_metrics:
         include.append(

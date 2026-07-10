@@ -20,8 +20,10 @@ from core.metrics import MetricDirection, MetricRegistry
 from core.parameters import Parameter
 from core.constants import (
     COL_MEAN_CYCLE_H,
+    COL_MEDIAN_CYCLE_H,
     COL_MEAN_COST,
     COL_MEAN_CYCLE_H_MEAN,
+    COL_MEDIAN_CYCLE_H_MEAN,
     COL_MEAN_COST_MEAN,
     COL_TOTAL_CYCLE_S,
     COL_TOTAL_COST,
@@ -46,6 +48,7 @@ def _results_df() -> pd.DataFrame:
                 "scenario_id": "S01",
                 "replication": 0,
                 COL_MEAN_CYCLE_H: 10.0,
+                COL_MEDIAN_CYCLE_H: 9.0,
                 COL_MEAN_COST: 5.0,
                 "f_a": "low",
                 COL_TOTAL_CYCLE_S: 36000.0,
@@ -58,6 +61,7 @@ def _results_df() -> pd.DataFrame:
                 "scenario_id": "S01",
                 "replication": 1,
                 COL_MEAN_CYCLE_H: 12.0,
+                COL_MEDIAN_CYCLE_H: 11.0,
                 COL_MEAN_COST: 7.0,
                 "f_a": "low",
                 COL_TOTAL_CYCLE_S: 43200.0,
@@ -70,6 +74,7 @@ def _results_df() -> pd.DataFrame:
                 "scenario_id": "S02",
                 "replication": 0,
                 COL_MEAN_CYCLE_H: 20.0,
+                COL_MEDIAN_CYCLE_H: 18.0,
                 COL_MEAN_COST: 10.0,
                 "f_a": "high",
                 COL_TOTAL_CYCLE_S: 72000.0,
@@ -82,6 +87,7 @@ def _results_df() -> pd.DataFrame:
                 "scenario_id": "S02",
                 "replication": 1,
                 COL_MEAN_CYCLE_H: 22.0,
+                COL_MEDIAN_CYCLE_H: 20.0,
                 COL_MEAN_COST: 12.0,
                 "f_a": "high",
                 COL_TOTAL_CYCLE_S: 79200.0,
@@ -153,6 +159,18 @@ class TestAggregate:
         assert row[COL_MEAN_CYCLE_H_MEAN] == pytest.approx(11.0)
         assert row[COL_MEAN_COST_MEAN] == pytest.approx(6.0)
 
+    def test_median_mean_correct(self):
+        agg = aggregate(_results_df())
+        row = agg[agg["scenario_id"] == "S01"].iloc[0]
+        # S01 medians 9.0, 11.0 → mean 10.0, distinct from the mean-cycle mean
+        # of 11.0 (confirms median is aggregated as its own column).
+        assert row[COL_MEDIAN_CYCLE_H_MEAN] == pytest.approx(10.0)
+
+    def test_median_is_not_treated_as_a_factor(self):
+        # _NON_FACTOR_COLS must exclude median, else aggregate() would fragment
+        # groups on it. Two scenarios in → two rows out (not one-per-median).
+        assert len(aggregate(_results_df())) == 2
+
     def test_rework_means_correct(self):
         agg = aggregate(_results_df())
         row = agg[agg["scenario_id"] == "S01"].iloc[0]
@@ -172,6 +190,7 @@ class TestAggregate:
                     "replication": 0,
                     "f_a": "low",
                     COL_MEAN_CYCLE_H: 10.0,
+                    COL_MEDIAN_CYCLE_H: 9.0,
                     COL_MEAN_COST: float("nan"),
                     COL_TOTAL_CYCLE_S: 36000.0,
                     COL_TOTAL_COST: 500.0,
@@ -504,6 +523,54 @@ class TestRank:
         )
         ranked = rank(agg, [_sib_goal(COL_MEAN_CYCLE_H_MEAN, 100.0)])
         assert ranked.iloc[0]["scenario_id"] == "S02"
+
+    def test_two_factor_goal_weighted_score(self):
+        # primary (mean) at target → 100; secondary (median) at worst → 0;
+        # weight 0.5 → combined 50. Score column stays keyed by the primary col.
+        agg = pd.DataFrame(
+            [
+                {
+                    "scenario_id": "S01",
+                    COL_MEAN_CYCLE_H_MEAN: 90.0,
+                    COL_MEDIAN_CYCLE_H_MEAN: 110.0,
+                }
+            ]
+        )
+        goal = Goal(
+            metric=COL_MEAN_CYCLE_H_MEAN,
+            target=90.0,
+            baseline_ref=100.0,
+            worst=110.0,
+            secondary=_sib_goal(COL_MEDIAN_CYCLE_H_MEAN, 100.0),
+            weight=0.5,
+        )
+        ranked = rank(agg, [goal])
+        assert ranked.iloc[0][f"{COL_MEAN_CYCLE_H_MEAN}_score"] == pytest.approx(50.0)
+
+    def test_two_factor_goal_participates_in_weakest_link(self):
+        # Time goal (two-factor) scores 50; cost goal scores 100. Aggregate stays
+        # the weakest-link min = 50 — weighting is intra-goal, never cross-goal.
+        agg = pd.DataFrame(
+            [
+                {
+                    "scenario_id": "S01",
+                    COL_MEAN_CYCLE_H_MEAN: 90.0,
+                    COL_MEDIAN_CYCLE_H_MEAN: 110.0,
+                    COL_MEAN_COST_MEAN: 90.0,
+                }
+            ]
+        )
+        time_goal = Goal(
+            metric=COL_MEAN_CYCLE_H_MEAN,
+            target=90.0,
+            baseline_ref=100.0,
+            worst=110.0,
+            secondary=_sib_goal(COL_MEDIAN_CYCLE_H_MEAN, 100.0),
+            weight=0.5,
+        )
+        cost_goal = _sib_goal(COL_MEAN_COST_MEAN, 100.0)  # value 90 → score 100
+        ranked = rank(agg, [time_goal, cost_goal])
+        assert ranked.iloc[0]["score"] == pytest.approx(50.0)
 
     def test_empty_goals_produces_zero_score(self):
         agg = pd.DataFrame([{"scenario_id": "S01", COL_MEAN_CYCLE_H_MEAN: 90.0}])

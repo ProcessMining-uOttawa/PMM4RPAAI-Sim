@@ -7,8 +7,10 @@ import pandas as pd
 
 from .constants import (
     COL_MEAN_CYCLE_H,
+    COL_MEDIAN_CYCLE_H,
     COL_MEAN_COST,
     COL_MEAN_CYCLE_H_MEAN,
+    COL_MEDIAN_CYCLE_H_MEAN,
     COL_MEAN_COST_MEAN,
     COL_TOTAL_CYCLE_S,
     COL_TOTAL_COST,
@@ -32,6 +34,7 @@ _NON_FACTOR_COLS = frozenset(
         "scenario_id",
         "replication",
         COL_MEAN_CYCLE_H,
+        COL_MEDIAN_CYCLE_H,
         COL_MEAN_COST,
         COL_TOTAL_CYCLE_S,
         COL_TOTAL_COST,
@@ -47,11 +50,12 @@ def _factor_cols(df: pd.DataFrame) -> list[str]:
 
 
 def aggregate(results: pd.DataFrame) -> pd.DataFrame:
-    """results: scenario_id, replication, + all seven metric cols (+ factor cols)."""
+    """results: scenario_id, replication, + all eight metric cols (+ factor cols)."""
     factor_cols = _factor_cols(results)
     agg_spec: dict = {
         COL_MEAN_CYCLE_H_MEAN: (COL_MEAN_CYCLE_H, "mean"),
         "mean_cycle_h_std": (COL_MEAN_CYCLE_H, "std"),
+        COL_MEDIAN_CYCLE_H_MEAN: (COL_MEDIAN_CYCLE_H, "mean"),
         COL_MEAN_COST_MEAN: (COL_MEAN_COST, "mean"),
         "mean_cost_std": (COL_MEAN_COST, "std"),
         COL_TOTAL_CYCLE_S_MEAN: (COL_TOTAL_CYCLE_S, "mean"),
@@ -209,7 +213,19 @@ def rank(agg: pd.DataFrame, goals: list[Goal]) -> pd.DataFrame:
     out = agg.copy()
     per_goal_scores: list[pd.Series] = []
     for goal in goals:
-        goal_scores = out[goal.metric].apply(goal.score)
+        if goal.secondary is None:
+            goal_scores = out[goal.metric].apply(goal.score)
+        else:
+            # Two-factor goal: weighted sum of the two factors' scores, each
+            # judged against its own breakpoints. The score column stays keyed by
+            # the PRIMARY metric so prepare_ranked_display picks it up unchanged.
+            secondary = goal.secondary
+            goal_scores = out.apply(
+                lambda row, g=goal, s=secondary: g.weighted_score(
+                    row[g.metric], row[s.metric]
+                ),
+                axis=1,
+            )
         out[f"{goal.metric}_score"] = goal_scores.round(1)
         per_goal_scores.append(goal_scores)
     if per_goal_scores:

@@ -7,6 +7,7 @@ from dataclasses import dataclass
 
 from .constants import (
     COL_MEAN_CYCLE_H_MEAN,
+    COL_MEDIAN_CYCLE_H_MEAN,
     COL_MEAN_COST_MEAN,
     COL_REWORK_RATE_MEAN,
     COL_TOTAL_CYCLE_S_MEAN,
@@ -28,6 +29,15 @@ class Goal:
     target: float  # best-case breakpoint → score 100
     baseline_ref: float  # reference breakpoint → score 50 (baseline value)
     worst: float  # unacceptable breakpoint → score 0
+    # Optional second factor: a full Goal (its own metric column + breakpoints)
+    # weighted against this (primary) one — only the time goal uses it for now.
+    # weight applies to THIS factor; the secondary gets 1 - weight. This is an
+    # *intra-goal* weight between two factors of one goal, NOT the cross-goal
+    # weight that was deliberately removed — the inter-goal aggregate stays a
+    # weakest-link min (see analysis.rank). A Goal used *as* a secondary ignores
+    # its own weight/secondary fields; only the primary's weight is read.
+    secondary: Goal | None = None
+    weight: float = 1.0
 
     def __post_init__(self) -> None:
         """Reject breakpoints that cannot score coherently.
@@ -48,6 +58,10 @@ class Goal:
                 f"({self.baseline_ref}) must lie between target ({self.target}) "
                 f"and worst ({self.worst})"
             )
+        if self.secondary is not None and self.secondary.secondary is not None:
+            raise ValueError("a Goal may have at most one secondary factor")
+        if not 0.0 <= self.weight <= 1.0:
+            raise ValueError(f"Goal weight must be in [0, 1]; got {self.weight}")
 
     def score(self, value: float) -> float:
         """Piecewise linear score in [0, 100]: 100 at target, 50 at baseline_ref, 0 at worst.
@@ -75,6 +89,22 @@ class Goal:
         # between baseline_ref and worst
         span = worst_ - baseline_ref_
         return -(val - baseline_ref_) / span * 50.0 + 50.0 if span else 0.0
+
+    def weighted_score(
+        self, primary_value: float, secondary_value: float = float("nan")
+    ) -> float:
+        """Combined 0–100 score across this goal's one or two weighted factors.
+
+        Single-factor (secondary is None): just score(primary_value). Two-factor:
+        weight·score(primary) + (1 - weight)·secondary.score(secondary_value),
+        each factor judged against its own breakpoints. secondary_value is unused
+        (and irrelevant) when there is no secondary factor.
+        """
+        primary = self.score(primary_value)
+        if self.secondary is None:
+            return primary
+        secondary = self.secondary.score(secondary_value)
+        return self.weight * primary + (1 - self.weight) * secondary
 
     @classmethod
     def from_metric(cls, metric: Metric, baseline: dict[str, float]) -> Goal:
@@ -128,6 +158,9 @@ def baseline_per_case(baseline_agg: dict[int, dict]) -> dict[str, float]:
     b_ref = baseline_agg[n_ref]
     return {
         COL_MEAN_CYCLE_H_MEAN: b_ref[COL_TOTAL_CYCLE_S_MEAN] / 3600 / n_ref,
+        # Pass-through, NOT total ÷ N: median is per-case already and never
+        # carried the total-cycle identity (the reason it is a separate column).
+        COL_MEDIAN_CYCLE_H_MEAN: b_ref[COL_MEDIAN_CYCLE_H_MEAN],
         COL_MEAN_COST_MEAN: b_ref[COL_TOTAL_COST_MEAN] / n_ref,
         COL_REWORK_RATE_MEAN: b_ref[COL_REWORK_RATE_MEAN],
     }
