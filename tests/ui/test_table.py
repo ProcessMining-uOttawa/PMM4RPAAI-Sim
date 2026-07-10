@@ -81,7 +81,7 @@ class TestPrepareRankedDisplay:
         frozen = Parameter(
             id="num_cases",
             label="Cases (frozen)",
-            levels=[100],
+            levels=[100, 100, 100],
             kind="categorical",
             frozen=True,
         )

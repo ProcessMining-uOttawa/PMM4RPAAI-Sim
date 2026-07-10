@@ -11,10 +11,9 @@ from core.simulation.prosimos.query import (
     task_mean_duration_s,
     task_resources,
 )
-from core.constants import KEY_RESOURCE_PROFILES, KEY_TASK_RESOURCE_DISTRIBUTION
 
 _PROSIMOS_JSON = {
-    KEY_RESOURCE_PROFILES: [
+    "resource_profiles": [
         {
             "id": "profile_1",
             "name": "Workers",
@@ -36,7 +35,7 @@ _PROSIMOS_JSON = {
             ],
         }
     ],
-    KEY_TASK_RESOURCE_DISTRIBUTION: [
+    "task_resource_distribution": [
         {
             "task_id": "task_1",
             "resources": [
@@ -91,8 +90,8 @@ def _selector_json(task_id: str, resources: list[dict]) -> dict:
 def _distribution_json(distribution_name: str, values: list[float]) -> dict:
     """One task (t1) with one resource (r1) using the given duration distribution."""
     return {
-        KEY_RESOURCE_PROFILES: [],
-        KEY_TASK_RESOURCE_DISTRIBUTION: [
+        "resource_profiles": [],
+        "task_resource_distribution": [
             {
                 "task_id": "t1",
                 "resources": [
@@ -194,8 +193,8 @@ class TestTaskMeanDurationS:
         # known fix [450]. The unknown mean is SKIPPED, not averaged in, so the
         # result is the known mean (450) — not None, and not (450 + …) / 2.
         data = {
-            KEY_RESOURCE_PROFILES: [],
-            KEY_TASK_RESOURCE_DISTRIBUTION: [
+            "resource_profiles": [],
+            "task_resource_distribution": [
                 {
                     "task_id": "t1",
                     "resources": [
