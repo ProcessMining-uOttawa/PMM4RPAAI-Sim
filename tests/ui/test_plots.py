@@ -98,10 +98,14 @@ class TestMainEffectsChart:
         fig = main_effects_chart(me, factor_label_map(_params()), "Cycle time (h)")
         assert list(fig.data[0].x) == ["100", "500", "1000"]
 
-    def test_xaxis_type_is_category(self):
+    def test_all_facet_xaxes_are_category(self):
         # Explicit categorical axis stops Plotly treating numeric-looking level
         # strings as a linear axis (auto ticks at round numbers, not data points).
-        assert _fig().layout.xaxis.type == "category"
+        # _fig() has two factors -> two facets -> two x-axes; every one must be
+        # categorical, so a regression that set it on xaxis alone would be caught.
+        axes = list(_fig().select_xaxes())
+        assert len(axes) > 1
+        assert all(ax.type == "category" for ax in axes)
 
     def test_unknown_factor_kept_as_raw_id(self):
         annotation_texts = {

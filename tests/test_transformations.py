@@ -214,10 +214,11 @@ class TestParameters:
         assert self._levels(params, F_T_AUTO) == [180.0, 360.0, 720.0]
         assert self._levels(params, F_T_MANUAL) == [2880.0, 3600.0, 4320.0]
 
-    def test_auto_and_manual_time_fall_back_to_default_duration(self, pattern):
-        # A zero/None discovered duration falls back to DEFAULT_MANUAL_DURATION_S
-        # (1800 s) as the base for both factors.
-        params = pattern.parameters("T", current_duration_s=0.0)
+    @pytest.mark.parametrize("dur", [0.0, None])
+    def test_auto_and_manual_time_fall_back_to_default_duration(self, pattern, dur):
+        # A zero or None discovered duration falls back to DEFAULT_MANUAL_DURATION_S
+        # (1800 s) as the base for both factors (both are falsy in `if current_duration_s`).
+        params = pattern.parameters("T", current_duration_s=dur)
         assert self._levels(params, F_T_AUTO) == [90.0, 180.0, 360.0]
         assert self._levels(params, F_T_MANUAL) == [1440.0, 1800.0, 2160.0]
 

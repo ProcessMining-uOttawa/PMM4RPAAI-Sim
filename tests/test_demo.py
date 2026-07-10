@@ -193,53 +193,32 @@ class TestExperimentCancellation:
 
 
 class TestDemoMonotonicity:
-    def test_larger_resource_pool_reduces_cycle_time(self):
-        def _mean_cycle(num_bots: int, num_man: int, n_reps: int = 20) -> float:
-            s = Scenario(
-                "S01",
-                {
-                    "pct_auto": 50,
-                    "pct_ok": 90,
-                    "t_auto": 30,
-                    "t_manual": 300,
-                    "num_bots": num_bots,
-                    "num_manual_resources": num_man,
-                    "num_cases": 500,
-                },
-                "t_id",
-                "Act",
-            )
-            return (
-                sum(_fake_simulate(s, r).mean_cycle_h for r in range(n_reps)) / n_reps
-            )
+    @staticmethod
+    def _mean_cycle(n_reps: int = 20, **overrides: int) -> float:
+        vals = {
+            "pct_auto": 50,
+            "pct_ok": 90,
+            "t_auto": 30,
+            "t_manual": 300,
+            "num_bots": 2,
+            "num_manual_resources": 2,
+            "num_cases": 500,
+        }
+        vals.update(overrides)
+        s = Scenario("S01", vals, "t_id", "Act")
+        return sum(_fake_simulate(s, r).mean_cycle_h for r in range(n_reps)) / n_reps
 
-        assert _mean_cycle(3, 3) < _mean_cycle(1, 1)
+    def test_larger_resource_pool_reduces_cycle_time(self):
+        assert self._mean_cycle(num_bots=3, num_manual_resources=3) < self._mean_cycle(
+            num_bots=1, num_manual_resources=1
+        )
 
     def test_more_automation_reduces_cycle_time(self):
         # Equal pools (num_bots == num_manual_resources) keep effective_resources
         # constant across pct_auto, so cycle time varies only through the faster
         # bot task: mean_task_s/t_manual = 1.0 at pct_auto=0 vs 0.55 at pct_auto=50.
         # The [0.9, 1.1] jitter cannot reorder those (0.605 < 0.9 worst-case).
-        def _mean_cycle(pct_auto: int, n_reps: int = 20) -> float:
-            s = Scenario(
-                "S01",
-                {
-                    "pct_auto": pct_auto,
-                    "pct_ok": 90,
-                    "t_auto": 30,
-                    "t_manual": 300,
-                    "num_bots": 2,
-                    "num_manual_resources": 2,
-                    "num_cases": 500,
-                },
-                "t_id",
-                "Act",
-            )
-            return (
-                sum(_fake_simulate(s, r).mean_cycle_h for r in range(n_reps)) / n_reps
-            )
-
-        assert _mean_cycle(50) < _mean_cycle(0)
+        assert self._mean_cycle(pct_auto=50) < self._mean_cycle(pct_auto=0)
 
 
 class TestDemoBotFailures:
