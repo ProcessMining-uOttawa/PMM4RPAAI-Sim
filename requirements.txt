@@ -1,4 +1,4 @@
-streamlit>=1.36
+streamlit>=1.37  # st.fragment + st.rerun(scope=) are used across ui/interactive/
 pytest>=8.0
 pytest-cov>=5.0
 pyDOE2>=1.3
