@@ -151,6 +151,9 @@ class TestSignalToNoise:
 
 class TestAggregate:
     def test_one_row_per_scenario(self):
+        # Two scenarios in → two rows out. Also guards _NON_FACTOR_COLS excluding
+        # median: were median grouped as a factor, aggregate() would fragment the
+        # groups and this count would exceed 2.
         assert len(aggregate(_results_df())) == 2
 
     def test_means_correct(self):
@@ -165,11 +168,6 @@ class TestAggregate:
         # S01 medians 9.0, 11.0 → mean 10.0, distinct from the mean-cycle mean
         # of 11.0 (confirms median is aggregated as its own column).
         assert row[COL_MEDIAN_CYCLE_H_MEAN] == pytest.approx(10.0)
-
-    def test_median_is_not_treated_as_a_factor(self):
-        # _NON_FACTOR_COLS must exclude median, else aggregate() would fragment
-        # groups on it. Two scenarios in → two rows out (not one-per-median).
-        assert len(aggregate(_results_df())) == 2
 
     def test_rework_means_correct(self):
         agg = aggregate(_results_df())

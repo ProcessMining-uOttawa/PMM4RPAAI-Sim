@@ -102,10 +102,6 @@ class TestListActivities:
         path = self._write_bpmn(tmp_path, ["Fix Bug", "Review"])
         assert list_activities(path) == ["Fix Bug", "Review"]
 
-    def test_task_names_ordered(self, tmp_path):
-        path = self._write_bpmn(tmp_path, ["Fix Bug", "Review"])
-        assert list_activities(path) != ["Review", "Fix Bug"]
-
     def test_deduplicates_names(self, tmp_path):
         path = self._write_bpmn(tmp_path, ["Fix Bug", "Fix Bug"])
         assert list_activities(path) == ["Fix Bug"]
