@@ -1,9 +1,11 @@
 """Tests for core/taguchi.py — pick_array and build_scenarios."""
 
 from __future__ import annotations
+from collections import Counter
+
 import pytest
 
-from core.taguchi import build_scenarios, pick_array
+from core.taguchi import build_scenarios, pick_array, L9 as PROD_L9, L18 as PROD_L18
 from core.parameters import Parameter
 
 # Standard Taguchi orthogonal arrays for 3-level factors (0-indexed levels).
@@ -147,3 +149,61 @@ class TestBuildScenarios:
         )
         assert scenarios[0].id == "S01"
         assert scenarios[8].id == "S09"
+
+    def test_column_to_factor_mapping(self):
+        # Each factor must read ITS OWN L9 column, not column 0 for every factor.
+        # Rows 3 and 6 (0-indexed) have differing columns 0 and 1, so a
+        # row[0]-for-all-factors mutant (which would set p1 = p0's level) is
+        # caught here — the two params share a level list, so only the distinct
+        # column indices distinguish correct from mutant.
+        _, scenarios = build_scenarios(
+            self._params(2), "xor_split_automation", "Check credit"
+        )
+        # L9 row [1, 0, 1, 2] → p0 = levels[1] = 20, p1 = levels[0] = 10
+        assert scenarios[3].values == {"p0": 20, "p1": 10}
+        # L9 row [2, 0, 2, 1] → p0 = levels[2] = 30, p1 = levels[0] = 10
+        assert scenarios[6].values == {"p0": 30, "p1": 10}
+
+
+# ── Orthogonality properties ────────────────────────────────────────────────────
+
+
+class TestOrthogonality:
+    """Self-verifying OA properties for the PRODUCTION L9/L18 arrays.
+
+    TestPickArray pins the arrays only against copies of themselves (the exact
+    shape of the historical L18 corruption, where columns were cyclically
+    permuted yet still equal to an equally-corrupt pin). These property tests
+    verify the mathematical definition of a strength-2 orthogonal array directly,
+    so a future permutation/typo fails here regardless of any pinned copy.
+    """
+
+    @pytest.mark.parametrize("array", [PROD_L9, PROD_L18])
+    def test_columns_are_balanced(self, array):
+        # Each level 0/1/2 appears N/3 times in every column.
+        n_rows = len(array)
+        for col in range(len(array[0])):
+            counts = Counter(row[col] for row in array)
+            assert set(counts) == {0, 1, 2}
+            assert all(count == n_rows // 3 for count in counts.values())
+
+    @pytest.mark.parametrize("array", [PROD_L9, PROD_L18])
+    def test_strength_two_orthogonal(self, array):
+        # Every ordered pair of distinct columns contains each of the 9 ordered
+        # level-pairs exactly N/9 times (L9: 1×, L18: 2×).
+        n_rows = len(array)
+        n_cols = len(array[0])
+        expected = n_rows // 9
+        all_pairs = {(a, b) for a in (0, 1, 2) for b in (0, 1, 2)}
+        for c1 in range(n_cols):
+            for c2 in range(n_cols):
+                if c1 == c2:
+                    continue
+                counts = Counter((row[c1], row[c2]) for row in array)
+                assert set(counts) == all_pairs
+                assert all(count == expected for count in counts.values())
+
+    @pytest.mark.parametrize("array", [PROD_L9, PROD_L18])
+    def test_no_duplicate_rows(self, array):
+        rows = [tuple(row) for row in array]
+        assert len(set(rows)) == len(rows)

@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import pytest
+
 from core.simulation import executor, runner
 
 
@@ -72,6 +74,42 @@ class _FailNTimes:
     def __call__(self, *a: object, **kw: object) -> None:
         if self._remaining > 0:
             self._remaining -= 1
+            raise RuntimeError("simfail")
+
+
+class _CountingSim:
+    """simulate stub that counts invocations and fails the first `fail_first`
+    calls. `fail_first=None` means every call fails (an always-failing sim).
+
+    A single-task run retries sequentially (the next attempt is only submitted
+    after the previous future resolves on the calling thread), so `calls` is
+    written by one worker at a time and read after the pool has joined — no lock
+    needed.
+    """
+
+    def __init__(self, fail_first: int | None) -> None:
+        self.calls = 0
+        self._fail_first = fail_first
+
+    def __call__(self, *a: object, **kw: object) -> None:
+        self.calls += 1
+        if self._fail_first is None or self.calls <= self._fail_first:
+            raise RuntimeError("simfail")
+
+
+class _ProcLogRecorder:
+    """simulate stub recording the `proc_log` kwarg of each call; fails the
+    first `fail_first` calls so the retry path is exercised."""
+
+    def __init__(self, fail_first: int) -> None:
+        self.calls = 0
+        self._fail_first = fail_first
+        self.proc_logs: list = []
+
+    def __call__(self, *a: object, proc_log: object = None, **kw: object) -> None:
+        self.calls += 1
+        self.proc_logs.append(proc_log)
+        if self.calls <= self._fail_first:
             raise RuntimeError("simfail")
 
 
@@ -158,3 +196,92 @@ class TestRunAllRetry:
             on_error=lambda t, e: None,
         )
         assert len(completed) == 0
+
+    # ── attempt-count contract: attempts == 1 + max_retries ──────────────────
+
+    def test_zero_retries_makes_exactly_one_attempt(self, monkeypatch, tmp_path):
+        sim = _CountingSim(fail_first=None)  # always fails
+        monkeypatch.setattr(runner, "simulate", sim)
+        executor.run_all(
+            _tasks(tmp_path, 1, max_retries=0),
+            lambda t: None,
+            on_error=lambda t, e: None,
+        )
+        assert sim.calls == 1
+
+    def test_two_retries_makes_exactly_three_attempts(self, monkeypatch, tmp_path):
+        sim = _CountingSim(fail_first=None)  # always fails
+        monkeypatch.setattr(runner, "simulate", sim)
+        executor.run_all(
+            _tasks(tmp_path, 1, max_retries=2),
+            lambda t: None,
+            on_error=lambda t, e: None,
+        )
+        assert sim.calls == 3
+
+    def test_transient_failure_makes_exactly_two_attempts(self, monkeypatch, tmp_path):
+        sim = _CountingSim(fail_first=1)  # fails once, then succeeds
+        monkeypatch.setattr(runner, "simulate", sim)
+        completed: list = []
+        executor.run_all(
+            _tasks(tmp_path, 1, max_retries=1),
+            lambda t: completed.append(t),
+            on_error=lambda t, e: None,
+        )
+        assert sim.calls == 2
+        assert len(completed) == 1
+
+
+class TestRunAllDocumentedBehaviours:
+    """Coverage for three documented run_all behaviours: retry log preservation,
+    callback-exception propagation, and metadata survival through the retry replace."""
+
+    def test_retry_resets_proc_log_to_none(self, monkeypatch, tmp_path):
+        # The resubmitted task is dataclasses.replace(task, ..., proc_log=None) so
+        # the retry does not overwrite the failed attempt's captured subprocess log.
+        recorder = _ProcLogRecorder(fail_first=1)
+        monkeypatch.setattr(runner, "simulate", recorder)
+        proc_log = tmp_path / "0_proc.log"
+        task = executor.SimulationTask(
+            bpmn_path=tmp_path / "0.bpmn",
+            json_path=tmp_path / "0.json",
+            n_cases=1,
+            out_log=tmp_path / "0_log.csv",
+            out_stat=None,
+            proc_log=proc_log,
+            max_retries=1,
+        )
+        executor.run_all([task], lambda t: None, on_error=lambda t, e: None)
+        # First attempt keeps the original proc_log; the retry passes None.
+        assert recorder.proc_logs == [proc_log, None]
+
+    def test_on_complete_exception_propagates(self, monkeypatch, tmp_path):
+        monkeypatch.setattr(runner, "simulate", lambda *a, **kw: None)
+
+        def _boom(task: executor.SimulationTask) -> None:
+            raise ValueError("boom")
+
+        with pytest.raises(ValueError, match="boom"):
+            executor.run_all(_tasks(tmp_path, 2), _boom)
+
+    def test_on_error_receives_task_with_metadata_intact(self, monkeypatch, tmp_path):
+        # The task handed to on_error is the retry-replaced copy, but replace()
+        # preserves metadata (only max_retries / proc_log change).
+        monkeypatch.setattr(runner, "simulate", _always_fail)
+        sentinel = object()
+        task = executor.SimulationTask(
+            bpmn_path=tmp_path / "0.bpmn",
+            json_path=tmp_path / "0.json",
+            n_cases=1,
+            out_log=tmp_path / "0_log.csv",
+            out_stat=None,
+            proc_log=None,
+            metadata=sentinel,
+            max_retries=2,
+        )
+        errored: list = []
+        executor.run_all(
+            [task], lambda t: None, on_error=lambda t, e: errored.append(t)
+        )
+        assert len(errored) == 1
+        assert errored[0].metadata is sentinel

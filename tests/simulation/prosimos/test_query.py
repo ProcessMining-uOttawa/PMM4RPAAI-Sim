@@ -189,6 +189,36 @@ class TestTaskMeanDurationS:
         data = _distribution_json("triang", [1.0, 2.0, 3.0])
         assert task_mean_duration_s(data, "t1") is None
 
+    def test_mixed_known_and_unknown_distributions(self):
+        # One resource uses an unhandled distribution (triang → None), the other a
+        # known fix [450]. The unknown mean is SKIPPED, not averaged in, so the
+        # result is the known mean (450) — not None, and not (450 + …) / 2.
+        data = {
+            KEY_RESOURCE_PROFILES: [],
+            KEY_TASK_RESOURCE_DISTRIBUTION: [
+                {
+                    "task_id": "t1",
+                    "resources": [
+                        {
+                            "resource_id": "r1",
+                            "distribution_name": "triang",
+                            "distribution_params": [
+                                {"value": 1.0},
+                                {"value": 2.0},
+                                {"value": 3.0},
+                            ],
+                        },
+                        {
+                            "resource_id": "r2",
+                            "distribution_name": "fix",
+                            "distribution_params": [{"value": 450.0}],
+                        },
+                    ],
+                }
+            ],
+        }
+        assert task_mean_duration_s(data, "t1") == pytest.approx(450.0)
+
 
 # ── resource_selector_config ──────────────────────────────────────────────────
 

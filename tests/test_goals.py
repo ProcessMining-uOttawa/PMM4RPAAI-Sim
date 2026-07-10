@@ -220,12 +220,17 @@ class TestBaselinePerCase:
         assert result[COL_MEDIAN_CYCLE_H_MEAN] == pytest.approx(27.5)
 
     def test_picks_smallest_n_cases_when_multiple(self):
+        # The 500-entry is deliberately NON-proportional (2.0 h/case, not 1.0) so
+        # this test actually distinguishes which level is picked. n_ref=100 →
+        # 360000/3600/100 = 1.0 h/case; picking n=500 → 3600000/3600/500 = 2.0;
+        # averaging the two levels → 1.5. Only the smallest-level pick gives 1.0.
         agg = {
             100: self._agg(total_cycle_s=360000.0, total_cost=500.0, rework_rate=5.0),
-            500: self._agg(total_cycle_s=1800000.0, total_cost=2500.0, rework_rate=5.0),
+            500: self._agg(
+                total_cycle_s=3_600_000.0, total_cost=2500.0, rework_rate=5.0
+            ),
         }
         result = baseline_per_case(agg)
-        # n_ref=100: 360000/3600/100 = 1.0 h/case (not 500 entry)
         assert result[COL_MEAN_CYCLE_H_MEAN] == pytest.approx(1.0)
 
 

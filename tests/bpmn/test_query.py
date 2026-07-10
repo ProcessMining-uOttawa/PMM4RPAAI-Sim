@@ -41,7 +41,7 @@ _BPMN_DI_XML = f"""\
   <bpmn:process id="proc_1">
     <bpmn:task     id="task_a" name="Task A"/>
     <bpmn:userTask id="task_b" name="Task B"/>
-    <bpmn:sequenceFlow id="flow_1" sourceRef="task_a" targetRef="task_b"/>
+    <bpmn:sequenceFlow id="flow_1" name="Flow One" sourceRef="task_a" targetRef="task_b"/>
   </bpmn:process>
   <bpmndi:BPMNDiagram>
     <bpmndi:BPMNPlane bpmnElement="proc_1">
@@ -205,8 +205,11 @@ class TestFindTaskInProcess:
         assert find_task_in_process(process, "Nonexistent") is None
 
     def test_does_not_match_sequence_flows(self, process):
-        # sequenceFlow elements share the process but are not tasks
-        assert find_task_in_process(process, "flow_1") is None
+        # The sequenceFlow has name="Flow One"; querying by that name must still
+        # miss, since only the tag whitelist (child.tag in _TASK_TAG_SET) — not a
+        # name mismatch — can produce None here. This discriminates: dropping the
+        # whitelist would match the same-named non-task flow and return it.
+        assert find_task_in_process(process, "Flow One") is None
 
 
 # ── flows_targeting ───────────────────────────────────────────────────────────

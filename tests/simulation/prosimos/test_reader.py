@@ -289,21 +289,45 @@ class TestReplicationMetrics:
         assert m.mean_cycle_h == pytest.approx(4.0)
         assert m.median_cycle_h == pytest.approx(2.0)
 
+    def test_cycle_time_groups_by_case(self, tmp_path):
+        log = tmp_path / "log.csv"
+        stats = tmp_path / "stats.csv"
+        # c1 has TWO events with a 30-min gap between them; c2 has one. The reader
+        # groups by case_id and takes max(end) − min(start) per case, so c1's span
+        # includes the gap. This discriminates a per-event reading, which would
+        # instead average the individual event durations.
+        _write_log(
+            log,
+            [
+                ("c1", "2025-01-01T08:00:00", "2025-01-01T09:00:00"),  # c1 event 1
+                ("c1", "2025-01-01T09:30:00", "2025-01-01T10:00:00"),  # c1 event 2
+                ("c2", "2025-01-01T08:00:00", "2025-01-01T09:00:00"),  # c2: 1 h
+            ],
+        )
+        _write_full_stats(stats, [("task_a", 0.0)], accumulated_cycle_s=1.0)
+        # per-case spans: c1 = 10:00 − 08:00 = 2 h, c2 = 1 h → mean 1.5 h.
+        # A per-event mutant would give (1 + 0.5 + 1) / 3 ≈ 0.833.
+        assert replication_metrics(log, stats).mean_cycle_h == pytest.approx(1.5)
+
     def test_cost_per_case(self, tmp_path):
         log = tmp_path / "log.csv"
         stats = tmp_path / "stats.csv"
+        # 3 cases, but c1 has 2 events (4 events total). Cost is divided by the
+        # number of CASES (3), not events (4) or stats task-rows (2).
         _write_log(
             log,
             [
                 ("c1", "2025-01-01T08:00:00", "2025-01-01T09:00:00"),
+                ("c1", "2025-01-01T09:00:00", "2025-01-01T10:00:00"),
                 ("c2", "2025-01-01T08:00:00", "2025-01-01T09:00:00"),
+                ("c3", "2025-01-01T08:00:00", "2025-01-01T09:00:00"),
             ],
         )
         _write_full_stats(
             stats, [("task_a", 100.0), ("task_b", 50.0)], accumulated_cycle_s=1.0
         )
-        # total 150 / 2 cases = 75.0 per case
-        assert replication_metrics(log, stats).mean_cost == pytest.approx(75.0)
+        # total 150 / 3 cases = 50.0 per case (per-event → 37.5, per-task-row → 75)
+        assert replication_metrics(log, stats).mean_cost == pytest.approx(50.0)
 
     def test_totals_consistent_with_total_metrics(self, tmp_path):
         log = tmp_path / "log.csv"
@@ -416,6 +440,13 @@ class TestReworkMetrics:
         r = _rework_metrics(df)
         assert r[COL_TOTAL_REWORK_COUNT] == 1.0  # C1's repeat; C2's pair is not rework
         assert r[COL_REWORK_RATE] == pytest.approx(100 / 3)
+
+    def test_missing_activity_column_zero(self):
+        # Mirror _bot_failure_count's guard: a log with no activity column
+        # (e.g. a synthetic test CSV) yields zeros rather than crashing.
+        r = _rework_metrics(pd.DataFrame({"case_id": ["C1"]}))
+        assert r[COL_TOTAL_REWORK_COUNT] == 0.0
+        assert r[COL_REWORK_RATE] == 0.0
 
 
 # ── _bot_failure_count ────────────────────────────────────────────────────────
