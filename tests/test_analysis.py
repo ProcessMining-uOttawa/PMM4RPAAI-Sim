@@ -519,9 +519,11 @@ class TestSnExportTable:
         table = sn_export_table(df, self._params())
         first_rows = table.groupby("Metric", sort=False).first()
         assert (first_rows["Rank"] == 1).all()
-        # Guard against the frame collapsing to single-factor (which would make
-        # the assertion vacuous again): both ranks 1 and 2 must be present.
-        assert set(table["Rank"]) == {1, 2}
+        # Per-metric: every metric must rank its two factors as exactly {1, 2}. A
+        # global set(table["Rank"]) == {1, 2} is weaker — one metric collapsing to
+        # {1, 1} is hidden by the union with a well-ranked metric.
+        for _, group in table.groupby("Metric", sort=False):
+            assert set(group["Rank"]) == {1, 2}
 
 
 # ── rank ──────────────────────────────────────────────────────────────────────

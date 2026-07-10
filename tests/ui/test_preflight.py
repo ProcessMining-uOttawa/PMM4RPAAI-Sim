@@ -97,7 +97,9 @@ class TestDetectCorretto8:
         assert _detect_corretto8() == str(jdk)
 
     def test_none_when_root_absent(self, monkeypatch, tmp_path):
-        monkeypatch.setattr(preflight, "CORRETTO_ROOTS", [tmp_path])  # empty dir
+        # A root that does not exist — exercises the `is_dir()` False branch,
+        # distinct from an existing-but-empty root.
+        monkeypatch.setattr(preflight, "CORRETTO_ROOTS", [tmp_path / "nope"])
         assert _detect_corretto8() is None
 
     def test_none_when_jdk_lacks_java_exe(self, monkeypatch, tmp_path):
@@ -130,7 +132,8 @@ class TestDetectMacosJdk8:
         assert _detect_macos_jdk8() is None
 
     def test_none_when_root_absent(self, monkeypatch, tmp_path):
-        monkeypatch.setattr(preflight, "MACOS_JVM_ROOTS", [tmp_path])  # empty dir
+        # A root that does not exist — exercises the `not is_dir()` continue branch.
+        monkeypatch.setattr(preflight, "MACOS_JVM_ROOTS", [tmp_path / "nope"])
         assert _detect_macos_jdk8() is None
 
 
@@ -142,8 +145,12 @@ class TestJavaExeFromHome:
         monkeypatch.delenv("JAVA_HOME", raising=False)
         assert _java_exe_from_home() == "java"
 
-    def test_resolves_binary_under_java_home(self, monkeypatch, tmp_path):
-        exe_name = "java.exe" if preflight._WINDOWS else "java"
+    @pytest.mark.parametrize("is_windows", [True, False])
+    def test_resolves_binary_under_java_home(self, monkeypatch, tmp_path, is_windows):
+        # Cover both platform branches on any host: java.exe on Windows, java on
+        # POSIX. _java_exe_from_home reads module-level _WINDOWS at call time.
+        monkeypatch.setattr(preflight, "_WINDOWS", is_windows)
+        exe_name = "java.exe" if is_windows else "java"
         (tmp_path / "bin").mkdir()
         (tmp_path / "bin" / exe_name).write_text("")
         monkeypatch.setenv("JAVA_HOME", str(tmp_path))
