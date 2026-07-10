@@ -4,8 +4,8 @@ from __future__ import annotations
 
 from ...constants import KEY_RESOURCE_PROFILES, KEY_TASK_RESOURCE_DISTRIBUTION
 
-# ── Prosimos input JSON: schema key names (only consumed within this module and
-#    transformations.py — too coupled to put in constants.py) ─────────────────
+# ── Prosimos input JSON: schema key names (only consumed within this module —
+#    too coupled to put in constants.py) ─────────────────
 KEY_RESOURCE_CALENDARS = "resource_calendars"
 KEY_GATEWAY_BRANCHING_PROBS = "gateway_branching_probabilities"
 
