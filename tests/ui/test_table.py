@@ -70,6 +70,46 @@ class TestPrepareRankedDisplay:
         )
         assert "Auto %" in result.columns
 
+    def test_frozen_factor_excluded_even_when_shown(self):
+        # The `if not p.frozen` guard: a frozen factor is held constant across
+        # scenarios (excluded from the OA) so it carries no per-scenario signal
+        # and must not appear as a column even with show_factors=True. Both
+        # columns exist in `ranked`, so only the guard can drop the frozen one.
+        ranked = _ranked()
+        ranked["pct_auto"] = [25, 50]
+        ranked["num_cases"] = [100, 100]
+        frozen = Parameter(
+            id="num_cases",
+            label="Cases (frozen)",
+            levels=[100],
+            kind="categorical",
+            frozen=True,
+        )
+        result = prepare_ranked_display(
+            ranked,
+            [MetricRegistry.CYCLE_TIME],
+            [_factor_param(), frozen],
+            show_factors=True,
+        )
+        assert "Auto %" in result.columns
+        assert "Cases (frozen)" not in result.columns
+
+    def test_factor_columns_between_scenario_and_kpis(self):
+        # Contract order: rank · Scenario · [factor cols] · KPI means · … — pin
+        # the factor column's position so a reorder that shifts factors after the
+        # KPIs is caught.
+        ranked = _ranked()
+        ranked["pct_auto"] = [25, 50]
+        result = prepare_ranked_display(
+            ranked, [MetricRegistry.CYCLE_TIME], [_factor_param()], show_factors=True
+        )
+        cols = list(result.columns)
+        assert (
+            cols.index("Scenario")
+            < cols.index("Auto %")
+            < cols.index("Cycle Time (h/case)")
+        )
+
     def test_metric_absent_from_ranked_is_skipped(self):
         # Only cycle-time columns exist; Cost's KPI column does not, so it must be
         # silently filtered out (the `col in ranked.columns` guard).

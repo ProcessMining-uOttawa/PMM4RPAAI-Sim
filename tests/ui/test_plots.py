@@ -82,6 +82,31 @@ class TestMainEffectsChart:
         fig = main_effects_chart(me, factor_label_map(_params()), "Cycle time (h)")
         assert list(fig.data[0].x) == ["25", "50", "75"]
 
+    def test_levels_sorted_numeric_ascending_not_row_order(self):
+        # Rows arrive scrambled AND lexical != numeric here: lexical sort gives
+        # ["100", "1000", "500"], row order gives ["500", "100", "1000"], only
+        # numeric-ascending gives ["100", "500", "1000"]. This pins the
+        # df.sort_values(["factor", "level"]) axis-order fix — deleting it (row
+        # order) or sorting strings (lexical) both fail.
+        me = pd.DataFrame(
+            [
+                {"factor": "num_cases", "level": 500.0, "mean": 10.0, "sn": -5.0},
+                {"factor": "num_cases", "level": 100.0, "mean": 12.0, "sn": -5.0},
+                {"factor": "num_cases", "level": 1000.0, "mean": 14.0, "sn": -5.0},
+            ]
+        )
+        fig = main_effects_chart(me, factor_label_map(_params()), "Cycle time (h)")
+        assert list(fig.data[0].x) == ["100", "500", "1000"]
+
+    def test_all_facet_xaxes_are_category(self):
+        # Explicit categorical axis stops Plotly treating numeric-looking level
+        # strings as a linear axis (auto ticks at round numbers, not data points).
+        # _fig() has two factors -> two facets -> two x-axes; every one must be
+        # categorical, so a regression that set it on xaxis alone would be caught.
+        axes = list(_fig().select_xaxes())
+        assert len(axes) > 1
+        assert all(ax.type == "category" for ax in axes)
+
     def test_unknown_factor_kept_as_raw_id(self):
         annotation_texts = {
             a.text

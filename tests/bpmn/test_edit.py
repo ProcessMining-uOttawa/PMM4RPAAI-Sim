@@ -71,6 +71,42 @@ _BPMN_XML_NO_DI = f"""\
 </bpmn:definitions>
 """
 
+# Adds a third task (new_task) with a DI shape at distinct coordinates, so a
+# rewire onto it yields waypoints recomputed from real shapes (not the fallback).
+#   new_task: x=500, y=200, w=100, h=80 → left_x=500, mid_y=240
+_BPMN_XML_THREE = f"""\
+<?xml version="1.0"?>
+<bpmn:definitions
+    xmlns:bpmn="{_BPMN_NS}"
+    xmlns:bpmndi="{_BPMNDI_NS}"
+    xmlns:dc="{_DC_NS}"
+    xmlns:di="{_DI_NS}">
+  <bpmn:process id="proc_1">
+    <bpmn:task id="src_task" name="Source"/>
+    <bpmn:task id="tgt_task" name="Target"/>
+    <bpmn:task id="new_task" name="New"/>
+    <bpmn:sequenceFlow id="flow_1" sourceRef="src_task" targetRef="tgt_task"/>
+  </bpmn:process>
+  <bpmndi:BPMNDiagram>
+    <bpmndi:BPMNPlane bpmnElement="proc_1">
+      <bpmndi:BPMNShape id="src_task_di" bpmnElement="src_task">
+        <dc:Bounds x="100" y="100" width="100" height="80"/>
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="tgt_task_di" bpmnElement="tgt_task">
+        <dc:Bounds x="300" y="100" width="100" height="80"/>
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="new_task_di" bpmnElement="new_task">
+        <dc:Bounds x="500" y="200" width="100" height="80"/>
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNEdge id="flow_1_di" bpmnElement="flow_1">
+        <di:waypoint x="200" y="140"/>
+        <di:waypoint x="300" y="140"/>
+      </bpmndi:BPMNEdge>
+    </bpmndi:BPMNPlane>
+  </bpmndi:BPMNDiagram>
+</bpmn:definitions>
+"""
+
 
 def _parse(xml: str = _BPMN_XML):
     """Return a fresh (root, process, plane) tuple for each test."""
@@ -291,6 +327,29 @@ class TestUpdateFlowTarget:
         assert len(waypoints) == 2
         assert waypoints[0].get("x") == "300" and waypoints[0].get("y") == "120"
         assert waypoints[1].get("x") == "400" and waypoints[1].get("y") == "120"
+
+    def test_target_updated_when_no_plane(self):
+        # First early return (`if plane is None`): targetRef is set *before* the
+        # plane lookup, so the flow is still rewired even with no DI diagram.
+        root, process, plane = _parse(_BPMN_XML_NO_DI)
+        assert plane is None
+        update_flow_target(root, process, "flow_1", "new_tgt")
+        flow = process.find(f"{{{_BPMN_NS}}}sequenceFlow[@id='flow_1']")
+        assert flow.get("targetRef") == "new_tgt"
+
+    def test_waypoints_recomputed_for_target_with_shape(self):
+        # Second early return NOT taken (edge present) + waypoints recomputed
+        # from real shapes: rewire onto new_task (x=500, y=200, h=80) →
+        # src right-edge (200,140) → new target left-edge (500,240). The existing
+        # test covers the no-shape fallback; this covers the has-shape branch.
+        root, process, plane = _parse(_BPMN_XML_THREE)
+        update_flow_target(root, process, "flow_1", "new_task")
+        waypoints = plane.find(
+            f"{{{_BPMNDI_NS}}}BPMNEdge[@bpmnElement='flow_1']"
+        ).findall(f"{{{_DI_NS}}}waypoint")
+        assert len(waypoints) == 2
+        assert waypoints[0].get("x") == "200" and waypoints[0].get("y") == "140"
+        assert waypoints[1].get("x") == "500" and waypoints[1].get("y") == "240"
 
     def test_raises_for_missing_flow(self):
         root, process, _ = _parse()

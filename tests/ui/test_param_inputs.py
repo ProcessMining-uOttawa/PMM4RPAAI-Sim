@@ -47,6 +47,14 @@ class TestNumberInputKwargs:
         assert type(kwargs["min_value"]) is int
         assert type(kwargs["step"]) is int
 
+    def test_float_kinds_coerce_int_value_to_float(self):
+        # Mirror of test_categorical_uses_int_types: st.number_input raises on a
+        # mixed int value + float min/step, so the float kinds must coerce an int
+        # input to float. `==` wouldn't catch a dropped float() cast (50 == 50.0),
+        # so assert the type after passing an INT input.
+        for kind in ("percentage", "duration_s", "cost"):
+            assert type(number_input_kwargs(kind, 50)["value"]) is float
+
     def test_unknown_kind_falls_back_to_value_only(self):
         # Out of the ParameterKind contract (hence the ignore) — exercises the
         # defensive default so the safety net stays covered.

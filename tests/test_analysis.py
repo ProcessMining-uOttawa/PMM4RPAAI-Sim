@@ -263,6 +263,28 @@ class TestCompareToBaseline:
         assert s02["Δ Time (h)"] == pytest.approx(0.0)
         assert s02["Δ Cost ($)"] == pytest.approx(-20.0)
         assert s02["Δ Cost (%)"] == pytest.approx(-20.0)
+        # S01 has a NON-zero cycle-time delta, so it pins the seconds→hours
+        # display_fn on the delta itself: 7200/3600 − 3600/3600 = 2.0 − 1.0 = 1.0 h.
+        # A raw-seconds-delta regression (the historical display_fn bug) gives 3600.0.
+        s01 = df[df["Scenario"] == "S01"].iloc[0]
+        assert s01["Δ Time (h)"] == pytest.approx(1.0)
+        assert s01["Δ Time (%)"] == pytest.approx(100.0)
+
+    def test_zero_baseline_cost_gives_nan_pct(self):
+        # _pct_delta returns NaN when the baseline value is 0 (documented as a
+        # blank cell). S01 cost is 200 vs a zero baseline → percent is undefined.
+        baseline = {
+            100: {
+                COL_TOTAL_CYCLE_S_MEAN: 3600.0,
+                COL_TOTAL_COST_MEAN: 0.0,
+                COL_TOTAL_REWORK_COUNT_MEAN: 4.0,
+                COL_REWORK_RATE_MEAN: 8.0,
+                COL_TOTAL_BOT_FAILURE_COUNT_MEAN: 0.0,
+            }
+        }
+        df = compare_to_baseline(self._agg(), baseline)
+        s01 = df[df["Scenario"] == "S01"].iloc[0]
+        assert math.isnan(s01["Δ Cost (%)"])
 
     def test_baseline_rework_deltas_are_zero(self):
         df = compare_to_baseline(self._agg(), self._baseline())
@@ -359,6 +381,15 @@ class TestMainEffects:
         low_mean = me[me["level"] == "low"]["mean"].iloc[0]
         assert low_mean == pytest.approx(15.0)  # (10.0 + 20.0) / 2
 
+    def test_rework_rate_sn_uses_floor(self):
+        # REWORK_RATE.sn_floor = 0.01; the "high" group has rates [0.0, 10.0].
+        # With the floor: −10·log10((0.01² + 10.01²)/2) = −10·log10(50.1001)
+        # ≈ −16.998. WITHOUT the floor the 0.0 is filtered → −10·log10(10²) =
+        # −20.0, so this pins main_effects reading metric.sn_floor.
+        me = main_effects(_results_df(), MetricRegistry.REWORK_RATE)
+        high_sn = me[me["level"] == "high"]["sn"].iloc[0]
+        assert high_sn == pytest.approx(-16.998, abs=1e-3)
+
 
 # ── sn_ranking ────────────────────────────────────────────────────────────────
 
@@ -442,9 +473,57 @@ class TestSnExportTable:
         assert set(table["Factor"]) == {"f_a"}
 
     def test_rank_one_first_within_each_metric(self):
-        table = sn_export_table(_results_df(), self._params())
+        # A LOCAL two-factor frame: f_a separates every metric strongly, f_b not
+        # at all → f_a is rank 1 and f_b rank 2 for each metric. On the single-
+        # factor _results_df() every row is trivially rank 1, so a broken sort in
+        # sn_ranking passes; here a mis-sort that surfaced the rank-2 factor first
+        # would fail the assertion below.
+        df = pd.DataFrame(
+            [
+                {
+                    "scenario_id": "S01",
+                    "replication": 0,
+                    "f_a": "low",
+                    "f_b": "p",
+                    COL_MEAN_CYCLE_H: 10.0,
+                    COL_MEAN_COST: 5.0,
+                    COL_REWORK_RATE: 10.0,
+                },
+                {
+                    "scenario_id": "S02",
+                    "replication": 0,
+                    "f_a": "low",
+                    "f_b": "q",
+                    COL_MEAN_CYCLE_H: 10.0,
+                    COL_MEAN_COST: 5.0,
+                    COL_REWORK_RATE: 10.0,
+                },
+                {
+                    "scenario_id": "S03",
+                    "replication": 0,
+                    "f_a": "high",
+                    "f_b": "p",
+                    COL_MEAN_CYCLE_H: 30.0,
+                    COL_MEAN_COST: 15.0,
+                    COL_REWORK_RATE: 40.0,
+                },
+                {
+                    "scenario_id": "S04",
+                    "replication": 0,
+                    "f_a": "high",
+                    "f_b": "q",
+                    COL_MEAN_CYCLE_H: 30.0,
+                    COL_MEAN_COST: 15.0,
+                    COL_REWORK_RATE: 40.0,
+                },
+            ]
+        )
+        table = sn_export_table(df, self._params())
         first_rows = table.groupby("Metric", sort=False).first()
         assert (first_rows["Rank"] == 1).all()
+        # Guard against the frame collapsing to single-factor (which would make
+        # the assertion vacuous again): both ranks 1 and 2 must be present.
+        assert set(table["Rank"]) == {1, 2}
 
 
 # ── rank ──────────────────────────────────────────────────────────────────────
@@ -525,14 +604,17 @@ class TestRank:
         assert ranked.iloc[0]["scenario_id"] == "S02"
 
     def test_two_factor_goal_weighted_score(self):
-        # primary (mean) at target → 100; secondary (median) at worst → 0;
-        # weight 0.5 → combined 50. Score column stays keyed by the primary col.
+        # Distinct scales + weight 0.75 make this discriminate both a weight-swap
+        # and an argument-swap. Primary (mean) 90 = target → 100; secondary
+        # (median) 220 = worst of 180/200/220 → 0. 0.75·100 + 0.25·0 = 75.
+        #   weight-swap (0.25·100 + 0.75·0) → 25;
+        #   arg-swap (primary.score(220)=0, secondary.score(90)=100) → 25.
         agg = pd.DataFrame(
             [
                 {
                     "scenario_id": "S01",
                     COL_MEAN_CYCLE_H_MEAN: 90.0,
-                    COL_MEDIAN_CYCLE_H_MEAN: 110.0,
+                    COL_MEDIAN_CYCLE_H_MEAN: 220.0,
                 }
             ]
         )
@@ -541,11 +623,11 @@ class TestRank:
             target=90.0,
             baseline_ref=100.0,
             worst=110.0,
-            secondary=_sib_goal(COL_MEDIAN_CYCLE_H_MEAN, 100.0),
-            weight=0.5,
+            secondary=_sib_goal(COL_MEDIAN_CYCLE_H_MEAN, 200.0),
+            weight=0.75,
         )
         ranked = rank(agg, [goal])
-        assert ranked.iloc[0][f"{COL_MEAN_CYCLE_H_MEAN}_score"] == pytest.approx(50.0)
+        assert ranked.iloc[0][f"{COL_MEAN_CYCLE_H_MEAN}_score"] == pytest.approx(75.0)
 
     def test_two_factor_goal_participates_in_weakest_link(self):
         # Time goal (two-factor) scores 50; cost goal scores 100. Aggregate stays
