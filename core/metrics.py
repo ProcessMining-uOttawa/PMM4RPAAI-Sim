@@ -110,7 +110,7 @@ class Metric:
 
 
 class MetricRegistry:
-    """The four KPIs as class-level singletons; all() order is the display order."""
+    """The KPIs as class-level singletons; all() order is the display order."""
 
     CYCLE_TIME: Metric = Metric(
         per_case=PerCaseMetric(
