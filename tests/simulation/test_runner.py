@@ -72,3 +72,22 @@ class TestTerminateProcess:
         runner.terminate_process(proc)
         proc.wait(timeout=5)  # raises TimeoutExpired if the kill failed to land
         assert proc.returncode is not None
+
+    def test_survives_taskkill_timeout(self, monkeypatch):
+        # A hung taskkill (subprocess.run timing out) must not propagate out of
+        # terminate_process, or kill_all's join would block indefinitely. Forces
+        # the Windows branch cross-platform by faking sys.platform + subprocess.run.
+        monkeypatch.setattr(runner.sys, "platform", "win32")
+
+        def _timeout(*a, **k):
+            raise subprocess.TimeoutExpired("taskkill", runner._KILL_GRACE_SECONDS)
+
+        monkeypatch.setattr(runner.subprocess, "run", _timeout)
+
+        class _Running:
+            pid = 999999
+
+            def poll(self):
+                return None
+
+        runner.terminate_process(_Running())  # must return without raising
