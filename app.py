@@ -291,16 +291,17 @@ with col1:
             selected_pool_size = _selection.selected_pool_size
             frozen_pool_size = _selection.frozen_pool_size
 
-        pattern_id = st.selectbox(
-            "Substitution pattern",
-            list(REGISTRY.keys()),
-            format_func=lambda k: REGISTRY[k].label,
-        )
+        # Single-pattern reality: XORSplitAutomation is the only registered
+        # transformation and no second one will be added, so there is no picker —
+        # just the sole registry entry, shown read-only so users stay oriented on
+        # which intervention the simulation applies. The REGISTRY / Transformation
+        # ABC abstraction is retained; re-add a selectbox here if that ever changes.
+        transformation = next(iter(REGISTRY.values()))
+        st.caption(f"Substitution pattern: {transformation.label}")
 
 with col2:
     with st.container(border=True):
         st.markdown("##### 2 · Factor levels & goals")
-        transformation = REGISTRY[pattern_id]
         parameters = configure_factor_levels(
             transformation,
             target,

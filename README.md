@@ -6,10 +6,10 @@ automating a chosen activity in a business process would meet stakeholder
 goals (cycle time, cost, …).
 
 The pipeline: **Simod** discovers a BPMN model and Prosimos parameters from
-the log → the user picks a target activity and a substitution pattern → a
-**Taguchi orthogonal array** generates scenarios from the pattern's factors
-→ **Prosimos** runs N replications per scenario → metrics are aggregated
-and ranked against user goals.
+the log → the user picks a target activity → a **Taguchi orthogonal array**
+generates scenarios from the substitution pattern's factors → **Prosimos**
+runs N replications per scenario → metrics are aggregated and ranked against
+user goals.
 
 ## Quick start (Windows)
 

@@ -18,7 +18,7 @@ Event log (XES/CSV)
         ▼  Simod  (one-shot, Java 8 + SplitMiner)
 BPMN model + Prosimos simulation-parameters JSON
         │
-        ▼  user picks: target activity + substitution pattern
+        ▼  user picks: target activity  (pattern fixed: XORSplitAutomation)
 Pattern.parameters(target) → N factors × 3 levels (Taguchi)
         │
         ▼  curated L9 and L18 OAs
@@ -35,7 +35,7 @@ Ranking table + main-effects view + export (Statistics CSV, S/N CSV, Params ZIP,
 
 ## 2. Architecture seams
 
-**`XORSplitAutomation` is the only substitution pattern and no second pattern will be added** — it is central to the client's thesis. The `Transformation` ABC and `REGISTRY` exist for clean encapsulation, not extensibility. Three contracts define that boundary:
+**`XORSplitAutomation` is the only substitution pattern and no second pattern will be added** — it is central to the client's thesis. The `Transformation` ABC and `REGISTRY` exist for clean encapsulation, not extensibility. The UI reflects this: Panel 1 renders **no pattern picker** — it shows the pattern name read-only (`st.caption`) and `app.py` binds the sole `REGISTRY` entry via `next(iter(REGISTRY.values()))`, never naming the concrete class. The abstraction is retained regardless; re-add a `st.selectbox` there if a second pattern ever appears (it won't). Three contracts define that boundary:
 
 - **`Transformation`** ([core/transformations.py](core/transformations.py)) — abstract base declaring the pattern's contract (the abstract methods listed below), plus a concrete `prepare_experiment()` that coordinates two of them (`apply_pattern()` then `build_scenario_template()`):
   - `parameters(target_activity, current_duration_s, selected_pool_size, frozen_pool_size) → list[Parameter]`
