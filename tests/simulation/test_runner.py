@@ -49,60 +49,90 @@ class TestRunLogged:
         assert isinstance(spawned[0], subprocess.Popen)
 
 
-class TestTerminateProcess:
-    # The POSIX self-group guard is tested via MOCKED os.getpgid
-    # (test_self_group_guard_refuses_killpg) rather than a real non-session child:
-    # a real test would spawn a child sharing pytest's own process group and, if
-    # the guard regressed, killpg the test runner. Mocking keeps it safe.
+@pytest.fixture
+def sleeping_proc():
+    """Spawn managed subprocesses (default cmd: sleep 30s) that are force-killed
+    and reaped at teardown, so a failed kill can't leak a subprocess."""
+    procs = []
 
+    def _make(cmd=None, **kwargs):
+        proc = runner._spawn(
+            cmd or [sys.executable, "-c", "import time; time.sleep(30)"], **kwargs
+        )
+        procs.append(proc)
+        return proc
+
+    yield _make
+    for proc in procs:
+        if proc.poll() is None:
+            proc.kill()
+        try:
+            proc.wait(timeout=5)
+        except subprocess.TimeoutExpired:
+            pass
+        if proc.stdout:
+            proc.stdout.close()
+
+
+class TestTerminateProcess:
     def test_noop_on_finished_process(self):
         proc = runner._spawn([sys.executable, "-c", "pass"])
         proc.wait()
         runner.terminate_process(proc)  # already exited → must not raise
         assert proc.returncode is not None
 
-    def test_kills_running_process(self):
+    def test_kills_running_process(self, sleeping_proc):
         # new_session=True (POSIX) so terminate_process's killpg targets this
         # process's own group, never the test runner's.
-        proc = runner._spawn(
-            [sys.executable, "-c", "import time; time.sleep(30)"], new_session=True
-        )
-        try:
-            assert proc.poll() is None  # actually running before we kill it
-            runner.terminate_process(proc)
-            proc.wait(timeout=5)  # raises TimeoutExpired if the kill failed to land
-            assert proc.returncode is not None
-        finally:
-            if proc.poll() is None:  # a failed kill must not leak the subprocess
-                proc.kill()
-                proc.wait(timeout=5)
+        proc = sleeping_proc(new_session=True)
+        assert proc.poll() is None  # actually running before we kill it
+        runner.terminate_process(proc)
+        proc.wait(timeout=5)  # raises TimeoutExpired if the kill failed to land
+        assert proc.returncode is not None
 
-    def test_survives_taskkill_timeout(self, monkeypatch):
+    def test_survives_taskkill_timeout(self, monkeypatch, sleeping_proc):
         # A hung taskkill (subprocess.run timing out) must not block: terminate_process
         # falls back to killing the tracked launcher directly, so the target exits and
-        # proc.wait() unblocks. Forces the Windows branch cross-platform by faking
-        # sys.platform + subprocess.run against a real, still-running process.
+        # proc.wait() unblocks. Forces the Windows branch cross-platform.
         monkeypatch.setattr(runner.sys, "platform", "win32")
 
         def _timeout(*a, **k):
             raise subprocess.TimeoutExpired("taskkill", runner._KILL_GRACE_SECONDS)
 
         monkeypatch.setattr(runner.subprocess, "run", _timeout)
-        proc = runner._spawn([sys.executable, "-c", "import time; time.sleep(30)"])
-        try:
-            runner.terminate_process(proc)  # taskkill "hangs" → fallback proc.kill()
-            proc.wait(timeout=5)
-            assert proc.returncode is not None  # the target actually exited
-        finally:
-            if proc.poll() is None:
-                proc.kill()
-                proc.wait(timeout=5)
+        proc = sleeping_proc()
+        runner.terminate_process(proc)  # taskkill "hangs" → fallback proc.kill()
+        proc.wait(timeout=5)
+        assert proc.returncode is not None  # the target actually exited
+
+    @pytest.mark.skipif(
+        sys.platform == "win32", reason="POSIX SIGTERM->SIGKILL escalation"
+    )
+    def test_posix_sigkill_escalation(self, monkeypatch, sleeping_proc):
+        # A process that ignores SIGTERM must still die via the wait-timeout ->
+        # SIGKILL escalation. The child prints readiness AFTER installing SIG_IGN,
+        # so we don't SIGTERM it before it can ignore. Grace shrunk to stay fast.
+        monkeypatch.setattr(runner, "_KILL_GRACE_SECONDS", 0.3)
+        code = (
+            "import signal, time; "
+            "signal.signal(signal.SIGTERM, signal.SIG_IGN); "
+            "print('ready', flush=True); "
+            "time.sleep(30)"
+        )
+        proc = sleeping_proc(
+            [sys.executable, "-c", code], new_session=True, stdout=subprocess.PIPE
+        )
+        assert proc.stdout.readline().strip() == b"ready"  # SIG_IGN installed
+        runner.terminate_process(proc)  # SIGTERM ignored → grace → SIGKILL
+        proc.wait(timeout=5)
+        assert proc.returncode is not None
 
     def test_self_group_guard_refuses_killpg(self, monkeypatch):
-        # POSIX self-group guard: if a proc resolves to the runner's OWN process
-        # group (the invariant-violation case), terminate_process must NOT killpg —
-        # that would signal the Streamlit server / this test process. Fully mocked,
-        # so no real signal is ever sent (getpgid returns one value for both).
+        # POSIX self-group guard, tested via MOCKED os.getpgid rather than a real
+        # non-session child: a real test would spawn a child sharing pytest's own
+        # process group and, if the guard regressed, killpg the test runner. Mocked
+        # so no real signal is sent — getpgid collides the child's group with the
+        # runner's (one value for both) and killpg must NOT be called.
         monkeypatch.setattr(runner.sys, "platform", "linux")
         monkeypatch.setattr(runner.os, "getpgid", lambda pid: 4242, raising=False)
         monkeypatch.setattr(
