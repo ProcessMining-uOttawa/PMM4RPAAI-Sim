@@ -7,9 +7,9 @@ goals (cycle time, cost, …).
 
 The pipeline: **Simod** discovers a BPMN model and Prosimos parameters from
 the log → the user picks a target activity → a **Taguchi orthogonal array**
-generates scenarios from the substitution pattern's factors → **Prosimos**
-runs N replications per scenario → metrics are aggregated and ranked against
-user goals.
+generates scenarios from the fixed `XORSplitAutomation` pattern's factors →
+**Prosimos** runs N replications per scenario → metrics are aggregated and
+ranked against user goals.
 
 ## Quick start (Windows)
 
