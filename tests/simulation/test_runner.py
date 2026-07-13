@@ -90,20 +90,26 @@ class TestTerminateProcess:
         proc.wait(timeout=5)  # raises TimeoutExpired if the kill failed to land
         assert proc.returncode is not None
 
-    def test_survives_taskkill_timeout(self, monkeypatch, sleeping_proc):
-        # A hung taskkill (subprocess.run timing out) must not block: terminate_process
-        # falls back to killing the tracked launcher directly, so the target exits and
-        # proc.wait() unblocks. Forces the Windows branch cross-platform.
+    @pytest.mark.parametrize("taskkill_hangs", [True, False], ids=["hangs", "fails"])
+    def test_taskkill_failure_falls_back_to_kill(
+        self, monkeypatch, sleeping_proc, taskkill_hangs
+    ):
+        # taskkill hanging (TimeoutExpired) or reporting failure (non-zero exit)
+        # with the target still alive must fall back to killing the tracked launcher,
+        # so proc.wait() unblocks and cancel stays prompt. Forces the Windows branch
+        # cross-platform.
         monkeypatch.setattr(runner.sys, "platform", "win32")
 
-        def _timeout(*a, **k):
-            raise subprocess.TimeoutExpired("taskkill", runner._KILL_GRACE_SECONDS)
+        def _fake_run(*a, **k):
+            if taskkill_hangs:
+                raise subprocess.TimeoutExpired("taskkill", runner._KILL_GRACE_SECONDS)
+            return subprocess.CompletedProcess(a, returncode=1)
 
-        monkeypatch.setattr(runner.subprocess, "run", _timeout)
+        monkeypatch.setattr(runner.subprocess, "run", _fake_run)
         proc = sleeping_proc()
-        runner.terminate_process(proc)  # taskkill "hangs" → fallback proc.kill()
+        runner.terminate_process(proc)  # taskkill fails → fallback proc.kill()
         proc.wait(timeout=5)
-        assert proc.returncode is not None  # the target actually exited
+        assert proc.returncode is not None  # the fallback exited the target
 
     @pytest.mark.skipif(
         sys.platform == "win32", reason="POSIX SIGTERM->SIGKILL escalation"
