@@ -2,8 +2,15 @@
 
 from __future__ import annotations
 import os
+import signal
 import subprocess
+import sys
 from pathlib import Path
+from typing import Callable
+
+# POSIX: grace period after SIGTERM before escalating to SIGKILL when killing a
+# runaway simulation subprocess (see terminate_process).
+_KILL_GRACE_SECONDS = 2.0
 
 # Venv layout differs by platform: Windows puts console scripts in Scripts\*.exe,
 # POSIX puts them in bin/ with no suffix.
@@ -20,18 +27,92 @@ def _tail_lines(path: Path, n: int) -> str:
         return "(log unreadable)"
 
 
-def _run_logged(cmd: list[str], proc_log: Path | None, **kwargs) -> None:
+def _spawn(cmd: list[str], new_session: bool = False, **kwargs) -> subprocess.Popen:
+    """Launch a subprocess. `new_session=True` (POSIX only) puts it in its own
+    process group so terminate_process can group-kill it without signalling the
+    parent (e.g. the Streamlit server). Windows kills the PID tree by id instead,
+    so it needs no session change."""
+    if new_session and os.name != "nt":
+        kwargs["start_new_session"] = True
+    return subprocess.Popen(cmd, **kwargs)
+
+
+def _run_logged(
+    cmd: list[str],
+    proc_log: Path | None,
+    on_spawn: Callable[[subprocess.Popen], None] | None = None,
+    **kwargs,
+) -> None:
     """Run a subprocess, optionally capturing stdout+stderr to proc_log.
-    Raises CalledProcessError with the last 20 log lines on failure."""
+    Raises CalledProcessError with the last 20 log lines on failure.
+
+    `on_spawn`, when given, is called with the live Popen right after launch so
+    the executor can register it for cancellation; such a process is spawned in
+    its own session (POSIX) so terminate_process can group-kill it. When
+    `on_spawn` is None (e.g. discover()) this is a behaviour-preserving Popen+wait
+    equivalent of the former subprocess.run — no session change, no callback."""
+    new_session = on_spawn is not None
     if proc_log is None:
-        subprocess.run(cmd, check=True, **kwargs)
+        with _spawn(cmd, new_session=new_session, **kwargs) as proc:
+            if on_spawn is not None:
+                on_spawn(proc)
+            returncode = proc.wait()
+        if returncode != 0:
+            raise subprocess.CalledProcessError(returncode, cmd)
         return
     with open(proc_log, "w", encoding="utf-8", errors="replace") as lf:
-        result = subprocess.run(cmd, check=False, stdout=lf, stderr=lf, **kwargs)
-    if result.returncode != 0:
+        with _spawn(
+            cmd, new_session=new_session, stdout=lf, stderr=lf, **kwargs
+        ) as proc:
+            if on_spawn is not None:
+                on_spawn(proc)
+            returncode = proc.wait()
+    if returncode != 0:
         raise subprocess.CalledProcessError(
-            result.returncode, cmd, output=_tail_lines(proc_log, 20)
+            returncode, cmd, output=_tail_lines(proc_log, 20)
         )
+
+
+def terminate_process(proc: subprocess.Popen) -> None:
+    """Kill a running subprocess and any children, cross-platform. A no-op if the
+    process already exited — safe to call in the finish/kill race."""
+    if proc.poll() is not None:
+        return
+    try:
+        if sys.platform == "win32":
+            # taskkill /T walks the PID tree — the prosimos.exe console-script
+            # launcher spawns a child python.exe that a bare kill would orphan.
+            # The timeout bounds a hung taskkill.
+            try:
+                result = subprocess.run(
+                    ["taskkill", "/F", "/T", "/PID", str(proc.pid)],
+                    stdout=subprocess.DEVNULL,
+                    stderr=subprocess.DEVNULL,
+                    check=False,
+                    timeout=_KILL_GRACE_SECONDS,
+                )
+            except subprocess.TimeoutExpired:
+                result = None
+            # taskkill hung (None) or reported failure (non-zero exit); if the
+            # target is still alive, force the tracked launcher directly so
+            # proc.wait() (and the pool join) can't block on it.
+            if (result is None or result.returncode != 0) and proc.poll() is None:
+                proc.kill()
+        else:
+            pgid = os.getpgid(proc.pid)
+            if pgid == os.getpgid(0):
+                # Defense-in-depth: a registered proc is always spawned in its
+                # own session (on_spawn <-> start_new_session), so its group is
+                # never ours. If that invariant is ever broken, refuse rather
+                # than killpg the parent's (Streamlit server's) own group.
+                return
+            os.killpg(pgid, signal.SIGTERM)
+            try:
+                proc.wait(timeout=_KILL_GRACE_SECONDS)
+            except subprocess.TimeoutExpired:
+                os.killpg(pgid, signal.SIGKILL)
+    except (ProcessLookupError, PermissionError, OSError):
+        pass
 
 
 def xes_to_simod_csv(xes_path: Path, csv_path: Path) -> Path:
@@ -181,6 +262,7 @@ def simulate(
     stat_out: Path | None = None,
     starting_at: str = "2025-01-01T00:00:00+00:00",
     proc_log: Path | None = None,
+    on_spawn: Callable[[subprocess.Popen], None] | None = None,
 ) -> Path:
     """Run one Prosimos replication; returns the event-log CSV path."""
     out_log.parent.mkdir(parents=True, exist_ok=True)
@@ -200,5 +282,5 @@ def simulate(
     ]
     if stat_out is not None:
         cmd += ["--stat_out_path", str(stat_out.resolve())]
-    _run_logged(cmd, proc_log)
+    _run_logged(cmd, proc_log, on_spawn=on_spawn)
     return out_log

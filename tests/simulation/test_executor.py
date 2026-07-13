@@ -2,6 +2,10 @@
 
 from __future__ import annotations
 
+import subprocess
+import threading
+import time
+
 import pytest
 
 from core.simulation import executor, runner
@@ -285,3 +289,108 @@ class TestRunAllDocumentedBehaviours:
         )
         assert len(errored) == 1
         assert errored[0].metadata is sentinel
+
+
+class TestLiveProcesses:
+    """The registry that lets a cancel kill in-flight subprocesses. Deterministic,
+    no threads — the primary fence for the register/kill/race logic."""
+
+    def test_register_then_kill_all_kills_each(self, monkeypatch):
+        killed: list = []
+        monkeypatch.setattr(runner, "terminate_process", lambda p: killed.append(p))
+        live = executor._LiveProcesses()
+        procs = [object(), object(), object()]
+        for p in procs:
+            live.register(p)
+        live.kill_all()
+        assert set(killed) == set(procs)
+        assert live._procs == set()  # cleared after kill
+
+    def test_register_after_kill_all_kills_immediately(self, monkeypatch):
+        # Spawn-after-cancel race: a proc registered once killing has begun is
+        # killed on the spot and NOT stored, so it can't re-block the pool join.
+        killed: list = []
+        monkeypatch.setattr(runner, "terminate_process", lambda p: killed.append(p))
+        live = executor._LiveProcesses()
+        live.kill_all()  # nothing registered yet, but flips _killing
+        late = object()
+        live.register(late)
+        assert killed == [late]
+        assert late not in live._procs
+
+
+class _BlockingSim:
+    """A runner.simulate stand-in that registers a fake proc then blocks until a
+    stubbed terminate_process 'kills' it — models an in-flight Prosimos worker that
+    only unblocks when cancelled."""
+
+    def __init__(self) -> None:
+        self.released: dict = {}
+        self.killed: list = []
+
+    def simulate(self, *a, on_spawn=None, **kw):
+        proc = object()
+        ev = threading.Event()
+        self.released[proc] = ev  # before register, so terminate() always finds it
+        if on_spawn is not None:
+            on_spawn(proc)
+        ev.wait(timeout=5)  # released only by terminate(); 5s is a hang backstop
+        raise subprocess.CalledProcessError(1, "killed")
+
+    def terminate(self, proc) -> None:
+        self.killed.append(proc)
+        self.released[proc].set()
+
+
+class TestPromptCancel:
+    """The cancel path with real threads: the timeout poll sees a cancel even when
+    no task completes, kills the running procs, and doesn't retry/error them."""
+
+    def test_cancel_returns_false_while_all_workers_busy(self, monkeypatch, tmp_path):
+        # No task ever completes on its own; only the timeout poll can see the
+        # cancel. Without it run_all would block ~5s on the sim's ev.wait.
+        sim = _BlockingSim()
+        monkeypatch.setattr(runner, "simulate", sim.simulate)
+        monkeypatch.setattr(runner, "terminate_process", sim.terminate)
+        start = time.monotonic()
+        completed = executor.run_all(
+            _tasks(tmp_path, 4),
+            lambda t: None,
+            stop_check=lambda: True,
+            max_workers=2,
+        )
+        elapsed = time.monotonic() - start
+        assert completed is False
+        assert elapsed < 3.0  # ~0.5s poll + instant kill, not the 5s block
+
+    def test_cancel_kills_running_procs(self, monkeypatch, tmp_path):
+        # 4 workers, 4 slots → all run and register; cancel kills every one.
+        sim = _BlockingSim()
+        monkeypatch.setattr(runner, "simulate", sim.simulate)
+        monkeypatch.setattr(runner, "terminate_process", sim.terminate)
+        executor.run_all(
+            _tasks(tmp_path, 4),
+            lambda t: None,
+            stop_check=lambda: True,
+            max_workers=4,
+        )
+        assert len(sim.killed) == 4
+
+    def test_killed_tasks_not_retried_or_errored(self, monkeypatch, tmp_path):
+        # Killed subprocesses raise CalledProcessError, but on cancel we return
+        # before processing any future — so no retry and no on_error fires.
+        sim = _BlockingSim()
+        monkeypatch.setattr(runner, "simulate", sim.simulate)
+        monkeypatch.setattr(runner, "terminate_process", sim.terminate)
+        on_complete: list = []
+        on_error: list = []
+        completed = executor.run_all(
+            _tasks(tmp_path, 4, max_retries=2),
+            lambda t: on_complete.append(t),
+            on_error=lambda t, e: on_error.append(t),
+            stop_check=lambda: True,
+            max_workers=2,
+        )
+        assert completed is False
+        assert on_complete == []
+        assert on_error == []
