@@ -230,7 +230,7 @@ class TestResourceSelectorConfig:
         assert config.frozen == []
         assert config.fallback_pool_size is None
 
-    def test_single_resource_auto_selectable(self):
+    def test_single_unshared_resource_selectable(self):
         data = _selector_json("task_1", [{"id": "r1", "name": "Alice"}])
         config = resource_selector_config(data, "task_1")
         assert len(config.selectable) == 1
