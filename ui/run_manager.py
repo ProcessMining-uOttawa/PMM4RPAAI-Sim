@@ -80,6 +80,15 @@ def cancel_experiment(ss: Any) -> None:
         ev.set()
 
 
+def is_cancelling(ss: Any) -> bool:
+    """True while a cancellation is in flight: the stop_event has been set but the
+    run has not yet been torn down (clear_run nulls the event). Drives the
+    execution panel's "Cancelling…" feedback between the click and the terminal
+    cancelled outcome."""
+    ev = ss.get("stop_event")
+    return ev is not None and ev.is_set()
+
+
 def clear_results(ss: Any) -> None:
     """Reset all run-level session state keys.
 
