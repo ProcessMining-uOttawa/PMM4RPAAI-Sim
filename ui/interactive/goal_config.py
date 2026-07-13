@@ -1,4 +1,4 @@
-"""Interactive goal configuration for Panel 2.
+"""Interactive goal configuration for Panel 3.
 
 Part of ui/interactive/, so this module renders st.* widgets directly. It owns
 the goal-count radio, the per-slot metric pickers, the editable absolute
@@ -35,7 +35,13 @@ import streamlit as st
 
 from core.goals import GOAL_IMPROVEMENT_PCT, Goal
 from core.metrics import Metric, MetricRegistry
-from ui.interactive.factor_levels import ROW_LAYOUT
+
+# Goal-row column ratio: label | target | baseline | worst. Owned here, not
+# imported from factor_levels: the goals grid stands in its own panel (3 · Goals)
+# now, so it need not align with the factor grid — the previous shared-ROW_LAYOUT
+# coupling only existed to keep the two grids column-aligned when stacked in one
+# panel.
+ROW_LAYOUT = [3, 1, 1, 1]
 
 
 @dataclass
@@ -267,8 +273,8 @@ def configure_goals(per_case_baseline: dict[str, float] | None) -> GoalConfig:
     per_case_baseline is the resolved per-case baseline (real or demo
     constants), or None in real mode before the first run / when every
     baseline replication failed — then only the metric pickers render and no
-    goals are scorable. The "###### Goals" section header is rendered by
-    app.py, like every sibling component's header.
+    goals are scorable. Panel 3's "3 · Goals" header is rendered by app.py, like
+    every sibling component's header.
     """
     if per_case_baseline is None:
         st.caption(

@@ -17,8 +17,7 @@ from core.simulation.prosimos.query import task_mean_duration_s
 from core.transformations import Transformation
 from ui.param_inputs import number_input_kwargs
 
-# Label column + three value cells. goal_config imports this so the two grids
-# stacked in the same panel stay column-aligned.
+# Label column + three value cells (label | low | mid | high).
 ROW_LAYOUT = [3, 1, 1, 1]
 
 
