@@ -36,6 +36,7 @@ from ui.run_manager import (
     clear_run,
     commit_result,
     current_run,
+    is_cancelling,
     start_experiment,
 )
 
@@ -56,10 +57,11 @@ def _render_run_progress(ss: Any, n_reps: int) -> None:
     if run_state is None:  # defensive — the panel only calls this while a run exists
         return
     progress = run_state.done / run_state.total if run_state.total > 0 else 0.0
-    st.progress(
-        progress,
-        text=f"Scenario {run_state.label} · rep {run_state.rep + 1}/{n_reps}",
-    )
+    if is_cancelling(ss):
+        text = "Cancelling — stopping running simulations…"
+    else:
+        text = f"Scenario {run_state.label} · rep {run_state.rep + 1}/{n_reps}"
+    st.progress(progress, text=text)
     if run_state.outcome is None:
         return  # still running; the run_every timer re-polls (no sleep, no app rerun)
     if run_state.outcome.cancelled:
@@ -112,8 +114,14 @@ def render_execution_panel(
 
         run_state = current_run(ss)
         if run_state is not None:
-            if right.button("✕ Cancel", use_container_width=True):
+            if is_cancelling(ss):
+                # Disabled + instant: rendered on the rerun the Cancel click triggers
+                # below (not the fragment's 0.5s poll), so feedback is immediate and a
+                # second click can't re-fire while the subprocess kill is in flight.
+                right.button("⏳ Cancelling…", use_container_width=True, disabled=True)
+            elif right.button("✕ Cancel", use_container_width=True):
                 cancel_experiment(ss)
+                st.rerun()  # swap to the disabled "Cancelling…" button immediately
             _render_run_progress(ss, n_reps)
         else:
             if right.button(
