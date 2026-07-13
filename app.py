@@ -240,7 +240,7 @@ if not ss.activities:
 # one exists; demo constants in demo mode (demo runs commit baseline_agg=None);
 # None in real mode before the first run or when every baseline replication
 # failed. baseline_agg survives run start (log-scoped — see clear_results), so
-# Panel 2's threshold rows stay stable while a re-run is in flight.
+# Panel 3's threshold rows stay stable while a re-run is in flight.
 if ss.baseline_agg is not None:
     per_case_baseline: dict[str, float] | None = baseline_per_case(ss.baseline_agg)
 elif demo_mode:
@@ -299,9 +299,18 @@ with col1:
         transformation = next(iter(REGISTRY.values()))
         st.caption(f"Substitution pattern: {transformation.label}")
 
+    # Goals sit below Activity in the left column (not stacked with the factor
+    # grid) to even out the two columns' heights: the tall factor grid fills the
+    # right column, Activity + Goals the left. Panel-numbered by workflow order
+    # (design → score), so 3 · Goals reads after 2 · Factor levels despite being
+    # to its left.
+    with st.container(border=True):
+        st.markdown("##### 3 · Goals")
+        goal_config = configure_goals(per_case_baseline)
+
 with col2:
     with st.container(border=True):
-        st.markdown("##### 2 · Factor levels & goals")
+        st.markdown("##### 2 · Factor levels")
         parameters = configure_factor_levels(
             transformation,
             target,
@@ -310,8 +319,6 @@ with col2:
             selected_pool_size,
             frozen_pool_size,
         )
-        st.markdown("###### Goals")
-        goal_config = configure_goals(per_case_baseline)
 
 # --- Design + execution panel ------------------------------------------------
 array_name, scenarios = build_scenarios(parameters, transformation.id, target)
@@ -328,7 +335,7 @@ render_execution_panel(
     selected_resource_id,
     bot_cost_per_hour,
     max_workers,
-    title="3 · Execution",
+    title="4 · Execution",
 )
 
 # --- Results panel -----------------------------------------------------------
@@ -336,7 +343,7 @@ if ss.results is not None:
     agg = analysis.aggregate(ss.results)
 
     with st.container(border=True):
-        st.markdown("##### 4 · Ranked scenarios")
+        st.markdown("##### 5 · Ranked scenarios")
         if demo_mode:
             st.info(
                 "**Demo mode — illustrative results.** These metrics are synthetic "
@@ -445,13 +452,13 @@ if ss.results is not None:
             disabled=not (bpmn_file and json_paths),
         )
 
-    # Panel 5 is real-mode only — demo produces no baseline, so it is hidden when
+    # Panel 6 is real-mode only — demo produces no baseline, so it is hidden when
     # baseline_agg is None in demo; in real mode it shows the comparison, or a
     # warning if every baseline replication failed.
     baseline_agg = ss.get("baseline_agg")
     if baseline_agg is not None or not demo_mode:
         with st.container(border=True):
-            st.markdown("##### 5 · Baseline comparison")
+            st.markdown("##### 6 · Baseline comparison")
             if baseline_agg is not None:
                 st.caption(
                     "Total metrics averaged across replications. Δ values are relative to "
