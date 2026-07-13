@@ -50,12 +50,10 @@ class TestRunLogged:
 
 
 class TestTerminateProcess:
-    # The POSIX self-group guard (`if pgid == os.getpgid(0): return`) is
-    # deliberately NOT tested: a direct test would spawn a non-session child
-    # (which shares pytest's own process group) and assert the guard refuses to
-    # kill it — but if the guard ever regressed, that test would killpg the test
-    # runner. It is defense-in-depth for an invariant (on_spawn <-> new_session)
-    # enforced in _run_logged, so it stays covered by construction, not by a test.
+    # The POSIX self-group guard is tested via MOCKED os.getpgid
+    # (test_self_group_guard_refuses_killpg) rather than a real non-session child:
+    # a real test would spawn a child sharing pytest's own process group and, if
+    # the guard regressed, killpg the test runner. Mocking keeps it safe.
 
     def test_noop_on_finished_process(self):
         proc = runner._spawn([sys.executable, "-c", "pass"])
@@ -69,20 +67,50 @@ class TestTerminateProcess:
         proc = runner._spawn(
             [sys.executable, "-c", "import time; time.sleep(30)"], new_session=True
         )
-        runner.terminate_process(proc)
-        proc.wait(timeout=5)  # raises TimeoutExpired if the kill failed to land
-        assert proc.returncode is not None
+        try:
+            assert proc.poll() is None  # actually running before we kill it
+            runner.terminate_process(proc)
+            proc.wait(timeout=5)  # raises TimeoutExpired if the kill failed to land
+            assert proc.returncode is not None
+        finally:
+            if proc.poll() is None:  # a failed kill must not leak the subprocess
+                proc.kill()
+                proc.wait(timeout=5)
 
     def test_survives_taskkill_timeout(self, monkeypatch):
-        # A hung taskkill (subprocess.run timing out) must not propagate out of
-        # terminate_process, or kill_all's join would block indefinitely. Forces
-        # the Windows branch cross-platform by faking sys.platform + subprocess.run.
+        # A hung taskkill (subprocess.run timing out) must not block: terminate_process
+        # falls back to killing the tracked launcher directly, so the target exits and
+        # proc.wait() unblocks. Forces the Windows branch cross-platform by faking
+        # sys.platform + subprocess.run against a real, still-running process.
         monkeypatch.setattr(runner.sys, "platform", "win32")
 
         def _timeout(*a, **k):
             raise subprocess.TimeoutExpired("taskkill", runner._KILL_GRACE_SECONDS)
 
         monkeypatch.setattr(runner.subprocess, "run", _timeout)
+        proc = runner._spawn([sys.executable, "-c", "import time; time.sleep(30)"])
+        try:
+            runner.terminate_process(proc)  # taskkill "hangs" → fallback proc.kill()
+            proc.wait(timeout=5)
+            assert proc.returncode is not None  # the target actually exited
+        finally:
+            if proc.poll() is None:
+                proc.kill()
+                proc.wait(timeout=5)
+
+    def test_self_group_guard_refuses_killpg(self, monkeypatch):
+        # POSIX self-group guard: if a proc resolves to the runner's OWN process
+        # group (the invariant-violation case), terminate_process must NOT killpg —
+        # that would signal the Streamlit server / this test process. Fully mocked,
+        # so no real signal is ever sent (getpgid returns one value for both).
+        monkeypatch.setattr(runner.sys, "platform", "linux")
+        monkeypatch.setattr(runner.os, "getpgid", lambda pid: 4242, raising=False)
+        monkeypatch.setattr(
+            runner.os,
+            "killpg",
+            lambda *a: pytest.fail("killpg called despite the self-group guard"),
+            raising=False,
+        )
 
         class _Running:
             pid = 999999
@@ -90,4 +118,4 @@ class TestTerminateProcess:
             def poll(self):
                 return None
 
-        runner.terminate_process(_Running())  # must return without raising
+        runner.terminate_process(_Running())  # guard returns before any killpg

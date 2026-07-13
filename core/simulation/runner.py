@@ -82,14 +82,20 @@ def terminate_process(proc: subprocess.Popen) -> None:
         if sys.platform == "win32":
             # taskkill /T walks the PID tree — the prosimos.exe console-script
             # launcher spawns a child python.exe that a bare kill would orphan.
-            # timeout bounds a hung taskkill so it can't block kill_all's join.
-            subprocess.run(
-                ["taskkill", "/F", "/T", "/PID", str(proc.pid)],
-                stdout=subprocess.DEVNULL,
-                stderr=subprocess.DEVNULL,
-                check=False,
-                timeout=_KILL_GRACE_SECONDS,
-            )
+            # timeout bounds a hung taskkill; if it hangs with the process still
+            # alive, fall back to killing the tracked launcher directly so
+            # proc.wait() (and the pool join) can't block on it.
+            try:
+                subprocess.run(
+                    ["taskkill", "/F", "/T", "/PID", str(proc.pid)],
+                    stdout=subprocess.DEVNULL,
+                    stderr=subprocess.DEVNULL,
+                    check=False,
+                    timeout=_KILL_GRACE_SECONDS,
+                )
+            except subprocess.TimeoutExpired:
+                if proc.poll() is None:
+                    proc.kill()
         else:
             pgid = os.getpgid(proc.pid)
             if pgid == os.getpgid(0):
@@ -103,7 +109,7 @@ def terminate_process(proc: subprocess.Popen) -> None:
                 proc.wait(timeout=_KILL_GRACE_SECONDS)
             except subprocess.TimeoutExpired:
                 os.killpg(pgid, signal.SIGKILL)
-    except (ProcessLookupError, PermissionError, OSError, subprocess.TimeoutExpired):
+    except (ProcessLookupError, PermissionError, OSError):
         pass
 
 
