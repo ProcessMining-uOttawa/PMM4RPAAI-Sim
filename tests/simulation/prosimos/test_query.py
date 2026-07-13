@@ -230,13 +230,34 @@ class TestResourceSelectorConfig:
         assert config.frozen == []
         assert config.fallback_pool_size is None
 
-    def test_single_resource_auto_selectable(self):
+    def test_single_unshared_resource_selectable(self):
         data = _selector_json("task_1", [{"id": "r1", "name": "Alice"}])
         config = resource_selector_config(data, "task_1")
         assert len(config.selectable) == 1
         assert config.selectable[0]["id"] == "r1"
         assert config.frozen == []
         assert config.fallback_pool_size is None
+
+    def test_single_shared_resource_frozen(self):
+        """A task's only resource, shared with another task, is frozen + pinned —
+        not selectable. Regression for the len<=1 early return that skipped the
+        shared check (20b)."""
+        data = {
+            "resource_profiles": [
+                {
+                    "id": "profile_1",
+                    "resource_list": [{"id": "r1", "name": "Alice", "amount": 4}],
+                }
+            ],
+            "task_resource_distribution": [
+                {"task_id": "task_1", "resources": [{"resource_id": "r1"}]},
+                {"task_id": "task_2", "resources": [{"resource_id": "r1"}]},
+            ],
+        }
+        config = resource_selector_config(data, "task_1")
+        assert config.selectable == []
+        assert [r["id"] for r in config.frozen] == ["r1"]
+        assert config.fallback_pool_size == 4
 
     def test_multiple_resources_none_shared(self):
         data = _selector_json(

@@ -112,7 +112,10 @@ def resource_selector_config(
     live in app.py.
     """
     resources = task_resources(prosimos_json, task_id)
-    if len(resources) <= 1:
+    if not resources:
+        # Empty task only. A single resource intentionally falls through to the
+        # partition below, which selects it if unshared and freezes it if shared
+        # — a lone shared resource must not be pickable (it drives another task).
         return ResourceSelectorConfig(
             selectable=resources, frozen=[], fallback_pool_size=None
         )
