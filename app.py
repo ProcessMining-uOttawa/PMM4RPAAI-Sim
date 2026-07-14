@@ -341,9 +341,13 @@ render_execution_panel(
 # --- Results panel -----------------------------------------------------------
 if ss.results is not None:
     agg = analysis.aggregate(ss.results)
+    # Read here (before st.tabs) to decide whether the Baseline tab exists: real
+    # mode always shows it (comparison table, or a warning if all baseline reps
+    # failed); demo has no baseline, so the tab is omitted.
+    baseline_agg = ss.get("baseline_agg")
 
     with st.container(border=True):
-        st.markdown("##### 5 · Ranked scenarios")
+        st.markdown("##### 5 · Results")
         if demo_mode:
             st.info(
                 "**Demo mode — illustrative results.** These metrics are synthetic "
@@ -375,12 +379,46 @@ if ss.results is not None:
                 "rankings. Scenario KPIs, main effects, and exports below remain valid.",
                 icon="🚫",
             )
-        ranked = render_ranked_scenarios(
-            agg, goal_config.metrics, goal_config.scorable_goals, parameters
-        )
-        st.markdown("###### Main effects")
-        render_main_effects(ss.results, parameters)
+        # Baseline is real-mode only (demo produces no baseline); in real mode it
+        # is always shown — as a comparison table, or a warning if every baseline
+        # replication failed. One boolean drives both the tab and its body.
+        show_baseline = baseline_agg is not None or not demo_mode
+        tab_labels = ["Ranking", "Main effects"]
+        if show_baseline:
+            tab_labels.append("Baseline")
+        result_tabs = st.tabs(tab_labels)
 
+        with result_tabs[0]:
+            ranked = render_ranked_scenarios(
+                agg, goal_config.metrics, goal_config.scorable_goals, parameters
+            )
+        with result_tabs[1]:
+            render_main_effects(ss.results, parameters)
+        if show_baseline:
+            with result_tabs[-1]:
+                if baseline_agg is not None:
+                    st.caption(
+                        "Total metrics averaged across replications. Δ values are relative to "
+                        "the 0%-automation baseline — the pattern with every case on the human "
+                        "path, at Simod-discovered durations and staffing. Bot failures are "
+                        "structurally zero in the baseline (no case reaches the bot), so its "
+                        "Δ is the scenario's own count."
+                    )
+                    st.dataframe(
+                        analysis.compare_to_baseline(agg, baseline_agg),
+                        use_container_width=True,
+                        hide_index=True,
+                    )
+                else:
+                    st.warning(
+                        "All baseline replications failed — baseline comparison is unavailable. "
+                        "Check the run logs for details.",
+                        icon="⚠️",
+                    )
+
+        # Export row — below the tabs (still inside the results panel) because the
+        # Statistics CSV needs `ranked` from the Ranking tab body above. Acts on
+        # the whole result set, so it stays visible regardless of the active tab.
         _raw_bpmn_path = ss.get("experiment_bpmn_path")
         bpmn_file: Path | None = (
             Path(_raw_bpmn_path)
@@ -451,30 +489,3 @@ if ss.results is not None:
             use_container_width=True,
             disabled=not (bpmn_file and json_paths),
         )
-
-    # Panel 6 is real-mode only — demo produces no baseline, so it is hidden when
-    # baseline_agg is None in demo; in real mode it shows the comparison, or a
-    # warning if every baseline replication failed.
-    baseline_agg = ss.get("baseline_agg")
-    if baseline_agg is not None or not demo_mode:
-        with st.container(border=True):
-            st.markdown("##### 6 · Baseline comparison")
-            if baseline_agg is not None:
-                st.caption(
-                    "Total metrics averaged across replications. Δ values are relative to "
-                    "the 0%-automation baseline — the pattern with every case on the human "
-                    "path, at Simod-discovered durations and staffing. Bot failures are "
-                    "structurally zero in the baseline (no case reaches the bot), so its "
-                    "Δ is the scenario's own count."
-                )
-                st.dataframe(
-                    analysis.compare_to_baseline(agg, baseline_agg),
-                    use_container_width=True,
-                    hide_index=True,
-                )
-            else:
-                st.warning(
-                    "All baseline replications failed — baseline comparison is unavailable. "
-                    "Check the run logs for details.",
-                    icon="⚠️",
-                )
