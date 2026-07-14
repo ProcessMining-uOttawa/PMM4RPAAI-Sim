@@ -36,6 +36,7 @@ Severity tiers:
 from __future__ import annotations
 
 import argparse
+import math
 import xml.etree.ElementTree as ET
 from dataclasses import dataclass
 from enum import Enum
@@ -500,15 +501,19 @@ def _check_di(root: ET.Element, graph: _Graph) -> list[Violation]:
 def verify_fragment(bpmn_path: Path | str, target_activity: str) -> VerificationResult:
     """Verify the XORSplitAutomation fragment for `target_activity` in a BPMN.
 
-    Collects ALL violations in one pass (a maintainer wants every problem, not
-    just the first). See the module docstring for the ERROR/WARNING tiering.
+    Runs all four checks in one pass, so a maintainer sees every dangling ref,
+    list-drift, and diagram issue at once. The fragment-topology walk is the one
+    exception: it anchors on the target and stops at the first fatal structural
+    break (it cannot meaningfully continue past a broken anchor), reporting that
+    break plus any non-fatal naming issue found before it. See the module
+    docstring for the ERROR/WARNING tiering.
     """
     try:
         root = ET.parse(str(bpmn_path)).getroot()
-    except ET.ParseError as exc:
+    except (ET.ParseError, OSError) as exc:
         return VerificationResult(
             target_activity,
-            (Violation("PARSE_ERROR", Severity.ERROR, f"Could not parse BPMN: {exc}"),),
+            (Violation("PARSE_ERROR", Severity.ERROR, f"Could not read BPMN: {exc}"),),
         )
     process = root.find(f".//{{{_BPMN_NS}}}process")
     if process is None:
@@ -583,11 +588,16 @@ def _configured_probability(
             for prob in entry.get("probabilities", []):
                 if prob.get("path_id") == path_flow:
                     try:
-                        return float(prob.get("value"))
+                        value = float(prob.get("value"))
                     except (TypeError, ValueError):
                         # A null/garbage value is itself a JSON<->BPMN mismatch;
                         # surface it as "missing" so the caller raises cleanly.
                         return None
+                    # A non-finite or out-of-[0,1] probability is malformed too;
+                    # treat it as missing so it never reaches the SE/tolerance math.
+                    if not math.isfinite(value) or not 0.0 <= value <= 1.0:
+                        return None
+                    return value
     return None
 
 
@@ -760,12 +770,18 @@ def _cli(argv: list[str] | None = None) -> int:
     if args.behavioral:
         if args.params is None:
             parser.error("--behavioral requires --params")
-        behavioral = behavioral_report(
-            args.bpmn_path, args.params, args.target, args.cases, args.tolerance
-        )
-        _print_behavioral(behavioral)
-        if not behavioral.ok:
-            exit_code = 1
+        if not result.ok:
+            print("\nSkipping behavioral check: the structural check must pass first.")
+        else:
+            try:
+                behavioral = behavioral_report(
+                    args.bpmn_path, args.params, args.target, args.cases, args.tolerance
+                )
+            except ValueError as exc:
+                parser.error(str(exc))
+            _print_behavioral(behavioral)
+            if not behavioral.ok:
+                exit_code = 1
 
     return exit_code
 

@@ -110,6 +110,12 @@ class TestOracleTrust:
         assert not result.ok
         assert "TARGET_NOT_FOUND" in _error_codes(result)
 
+    def test_missing_file_reports_parse_error(self, tmp_path):
+        # A nonexistent path must return a clean PARSE_ERROR, not a traceback.
+        result = verify_fragment(tmp_path / "does_not_exist.bpmn", TARGET)
+        assert not result.ok
+        assert "PARSE_ERROR" in _error_codes(result)
+
     def test_dangling_target_ref(self, tmp_path):
         tree = ET.parse(str(GOLDEN))
         _flow(_process(tree.getroot()), "task_1_auto_bot_success").set(
@@ -246,6 +252,12 @@ class TestConfiguredProbability:
         # A matching path with a null value is a JSON<->BPMN mismatch, surfaced
         # as "missing" (None) so behavioral_report raises cleanly, not TypeError.
         params = _probs("gw1", "flow_a", None)
+        assert _configured_probability(params, "gw1", "flow_a") is None
+
+    def test_out_of_range_value_returns_none(self):
+        # A probability outside [0, 1] (or non-finite) is malformed -> missing,
+        # so it never reaches the SE/tolerance math in behavioral_report.
+        params = _probs("gw1", "flow_a", 1.5)
         assert _configured_probability(params, "gw1", "flow_a") is None
 
 
