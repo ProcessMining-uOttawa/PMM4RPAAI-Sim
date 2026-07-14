@@ -1,4 +1,4 @@
-"""Interactive execution panel (Panel 3) — run/cancel controls and progress polling.
+"""Interactive execution panel (Panel 4) — run/cancel controls and progress polling.
 
 Part of ui/interactive/, so this module renders st.* widgets directly. Progress
 polling lives in the module-level _render_run_progress fragment, driven by a

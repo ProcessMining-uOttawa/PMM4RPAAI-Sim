@@ -1,4 +1,4 @@
-"""Interactive main-effects charts for Panel 4.
+"""Interactive main-effects charts for the Main effects tab (Panel 5 · Results).
 
 Part of ui/interactive/, so this module renders st.* widgets directly. It shows one
 tab per rankable metric, each with a faceted main-effects chart. Consumes the pure

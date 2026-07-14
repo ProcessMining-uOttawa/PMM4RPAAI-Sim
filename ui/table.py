@@ -1,4 +1,4 @@
-"""Ranked-scenario table preparation for Panel 4."""
+"""Ranked-scenario table preparation for the Ranking tab (Panel 5)."""
 
 from __future__ import annotations
 

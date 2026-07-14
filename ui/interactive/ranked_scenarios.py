@@ -1,9 +1,9 @@
-"""Interactive ranked-scenarios table for Panel 4.
+"""Interactive ranked-scenarios table for the Ranking tab (Panel 5 · Results).
 
 Part of ui/interactive/, so this module renders st.* widgets directly. It ranks
-what it is given: goals are constructed upstream (Panel 2's goal configuration)
+what it is given: goals are constructed upstream (Panel 3's goal configuration)
 and baseline availability is app.py's concern (the baseline-failed error lives
-in app.py's Panel 4 warning cluster). Consumes the pure ui/table helper — a
+in app.py's Panel 5 warning cluster). Consumes the pure ui/table helper — a
 ui/interactive -> ui/ (presentation primitives) dependency. Has no pure surface,
 so it is exercised manually like app.py rather than unit-tested.
 """
@@ -37,7 +37,7 @@ def render_ranked_scenarios(
     if not scorable_goals:
         # rank() fabricates an all-zero aggregate score when there is nothing
         # to score; presented as data it misleads — and the Statistics CSV
-        # built from this frame escapes Panel 4's error banner — so drop it.
+        # built from this frame escapes Panel 5's error banner — so drop it.
         # The display's presence filter then yields a KPI-only table.
         ranked = ranked.drop(columns=["score"])
 

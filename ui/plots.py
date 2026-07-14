@@ -1,4 +1,4 @@
-"""Plotly chart helpers for Panel 4 main-effects display."""
+"""Plotly chart helpers for the Panel 5 Main effects tab."""
 
 from __future__ import annotations
 

@@ -48,7 +48,7 @@ ROW_LAYOUT = [3, 1, 1, 1]
 class GoalConfig:
     """The user's goal configuration for ranking.
 
-    metrics: the chosen metrics, one per active slot (drives Panel 4's columns).
+    metrics: the chosen metrics, one per active slot (drives the Ranking tab's columns).
     scorable_goals: the validated Goals — empty when no baseline exists yet,
     and missing any slot whose edited thresholds cannot score coherently.
     """
