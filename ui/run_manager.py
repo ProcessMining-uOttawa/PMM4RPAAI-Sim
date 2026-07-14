@@ -94,14 +94,14 @@ def clear_results(ss: Any) -> None:
 
     The negative counterpart to commit_result(): keep this field list in sync
     with ExperimentResult and commit_result() when adding a result field. Called
-    both to blank Panel 4 at the start of a new run and, via app._clear_log(),
+    both to blank Panel 5 at the start of a new run and, via app._clear_log(),
     when the loaded log itself is reset.
 
     Deliberately asymmetric on one field: baseline_agg is written by
     commit_result() but NOT cleared here. Its validity is log-scoped, not
     run-scoped — the same discovered model means the previous run's baseline
     stays a correct reference while a re-run is in flight, and nulling it at
-    run start made Panel 2's goal-threshold rows collapse to metric pickers on
+    run start made Panel 3's goal-threshold rows collapse to metric pickers on
     any mid-run rerun. app._clear_process_state() clears it where the process
     actually changes (log reset or replacement).
     """
