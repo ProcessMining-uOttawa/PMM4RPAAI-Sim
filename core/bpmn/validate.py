@@ -29,8 +29,7 @@ Severity tiers:
     ERROR  = executability (what Prosimos routes on): no dangling refs + the
              exact expected sequenceFlow topology.
     WARNING = representation drift Prosimos ignores: <incoming>/<outgoing> child
-              lists that contradict the edges (the transform never maintains
-              these — see the §8 known-bug note), and diagram-edge consistency.
+              lists that contradict the edges, and diagram-edge consistency.
 """
 
 from __future__ import annotations
@@ -419,8 +418,9 @@ def _resolve_fragment(
 
 def _check_io_lists(graph: _Graph) -> list[Violation]:
     """WARNING: a *declared* <incoming>/<outgoing> child must not contradict the
-    edges. Missing entries are NOT flagged — the transform legitimately omits
-    them (see the §8 known-bug note); only lies are surfaced."""
+    edges. Missing entries are NOT flagged — the lists are optional in BPMN
+    (minOccurs="0") and a source model may legitimately omit them (Simod writes
+    none on tasks); only lies are surfaced."""
     violations: list[Violation] = []
     edge_by_flow = {e.flow_id: e for e in graph.edges}
     for node_id, el in graph.node_by_id.items():

@@ -54,23 +54,42 @@ def get_plane(root: ET.Element) -> ET.Element | None:
     return root.find(f".//{{{_BPMNDI}}}BPMNPlane")
 
 
+def _bounds_of(shape: ET.Element) -> dict[str, float] | None:
+    """Parse a BPMNShape's DC:Bounds into {x, y, width, height}."""
+    bounds = shape.find(f"{{{_DC}}}Bounds")
+    if bounds is None:
+        return None
+    return {key: float(bounds.get(key, 0)) for key in ("x", "y", "width", "height")}
+
+
+def get_shape_bounds(root: ET.Element, element_id: str) -> dict[str, float] | None:
+    """Return {x, y, width, height} for one element's BPMNShape.
+
+    None when the diagram, the shape, or its Bounds are absent. Reading DI lives
+    here beside diagram_extents; edit.py writes DI but reads it through this.
+    """
+    plane = get_plane(root)
+    if plane is None:
+        return None
+    for shape in plane.findall(f"{{{_BPMNDI}}}BPMNShape"):
+        if shape.get("bpmnElement") == element_id:
+            return _bounds_of(shape)
+    return None
+
+
 def diagram_extents(root: ET.Element) -> tuple[float, float, float, float]:
     """Return (x_min, y_min, x_max, y_max) over all shapes in the BPMNPlane."""
     plane = get_plane(root)
     x_lefts, y_tops, x_rights, y_bottoms = [], [], [], []
     if plane is not None:
         for shape in plane.findall(f"{{{_BPMNDI}}}BPMNShape"):
-            bounds = shape.find(f"{{{_DC}}}Bounds")
+            bounds = _bounds_of(shape)
             if bounds is None:
                 continue
-            x = float(bounds.get("x", 0))
-            y = float(bounds.get("y", 0))
-            width = float(bounds.get("width", 0))
-            height = float(bounds.get("height", 0))
-            x_lefts.append(x)
-            y_tops.append(y)
-            x_rights.append(x + width)
-            y_bottoms.append(y + height)
+            x_lefts.append(bounds["x"])
+            y_tops.append(bounds["y"])
+            x_rights.append(bounds["x"] + bounds["width"])
+            y_bottoms.append(bounds["y"] + bounds["height"])
     if not x_lefts:
         return 0.0, 0.0, 400.0, 200.0
     return min(x_lefts), min(y_tops), max(x_rights), max(y_bottoms)

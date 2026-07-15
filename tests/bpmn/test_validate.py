@@ -7,9 +7,9 @@ Layer 2 is worthless.
 
 Layer 2 (TestAppliedPatternVerified): THEN use the trusted oracle to verify the
 real apply_pattern output over a corpus (the minimal synthetic input + the real
-demo LoanApp model). Asserts on errors only — the demo corpus legitimately emits
-IO_LIST_DRIFT *warnings* (the transform never maintains <incoming>/<outgoing>
-lists; see the §8 known-bug note), which must not fail the check.
+demo LoanApp model). Both must verify FULLY clean — edit.py keeps the
+<incoming>/<outgoing> lists true to the edges it writes, so the transform leaves
+no drift to tolerate.
 
 Behavioral mode has no automated test here — it needs the Prosimos venv and is
 exercised manually via the CLI (like runner.py, excluded from the coverage floor).
@@ -209,16 +209,19 @@ class TestAppliedPatternVerified:
         src.write_text(MINIMAL_BPMN, encoding="utf-8")
         out_bpmn, _ = pattern.apply_pattern(src, "Test Task", tmp_path / "out")
         result = verify_fragment(out_bpmn, "Test Task")
-        assert result.ok, [violation.code for violation in result.errors]
-        assert result.errors == ()
+        assert result.violations == (), [
+            violation.code for violation in result.violations
+        ]
 
     def test_demo_model_transformed_ok(self, pattern, tmp_path):
         name, out_bpmn = _first_transformable(pattern, DEMO_BPMN, tmp_path)
         assert name is not None, "demo model has no 1-in/1-out task to transform"
         result = verify_fragment(out_bpmn, name)
-        # errors only — the demo corpus legitimately warns (IO_LIST_DRIFT).
-        assert result.ok, [violation.code for violation in result.errors]
-        assert result.errors == ()
+        # Fully clean on a real model: no IO_LIST_DRIFT left to tolerate. This is
+        # the regression guard for the edit.py <incoming>/<outgoing> maintenance.
+        assert result.violations == (), [
+            violation.code for violation in result.violations
+        ]
 
 
 # ── Behavioral helpers (pure, venv-free — the sim itself is exercised via CLI) ──
