@@ -358,6 +358,27 @@ Known bugs / reliability gaps:
   `COL_TOTAL_CYCLE_S` and `COL_TOTAL_COST` would remain wrong for the same reason.
   A complete fix requires computing all metrics from the event log (first principles),
   which is not currently worth the complexity given the Prosimos guarantee.
+- **`apply_pattern` silently corrupts a DI-less BPMN** (`core/bpmn/edit.py`): the three node
+  adders (`add_task_el`, `add_xor_el`, `add_flow_el`) each open with
+  `plane = get_plane(root)` / `if plane is None: return`, so on a BPMN carrying no
+  `<BPMNDiagram>` (schema-legal — the diagram is optional) they add **nothing**; but
+  `update_flow_target` does its process-level work regardless and retargets the *real*
+  flows at gateways that were never created. The output is therefore a **silently broken
+  model, not an untouched one** — measured on a minimal DI-less fixture, `apply_pattern`
+  emits 2 dangling `targetRef`s and `verify_fragment` reports **3 ERRORs**. **Low priority
+  — unreachable in production**: the BPMN is always a Simod discovery output (the user
+  uploads an event *log*, never a model) and Simod always emits a diagram, so only a
+  hand-authored DI-less model reaches this path. It does contradict the rule the same file
+  follows elsewhere — `update_flow_target` keeps its DI check *inside* `_redraw_edge`
+  precisely because process content must never be gated on the diagram (see the
+  ref-list-maintenance design bullet: the lists, and the `sequenceFlow` itself, are
+  process-level truth, not DI decoration). The fix is to apply that same shape in each
+  adder — build the element first, then `if plane is not None: add_shape(...)` — ~9 lines,
+  behaviour-identical in production. **Trap: fixing only `add_flow_el` makes it strictly
+  worse.** `apply_pattern` calls `add_task_el` → `add_xor_el` ×4 → `update_flow_target` ×2
+  → `add_flow_el` ×7, so a lone `add_flow_el` fix creates 7 flows pointing at the bot task
+  and gateways its still-bailing siblings never made, taking 2 dangling refs to ~9. All
+  three adders move together or none do.
 Design decisions:
 
 - **Per-case vs aggregate ranking** (`core/analysis.py`, `app.py`): `rank()` uses per-case metrics (`COL_MEAN_CYCLE_H_MEAN`, `COL_MEAN_COST_MEAN`, `COL_REWORK_RATE_MEAN`) rather than aggregate totals (`COL_TOTAL_CYCLE_S_MEAN`, `COL_TOTAL_COST_MEAN`). These are NOT equivalent when `num_cases` is a Taguchi factor. Example: scenario A (`num_cases=1000`, `mean_cycle_h_mean=5h`) has a much larger total cycle time than scenario B (`num_cases=100`, `mean_cycle_h_mean=6h`), so aggregate ranking would prefer B even though A is more efficient per case. Per-case ranking is scale-independent and correctly isolates the automation pattern's efficiency from the simulation scale factor. Aggregate columns ("Total Cycle Time (h)", "Total Cost ($)") are therefore excluded from Panel 5's ranked table — they are misleading for cross-scenario comparison and belong in the Baseline tab's comparison view, where each `num_cases` level is compared against its own baseline.
