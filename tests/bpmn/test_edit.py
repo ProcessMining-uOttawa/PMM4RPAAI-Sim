@@ -28,6 +28,9 @@ _DI_NS = "http://www.omg.org/spec/DD/20100524/DI"
 # x/y chosen so that waypoints are predictable:
 #   src: x=100, y=100, w=100, h=80 → right_x=200, mid_y=140
 #   tgt: x=300, y=100, w=100, h=80 → left_x=300, mid_y=140
+# new_tgt is a real node the diagram never drew — a legal retarget destination
+# (update_flow_target asserts its target is a node) whose missing shape is what
+# makes the rewired edge's waypoints fall back.
 _BPMN_XML = f"""\
 <?xml version="1.0"?>
 <bpmn:definitions
@@ -38,6 +41,7 @@ _BPMN_XML = f"""\
   <bpmn:process id="proc_1">
     <bpmn:task id="src_task" name="Source"/>
     <bpmn:task id="tgt_task" name="Target"/>
+    <bpmn:task id="new_tgt" name="New Target"/>
     <bpmn:sequenceFlow id="flow_1" sourceRef="src_task" targetRef="tgt_task"/>
   </bpmn:process>
   <bpmndi:BPMNDiagram>
@@ -69,6 +73,7 @@ _BPMN_XML_NO_DI = f"""\
   <bpmn:process id="proc_1">
     <bpmn:task id="src_task" name="Source"/>
     <bpmn:task id="tgt_task" name="Target"/>
+    <bpmn:task id="new_tgt" name="New Target"/>
     <bpmn:sequenceFlow id="flow_1" sourceRef="src_task" targetRef="tgt_task"/>
   </bpmn:process>
 </bpmn:definitions>
@@ -314,7 +319,7 @@ class TestAddXorEl:
 class TestAddFlowEl:
     def test_adds_sequence_flow_element(self):
         root, process, plane = _parse()
-        add_flow_el(root, process, plane, FlowSpec("f_new", "src_task", "tgt_task"))
+        add_flow_el(process, plane, FlowSpec("f_new", "src_task", "tgt_task"))
         flow = process.find(f"{{{_BPMN_NS}}}sequenceFlow[@id='f_new']")
         assert flow is not None
         assert flow.get("sourceRef") == "src_task"
@@ -323,20 +328,20 @@ class TestAddFlowEl:
     def test_name_attribute_set_when_provided(self):
         root, process, plane = _parse()
         add_flow_el(
-            root, process, plane, FlowSpec("f_new", "src_task", "tgt_task", "My Flow")
+            process, plane, FlowSpec("f_new", "src_task", "tgt_task", "My Flow")
         )
         flow = process.find(f"{{{_BPMN_NS}}}sequenceFlow[@id='f_new']")
         assert flow.get("name") == "My Flow"
 
     def test_name_attribute_absent_when_empty(self):
         root, process, plane = _parse()
-        add_flow_el(root, process, plane, FlowSpec("f_new", "src_task", "tgt_task"))
+        add_flow_el(process, plane, FlowSpec("f_new", "src_task", "tgt_task"))
         flow = process.find(f"{{{_BPMN_NS}}}sequenceFlow[@id='f_new']")
         assert flow.get("name") is None
 
     def test_adds_edge_to_plane(self):
         root, process, plane = _parse()
-        add_flow_el(root, process, plane, FlowSpec("f_new", "src_task", "tgt_task"))
+        add_flow_el(process, plane, FlowSpec("f_new", "src_task", "tgt_task"))
         edge = plane.find(f"{{{_BPMNDI_NS}}}BPMNEdge[@bpmnElement='f_new']")
         assert edge is not None
         assert edge.get("id") == "f_new_di"
@@ -345,7 +350,7 @@ class TestAddFlowEl:
         # src: x=100, y=100, w=100, h=80 → right_x=200, mid_y=140
         # tgt: x=300, y=100, w=100, h=80 → left_x=300, mid_y=140
         root, process, plane = _parse()
-        add_flow_el(root, process, plane, FlowSpec("f_new", "src_task", "tgt_task"))
+        add_flow_el(process, plane, FlowSpec("f_new", "src_task", "tgt_task"))
         waypoints = plane.find(
             f"{{{_BPMNDI_NS}}}BPMNEdge[@bpmnElement='f_new']"
         ).findall(f"{{{_DI_NS}}}waypoint")
@@ -357,7 +362,7 @@ class TestAddFlowEl:
         # The endpoints are real process nodes the diagram never drew, so the
         # refs resolve but there is no geometry to route between.
         root, process, plane = _parse(_BPMN_XML_UNDRAWN_NODES)
-        add_flow_el(root, process, plane, FlowSpec("f_new", "undrawn_a", "undrawn_b"))
+        add_flow_el(process, plane, FlowSpec("f_new", "undrawn_a", "undrawn_b"))
         waypoints = plane.find(
             f"{{{_BPMNDI_NS}}}BPMNEdge[@bpmnElement='f_new']"
         ).findall(f"{{{_DI_NS}}}waypoint")
@@ -367,19 +372,19 @@ class TestAddFlowEl:
     def test_raises_for_missing_source_node(self):
         root, process, plane = _parse()
         with pytest.raises(AssertionError, match="source 'ghost' not in process"):
-            add_flow_el(root, process, plane, FlowSpec("f_new", "ghost", "tgt_task"))
+            add_flow_el(process, plane, FlowSpec("f_new", "ghost", "tgt_task"))
 
     def test_raises_for_missing_target_node(self):
         root, process, plane = _parse()
         with pytest.raises(AssertionError, match="target 'ghost' not in process"):
-            add_flow_el(root, process, plane, FlowSpec("f_new", "src_task", "ghost"))
+            add_flow_el(process, plane, FlowSpec("f_new", "src_task", "ghost"))
 
     def test_no_flow_added_when_endpoint_missing(self):
         # The assert fires before the sequenceFlow is built, so a rejected call
         # leaves no half-wired element behind.
         root, process, plane = _parse()
         with pytest.raises(AssertionError):
-            add_flow_el(root, process, plane, FlowSpec("f_new", "src_task", "ghost"))
+            add_flow_el(process, plane, FlowSpec("f_new", "src_task", "ghost"))
         assert process.find(f"{{{_BPMN_NS}}}sequenceFlow[@id='f_new']") is None
 
     def test_raises_when_endpoint_is_a_sequence_flow(self):
@@ -389,7 +394,7 @@ class TestAddFlowEl:
         # <incoming> on a <sequenceFlow>, which tSequenceFlow does not permit.
         root, process, plane = _parse()
         with pytest.raises(AssertionError, match="target 'flow_1' not in process"):
-            add_flow_el(root, process, plane, FlowSpec("f_new", "src_task", "flow_1"))
+            add_flow_el(process, plane, FlowSpec("f_new", "src_task", "flow_1"))
         victim = process.find(f"{{{_BPMN_NS}}}sequenceFlow[@id='flow_1']")
         assert _refs(victim, "incoming") == []
 
@@ -399,21 +404,21 @@ class TestAddFlowEl:
 
 class TestUpdateFlowTarget:
     def test_updates_target_ref_on_flow(self):
-        root, process, _ = _parse()
-        update_flow_target(root, process, "flow_1", "new_tgt")
+        _, process, plane = _parse()
+        update_flow_target(process, plane, "flow_1", "new_tgt")
         flow = process.find(f"{{{_BPMN_NS}}}sequenceFlow[@id='flow_1']")
         assert flow.get("targetRef") == "new_tgt"
 
     def test_source_ref_is_unchanged(self):
-        root, process, _ = _parse()
-        update_flow_target(root, process, "flow_1", "new_tgt")
+        _, process, plane = _parse()
+        update_flow_target(process, plane, "flow_1", "new_tgt")
         flow = process.find(f"{{{_BPMN_NS}}}sequenceFlow[@id='flow_1']")
         assert flow.get("sourceRef") == "src_task"
 
     def test_edge_waypoints_are_replaced(self):
         # After rewiring to a target with no DI shape, waypoints fall back.
         root, process, plane = _parse()
-        update_flow_target(root, process, "flow_1", "new_tgt")
+        update_flow_target(process, plane, "flow_1", "new_tgt")
         waypoints = plane.find(
             f"{{{_BPMNDI_NS}}}BPMNEdge[@bpmnElement='flow_1']"
         ).findall(f"{{{_DI_NS}}}waypoint")
@@ -426,7 +431,7 @@ class TestUpdateFlowTarget:
         # plane lookup, so the flow is still rewired even with no DI diagram.
         root, process, plane = _parse(_BPMN_XML_NO_DI)
         assert plane is None
-        update_flow_target(root, process, "flow_1", "new_tgt")
+        update_flow_target(process, plane, "flow_1", "new_tgt")
         flow = process.find(f"{{{_BPMN_NS}}}sequenceFlow[@id='flow_1']")
         assert flow.get("targetRef") == "new_tgt"
 
@@ -436,7 +441,7 @@ class TestUpdateFlowTarget:
         # src right-edge (200,140) → new target left-edge (500,240). The existing
         # test covers the no-shape fallback; this covers the has-shape branch.
         root, process, plane = _parse(_BPMN_XML_THREE)
-        update_flow_target(root, process, "flow_1", "new_task")
+        update_flow_target(process, plane, "flow_1", "new_task")
         waypoints = plane.find(
             f"{{{_BPMNDI_NS}}}BPMNEdge[@bpmnElement='flow_1']"
         ).findall(f"{{{_DI_NS}}}waypoint")
@@ -445,9 +450,25 @@ class TestUpdateFlowTarget:
         assert waypoints[1].get("x") == "500" and waypoints[1].get("y") == "240"
 
     def test_raises_for_missing_flow(self):
-        root, process, _ = _parse()
+        _, process, plane = _parse()
         with pytest.raises(ValueError, match="nonexistent"):
-            update_flow_target(root, process, "nonexistent", "tgt_task")
+            update_flow_target(process, plane, "nonexistent", "tgt_task")
+
+    def test_raises_for_target_that_is_not_a_node(self):
+        # Retargeting onto a non-node is the same dangling ref add_flow_el
+        # asserts against, and it lands worse than a no-op: without the guard the
+        # old target's <incoming> is dropped and nothing takes its place.
+        _, process, plane = _parse()
+        with pytest.raises(AssertionError, match="target 'ghost' not in process"):
+            update_flow_target(process, plane, "flow_1", "ghost")
+
+    def test_target_ref_untouched_when_target_is_not_a_node(self):
+        _, process, plane = _parse()
+        with pytest.raises(AssertionError):
+            update_flow_target(process, plane, "flow_1", "ghost")
+        flow = process.find(f"{{{_BPMN_NS}}}sequenceFlow[@id='flow_1']")
+        assert flow.get("targetRef") == "tgt_task"
+        assert _refs(_task(process, "tgt_task"), "incoming") == []
 
 
 # ── <incoming>/<outgoing> maintenance ─────────────────────────────────────────
@@ -459,45 +480,45 @@ class TestFlowRefMaintenance:
 
     def test_add_flow_el_lists_flow_on_both_endpoints(self):
         root, process, plane = _parse()
-        add_flow_el(root, process, plane, FlowSpec("f_new", "src_task", "tgt_task"))
+        add_flow_el(process, plane, FlowSpec("f_new", "src_task", "tgt_task"))
         assert _refs(_task(process, "src_task"), "outgoing") == ["f_new"]
         assert _refs(_task(process, "tgt_task"), "incoming") == ["f_new"]
 
     def test_rewire_drops_stale_incoming_from_old_target(self):
         # The bug: the old target kept listing a flow that no longer targets it.
-        root, process, _ = _parse(_BPMN_XML_WITH_REFS)
-        update_flow_target(root, process, "flow_1", "new_task")
+        _, process, plane = _parse(_BPMN_XML_WITH_REFS)
+        update_flow_target(process, plane, "flow_1", "new_task")
         assert _refs(_task(process, "tgt_task"), "incoming") == []
 
     def test_rewire_lists_flow_on_new_target(self):
-        root, process, _ = _parse(_BPMN_XML_WITH_REFS)
-        update_flow_target(root, process, "flow_1", "new_task")
+        _, process, plane = _parse(_BPMN_XML_WITH_REFS)
+        update_flow_target(process, plane, "flow_1", "new_task")
         assert _refs(_task(process, "new_task"), "incoming") == ["flow_1"]
 
     def test_rewire_leaves_an_already_listed_source_alone(self):
-        root, process, _ = _parse(_BPMN_XML_WITH_REFS)
-        update_flow_target(root, process, "flow_1", "new_task")
+        _, process, plane = _parse(_BPMN_XML_WITH_REFS)
+        update_flow_target(process, plane, "flow_1", "new_task")
         # Source is unchanged by a retarget — listed once, not duplicated.
         assert _refs(_task(process, "src_task"), "outgoing") == ["flow_1"]
 
     def test_rewire_backfills_source_outgoing_when_absent(self):
         # Simod writes no lists on tasks; the source gains an accurate entry
         # rather than being left half-listed once the target has one.
-        root, process, _ = _parse(_BPMN_XML_THREE)
-        update_flow_target(root, process, "flow_1", "new_task")
+        _, process, plane = _parse(_BPMN_XML_THREE)
+        update_flow_target(process, plane, "flow_1", "new_task")
         assert _refs(_task(process, "src_task"), "outgoing") == ["flow_1"]
 
     def test_incoming_is_inserted_before_an_existing_outgoing(self):
         # BPMN's tFlowNode orders incoming* before outgoing*; a bare append would
         # invert that and make the model schema-invalid.
         root, process, plane = _parse(_BPMN_XML_WITH_REFS)
-        add_flow_el(root, process, plane, FlowSpec("f_in", "new_task", "src_task"))
+        add_flow_el(process, plane, FlowSpec("f_in", "new_task", "src_task"))
         assert _child_tags(_task(process, "src_task")) == ["incoming", "outgoing"]
 
     def test_relinking_the_same_flow_is_idempotent(self):
-        root, process, _ = _parse(_BPMN_XML_WITH_REFS)
-        update_flow_target(root, process, "flow_1", "new_task")
-        update_flow_target(root, process, "flow_1", "new_task")
+        _, process, plane = _parse(_BPMN_XML_WITH_REFS)
+        update_flow_target(process, plane, "flow_1", "new_task")
+        update_flow_target(process, plane, "flow_1", "new_task")
         assert _refs(_task(process, "new_task"), "incoming") == ["flow_1"]
         assert _refs(_task(process, "src_task"), "outgoing") == ["flow_1"]
 
@@ -506,6 +527,6 @@ class TestFlowRefMaintenance:
         # BPMNDiagram still gets accurate refs on rewire.
         root, process, plane = _parse(_BPMN_XML_NO_DI)
         assert plane is None
-        update_flow_target(root, process, "flow_1", "src_task")
+        update_flow_target(process, plane, "flow_1", "src_task")
         assert _refs(_task(process, "tgt_task"), "incoming") == []
         assert _refs(_task(process, "src_task"), "incoming") == ["flow_1"]

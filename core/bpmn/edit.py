@@ -13,11 +13,19 @@ child ordering BPMN imposes.
 Callers are responsible for deciding where elements are placed; coordinates
 are passed explicitly via ShapeSpec rather than computed here.
 
-The adders take an already-resolved `plane`: whether the model carries a
-diagram at all is settled once by the caller at its trust boundary (see
-XORSplitAutomation.apply_pattern), so nothing here re-checks it. Skipping the
-process work on a DI-less model — the shape these once had — silently emitted a
-broken model rather than no model, since rewiring runs regardless.
+Nothing here takes the document root: every mutator is handed an already-resolved
+`plane`, because whether the model carries a diagram at all is settled once by the
+caller at its trust boundary (see XORSplitAutomation.apply_pattern). Re-checking it
+per call is what produced the bug this shape replaced — the adders skipped their
+*process* work on a DI-less model while rewiring ran regardless, silently emitting
+a broken model rather than no model. The adders require a plane; update_flow_target
+takes `plane | None`, since only its redraw needs a diagram and its rewiring is
+process-level truth either way.
+
+Flow endpoints supplied by the caller are asserted to be real flow nodes: a
+dangling ref is the corruption class this module exists to avoid. Values read out
+of the model instead (a flow's own sourceRef) stay tolerated — malformed input is
+the boundary's to reject, not ours.
 """
 
 from __future__ import annotations
@@ -30,7 +38,7 @@ from . import (
     DC_NS as _DC,
     DI_NS as _DI,
 )
-from .query import get_plane, get_shape_bounds
+from .query import get_shape_bounds
 
 ET.register_namespace("bpmn", _BPMN)
 ET.register_namespace("bpmndi", _BPMNDI)
@@ -76,10 +84,10 @@ class FlowSpec(ElementSpec):
 
 
 def _waypoints_between(
-    root: ET.Element, src_id: str, tgt_id: str
+    plane: ET.Element, src_id: str, tgt_id: str
 ) -> list[tuple[float, float]]:
-    src_bounds = get_shape_bounds(root, src_id)
-    tgt_bounds = get_shape_bounds(root, tgt_id)
+    src_bounds = get_shape_bounds(plane, src_id)
+    tgt_bounds = get_shape_bounds(plane, tgt_id)
     if src_bounds and tgt_bounds:
         return [
             (
@@ -125,12 +133,13 @@ def _add_edge(plane: ET.Element, flow_id: str, pts: list[tuple[float, float]]) -
     _set_waypoints(edge, pts)
 
 
-def _redraw_edge(root: ET.Element, flow_id: str, src: str, tgt: str) -> None:
+def _redraw_edge(plane: ET.Element | None, flow_id: str, src: str, tgt: str) -> None:
     """Re-lay a flow's DI edge between its (possibly moved) endpoints.
 
-    A no-op when the model carries no diagram, or no edge for this flow.
+    A no-op when the model carries no diagram, or no edge for this flow. Unlike
+    the adders, this tolerates plane=None: drawing is all it does, so having no
+    diagram makes it a genuine no-op rather than a skipped side-effect.
     """
-    plane = get_plane(root)
     if plane is None:
         return
     edge = next(
@@ -143,7 +152,7 @@ def _redraw_edge(root: ET.Element, flow_id: str, src: str, tgt: str) -> None:
     )
     if edge is None:
         return
-    _set_waypoints(edge, _waypoints_between(root, src, tgt))
+    _set_waypoints(edge, _waypoints_between(plane, src, tgt))
 
 
 # ── Process lookups ───────────────────────────────────────────────────────────
@@ -268,9 +277,7 @@ def add_xor_el(process: ET.Element, plane: ET.Element, spec: ShapeSpec) -> None:
     add_shape(plane, spec, is_marker_visible=True)
 
 
-def add_flow_el(
-    root: ET.Element, process: ET.Element, plane: ET.Element, spec: FlowSpec
-) -> None:
+def add_flow_el(process: ET.Element, plane: ET.Element, spec: FlowSpec) -> None:
     """Add a sequenceFlow between two existing nodes, with refs and a DI edge.
 
     Both endpoints must already be flow nodes in the process: a flow pointing at
@@ -292,22 +299,38 @@ def add_flow_el(
     if spec.name:
         flow.set("name", spec.name)
     _link_flow_refs(process, spec.element_id, spec.src, spec.tgt)
-    _add_edge(plane, spec.element_id, _waypoints_between(root, spec.src, spec.tgt))
+    _add_edge(plane, spec.element_id, _waypoints_between(plane, spec.src, spec.tgt))
 
 
 def update_flow_target(
-    root: ET.Element, process: ET.Element, flow_id: str, new_target: str
+    process: ET.Element,
+    plane: ET.Element | None,
+    flow_id: str,
+    new_target: str,
 ) -> None:
-    """Retarget a flow: rewire the ref, fix both endpoints' lists, redraw the edge."""
+    """Retarget a flow: rewire the ref, fix both endpoints' lists, redraw the edge.
+
+    new_target must be a flow node in the process — retargeting onto something
+    that isn't leaves the same dangling ref add_flow_el asserts against, and it
+    lands worse than a no-op, since the old target's <incoming> is dropped and
+    nothing replaces it. A caller bug, so asserted. `plane` is optional here
+    because only the redraw needs a diagram; the rewiring is process-level truth.
+    """
     flow = _find_flow(process, flow_id)
     if flow is None:
         raise ValueError(f"sequenceFlow '{flow_id}' not found")
+    assert _find_node_by_id(process, new_target) is not None, (
+        f"flow {flow_id!r}: target {new_target!r} not in process"
+    )
     src = flow.get("sourceRef", "")
     old_target = flow.get("targetRef", "")
     flow.set("targetRef", new_target)
     # The old target no longer receives this flow; the new one does. The source
     # is unchanged, but _link_flow_refs also backfills its <outgoing> when the
     # model never listed it — leaving a node half-listed is its own kind of lie.
+    # src is read from the model, not supplied by the caller, so it stays
+    # tolerated (silently skipped) rather than asserted: a sourceRef pointing
+    # nowhere is malformed input, which is the boundary's to reject, not ours.
     _unlink_incoming(process, flow_id, old_target)
     _link_flow_refs(process, flow_id, src, new_target)
-    _redraw_edge(root, flow_id, src, new_target)
+    _redraw_edge(plane, flow_id, src, new_target)

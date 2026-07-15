@@ -560,12 +560,11 @@ class XORSplitAutomation(Transformation):
         # 2. Redirect boundary flows.
         # out_flow already originates from the original task, so we reuse it as
         # the human-exit arc (task → final_join_gate) rather than adding a new flow.
-        update_flow_target(root, process, in_flow_id, ids.automation_gate)
-        update_flow_target(root, process, out_flow_id, ids.final_join_gate)
+        update_flow_target(process, plane, in_flow_id, ids.automation_gate)
+        update_flow_target(process, plane, out_flow_id, ids.final_join_gate)
 
         # 3. Wire the seven internal flows
         add_flow_el(
-            root,
             process,
             plane,
             FlowSpec(
@@ -573,7 +572,6 @@ class XORSplitAutomation(Transformation):
             ),
         )
         add_flow_el(
-            root,
             process,
             plane,
             FlowSpec(
@@ -584,13 +582,11 @@ class XORSplitAutomation(Transformation):
             ),
         )
         add_flow_el(
-            root,
             process,
             plane,
             FlowSpec(ids.bot_output, ids.bot_id, ids.bot_result_gate),
         )
         add_flow_el(
-            root,
             process,
             plane,
             FlowSpec(
@@ -601,7 +597,6 @@ class XORSplitAutomation(Transformation):
             ),
         )
         add_flow_el(
-            root,
             process,
             plane,
             FlowSpec(
@@ -611,11 +606,8 @@ class XORSplitAutomation(Transformation):
                 BOT_FAILURE_LABEL,
             ),
         )
+        add_flow_el(process, plane, FlowSpec(ids.to_human, ids.fallback_merge, T_id))
         add_flow_el(
-            root, process, plane, FlowSpec(ids.to_human, ids.fallback_merge, T_id)
-        )
-        add_flow_el(
-            root,
             process,
             plane,
             FlowSpec(ids.exit_flow, ids.final_join_gate, original_next_id),
