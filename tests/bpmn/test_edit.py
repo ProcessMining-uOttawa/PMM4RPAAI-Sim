@@ -108,6 +108,48 @@ _BPMN_XML_THREE = f"""\
 """
 
 
+# Mirrors a real model (Apromore-style) whose nodes already carry their
+# <incoming>/<outgoing> lists — the case where rewiring a flow can strand a stale
+# entry on the old target. src_task also has an <outgoing> already, so inserting
+# an <incoming> there must land *before* it (BPMN's tFlowNode child order).
+_BPMN_XML_WITH_REFS = f"""\
+<?xml version="1.0"?>
+<bpmn:definitions
+    xmlns:bpmn="{_BPMN_NS}"
+    xmlns:bpmndi="{_BPMNDI_NS}"
+    xmlns:dc="{_DC_NS}"
+    xmlns:di="{_DI_NS}">
+  <bpmn:process id="proc_1">
+    <bpmn:task id="src_task" name="Source">
+      <bpmn:outgoing>flow_1</bpmn:outgoing>
+    </bpmn:task>
+    <bpmn:task id="tgt_task" name="Target">
+      <bpmn:incoming>flow_1</bpmn:incoming>
+    </bpmn:task>
+    <bpmn:task id="new_task" name="New"/>
+    <bpmn:sequenceFlow id="flow_1" sourceRef="src_task" targetRef="tgt_task"/>
+  </bpmn:process>
+  <bpmndi:BPMNDiagram>
+    <bpmndi:BPMNPlane bpmnElement="proc_1">
+      <bpmndi:BPMNShape id="src_task_di" bpmnElement="src_task">
+        <dc:Bounds x="100" y="100" width="100" height="80"/>
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="tgt_task_di" bpmnElement="tgt_task">
+        <dc:Bounds x="300" y="100" width="100" height="80"/>
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="new_task_di" bpmnElement="new_task">
+        <dc:Bounds x="500" y="200" width="100" height="80"/>
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNEdge id="flow_1_di" bpmnElement="flow_1">
+        <di:waypoint x="200" y="140"/>
+        <di:waypoint x="300" y="140"/>
+      </bpmndi:BPMNEdge>
+    </bpmndi:BPMNPlane>
+  </bpmndi:BPMNDiagram>
+</bpmn:definitions>
+"""
+
+
 def _parse(xml: str = _BPMN_XML):
     """Return a fresh (root, process, plane) tuple for each test."""
     root = ET.fromstring(xml)
@@ -115,6 +157,21 @@ def _parse(xml: str = _BPMN_XML):
     plane = root.find(f".//{{{_BPMNDI_NS}}}BPMNPlane")
     assert process is not None
     return root, process, plane
+
+
+def _task(process: ET.Element, task_id: str) -> ET.Element:
+    el = process.find(f"{{{_BPMN_NS}}}task[@id='{task_id}']")
+    assert el is not None
+    return el
+
+
+def _refs(node: ET.Element, tag: str) -> list[str | None]:
+    """Text of a node's <incoming>/<outgoing> children, in document order."""
+    return [child.text for child in node if child.tag == f"{{{_BPMN_NS}}}{tag}"]
+
+
+def _child_tags(node: ET.Element) -> list[str]:
+    return [child.tag.rsplit("}", 1)[-1] for child in node]
 
 
 # ── add_shape ─────────────────────────────────────────────────────────────────
@@ -355,3 +412,64 @@ class TestUpdateFlowTarget:
         root, process, _ = _parse()
         with pytest.raises(ValueError, match="nonexistent"):
             update_flow_target(root, process, "nonexistent", "tgt_task")
+
+
+# ── <incoming>/<outgoing> maintenance ─────────────────────────────────────────
+
+
+class TestFlowRefMaintenance:
+    """Every flow added or rewired must leave its endpoints' redundant
+    <incoming>/<outgoing> lists true to the edge."""
+
+    def test_add_flow_el_lists_flow_on_both_endpoints(self):
+        root, process, _ = _parse()
+        add_flow_el(root, process, FlowSpec("f_new", "src_task", "tgt_task"))
+        assert _refs(_task(process, "src_task"), "outgoing") == ["f_new"]
+        assert _refs(_task(process, "tgt_task"), "incoming") == ["f_new"]
+
+    def test_rewire_drops_stale_incoming_from_old_target(self):
+        # The bug: the old target kept listing a flow that no longer targets it.
+        root, process, _ = _parse(_BPMN_XML_WITH_REFS)
+        update_flow_target(root, process, "flow_1", "new_task")
+        assert _refs(_task(process, "tgt_task"), "incoming") == []
+
+    def test_rewire_lists_flow_on_new_target(self):
+        root, process, _ = _parse(_BPMN_XML_WITH_REFS)
+        update_flow_target(root, process, "flow_1", "new_task")
+        assert _refs(_task(process, "new_task"), "incoming") == ["flow_1"]
+
+    def test_rewire_leaves_an_already_listed_source_alone(self):
+        root, process, _ = _parse(_BPMN_XML_WITH_REFS)
+        update_flow_target(root, process, "flow_1", "new_task")
+        # Source is unchanged by a retarget — listed once, not duplicated.
+        assert _refs(_task(process, "src_task"), "outgoing") == ["flow_1"]
+
+    def test_rewire_backfills_source_outgoing_when_absent(self):
+        # Simod writes no lists on tasks; the source gains an accurate entry
+        # rather than being left half-listed once the target has one.
+        root, process, _ = _parse(_BPMN_XML_THREE)
+        update_flow_target(root, process, "flow_1", "new_task")
+        assert _refs(_task(process, "src_task"), "outgoing") == ["flow_1"]
+
+    def test_incoming_is_inserted_before_an_existing_outgoing(self):
+        # BPMN's tFlowNode orders incoming* before outgoing*; a bare append would
+        # invert that and make the model schema-invalid.
+        root, process, _ = _parse(_BPMN_XML_WITH_REFS)
+        add_flow_el(root, process, FlowSpec("f_in", "new_task", "src_task"))
+        assert _child_tags(_task(process, "src_task")) == ["incoming", "outgoing"]
+
+    def test_relinking_the_same_flow_is_idempotent(self):
+        root, process, _ = _parse(_BPMN_XML_WITH_REFS)
+        update_flow_target(root, process, "flow_1", "new_task")
+        update_flow_target(root, process, "flow_1", "new_task")
+        assert _refs(_task(process, "new_task"), "incoming") == ["flow_1"]
+        assert _refs(_task(process, "src_task"), "outgoing") == ["flow_1"]
+
+    def test_refs_maintained_without_a_diagram(self):
+        # The lists are process-level truth, not DI decoration — a model with no
+        # BPMNDiagram still gets accurate refs on rewire.
+        root, process, plane = _parse(_BPMN_XML_NO_DI)
+        assert plane is None
+        update_flow_target(root, process, "flow_1", "src_task")
+        assert _refs(_task(process, "tgt_task"), "incoming") == []
+        assert _refs(_task(process, "src_task"), "incoming") == ["flow_1"]
