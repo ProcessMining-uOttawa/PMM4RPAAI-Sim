@@ -382,6 +382,17 @@ class TestAddFlowEl:
             add_flow_el(root, process, plane, FlowSpec("f_new", "src_task", "ghost"))
         assert process.find(f"{{{_BPMN_NS}}}sequenceFlow[@id='f_new']") is None
 
+    def test_raises_when_endpoint_is_a_sequence_flow(self):
+        # Flows and nodes share one id namespace, and apply_pattern juggles both
+        # — so passing a flow id where a node id belongs is the realistic caller
+        # slip. Targeting a flow is still a dangling ref, and it would parent an
+        # <incoming> on a <sequenceFlow>, which tSequenceFlow does not permit.
+        root, process, plane = _parse()
+        with pytest.raises(AssertionError, match="target 'flow_1' not in process"):
+            add_flow_el(root, process, plane, FlowSpec("f_new", "src_task", "flow_1"))
+        victim = process.find(f"{{{_BPMN_NS}}}sequenceFlow[@id='flow_1']")
+        assert _refs(victim, "incoming") == []
+
 
 # ── update_flow_target ────────────────────────────────────────────────────────
 

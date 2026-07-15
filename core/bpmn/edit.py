@@ -152,7 +152,23 @@ def _redraw_edge(root: ET.Element, flow_id: str, src: str, tgt: str) -> None:
 
 
 def _find_node_by_id(process: ET.Element, node_id: str) -> ET.Element | None:
-    return next((el for el in process if el.get("id") == node_id), None)
+    """Find the flow node with this id — a task, gateway, or event, never a flow.
+
+    Sequence flows share the id namespace with nodes and are the one non-node a
+    caller here plausibly passes by mistake (apply_pattern juggles both), so they
+    are excluded: a flow whose endpoint is another flow is a dangling ref, and an
+    <incoming> parented on a <sequenceFlow> is schema-invalid. Excluded rather
+    than whitelisting flow-node tags — a whitelist would have to enumerate every
+    task/gateway/event subtype and would reject valid models on the ones it missed.
+    """
+    return next(
+        (
+            el
+            for el in process
+            if el.get("id") == node_id and el.tag != f"{{{_BPMN}}}sequenceFlow"
+        ),
+        None,
+    )
 
 
 def _find_flow(process: ET.Element, flow_id: str) -> ET.Element | None:
@@ -257,9 +273,11 @@ def add_flow_el(
 ) -> None:
     """Add a sequenceFlow between two existing nodes, with refs and a DI edge.
 
-    Both endpoints must already be in the process: a flow referencing a node
-    that isn't there is a dangling ref — the corruption class this module
-    exists to avoid — so it is a caller bug, asserted rather than tolerated.
+    Both endpoints must already be flow nodes in the process: a flow pointing at
+    something that isn't a node there — absent, or another flow — is a dangling
+    ref, the corruption class this module exists to avoid. That is a caller bug,
+    so it is asserted rather than tolerated; bad *input* is the caller's to reject
+    at its own boundary (see XORSplitAutomation.apply_pattern).
     """
     assert _find_node_by_id(process, spec.src) is not None, (
         f"flow {spec.element_id!r}: source {spec.src!r} not in process"

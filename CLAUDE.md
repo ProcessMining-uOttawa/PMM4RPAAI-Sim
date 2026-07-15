@@ -401,15 +401,30 @@ Design decisions:
   process work unconditionally, guard only the `add_shape`/`_add_edge` calls locally): it
   would keep `_xor_bypass_layout` computing coordinates from `diagram_extents` on an empty
   plane for shapes that are then never written, to produce a model the product cannot render.
-- **`add_flow_el` asserts its endpoints exist** (`core/bpmn/edit.py`): the latent twin of the
-  DI bug on the referential axis — `add_flow_el` set `sourceRef`/`targetRef`
+- **`add_flow_el` asserts its endpoints are flow nodes** (`core/bpmn/edit.py`): the latent
+  twin of the DI bug on the referential axis — `add_flow_el` set `sourceRef`/`targetRef`
   unconditionally, then called `_link_flow_refs`, which **silently skipped** a missing node,
-  yielding a dangling flow with no error. It now asserts both endpoints are in the process
-  *before* building the element (so a rejected call leaves no half-wired `sequenceFlow`),
-  making the dangling-flow class unconstructible in `edit.py`. `assert`, not `raise`: this is
-  caller misuse, not bad external input — in `apply_pattern` every node is added before any
-  flow references it (the exceptions-at-boundaries / assertions-internally split, matching
-  the existing production asserts in `orchestrator.py`/`transformations.py`).
+  yielding a dangling flow with no error. It now asserts both endpoints resolve *before*
+  building the element (so a rejected call leaves no half-wired `sequenceFlow`), making the
+  dangling-flow class unconstructible in `edit.py`. `assert`, not `raise`: this is caller
+  misuse, not bad external input — in `apply_pattern` every node is added before any flow
+  references it (the exceptions-at-boundaries / assertions-internally split, matching the
+  existing production asserts in `orchestrator.py`/`transformations.py`). That split is why
+  `apply_pattern` also rejects an outgoing flow with **no `targetRef`** itself: the pattern
+  reuses the target's exit arc, so `outgoing[0].get("targetRef", "")` would otherwise hand
+  `""` down and trip the assert — an internal caller-bug signal — on what is really
+  malformed *input*. Bad input is the boundary's to reject; the assert only ever fires on a
+  wiring mistake.
+  **`_find_node_by_id` excludes `sequenceFlow`** — the assert is only as strong as the
+  lookup, and matching *any* element by id let a flow id through, producing exactly the
+  dangling ref the assert exists to stop (plus an `<incoming>` parented on a
+  `<sequenceFlow>`, which `tSequenceFlow` does not permit). Flows and nodes share one id
+  namespace and `apply_pattern` juggles both (`in_flow_id`/`out_flow_id` sit beside the
+  gateway ids), so a flow-for-node slip is *the* realistic caller error — the one case a
+  weaker check would miss. Excluded rather than whitelisting flow-node tags: a whitelist
+  would have to enumerate every task/gateway/event subtype (`BPMN_TASK_TAGS` covers only
+  tasks) and would reject **valid** models on any subtype it missed — worse than the
+  weakness it fixes. A blacklist can only ever reject what is definitely not a flow node.
   **The assert lives in `add_flow_el`, not in `_link_flow_refs`**, even though the silent
   skip is in the latter: `_link_flow_refs` is *also* called by `update_flow_target`, which
   legitimately tolerates a target that isn't a process node, so hoisting the assert down

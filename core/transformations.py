@@ -497,18 +497,29 @@ class XORSplitAutomation(Transformation):
                 "Pattern doesn't yet handle tasks fed by gateways directly."
             )
 
+        # The pattern reuses the target's exit arc, so that arc must name where it
+        # goes. A missing targetRef is malformed input, and catching it here keeps
+        # it a boundary ValueError instead of add_flow_el's assert — a caller-bug
+        # signal — firing on an empty id once the wiring is already underway.
+        original_next_id = outgoing[0].get("targetRef", "")
+        if not original_next_id:
+            raise ValueError(
+                f"Outgoing flow {outgoing[0].get('id', '')!r} of {target_activity!r} "
+                f"has no targetRef in {bpmn_in}"
+            )
+
         # The pattern is laid out relative to the existing diagram and the BPMN
         # ships as an externally-inspected export, so a model with no diagram is
         # rejected here rather than half-applied: the adders below place shapes
-        # unconditionally, and the rewiring after them runs either way.
+        # unconditionally, and the rewiring after them runs either way. The plane
+        # is what carries the shapes, so it — not <BPMNDiagram> — is what's named.
         plane = get_plane(root)
         if plane is None:
-            raise ValueError(f"No <bpmndi:BPMNDiagram> found in {bpmn_in}")
+            raise ValueError(f"No <bpmndi:BPMNPlane> found in {bpmn_in}")
 
         ids = _make_ids(T_id, T_name)
         in_flow_id = incoming[0].get("id", "")
         out_flow_id = outgoing[0].get("id", "")
-        original_next_id = outgoing[0].get("targetRef", "")
 
         # 1. Add all new elements in free space below the existing diagram.
         lo = _xor_bypass_layout(root, ids)
