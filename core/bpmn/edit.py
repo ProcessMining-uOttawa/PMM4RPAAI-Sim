@@ -12,6 +12,12 @@ child ordering BPMN imposes.
 
 Callers are responsible for deciding where elements are placed; coordinates
 are passed explicitly via ShapeSpec rather than computed here.
+
+The adders take an already-resolved `plane`: whether the model carries a
+diagram at all is settled once by the caller at its trust boundary (see
+XORSplitAutomation.apply_pattern), so nothing here re-checks it. Skipping the
+process work on a DI-less model — the shape these once had — silently emitted a
+broken model rather than no model, since rewiring runs regardless.
 """
 
 from __future__ import annotations
@@ -231,20 +237,14 @@ def _unlink_incoming(process: ET.Element, flow_id: str, node_id: str) -> None:
 # ── Process helpers ────────────────────────────────────────────────────────────
 
 
-def add_task_el(root: ET.Element, process: ET.Element, spec: ShapeSpec) -> None:
-    plane = get_plane(root)
-    if plane is None:
-        return
+def add_task_el(process: ET.Element, plane: ET.Element, spec: ShapeSpec) -> None:
     el = ET.SubElement(process, f"{{{_BPMN}}}task")
     el.set("id", spec.element_id)
     el.set("name", spec.name)
     add_shape(plane, spec)
 
 
-def add_xor_el(root: ET.Element, process: ET.Element, spec: ShapeSpec) -> None:
-    plane = get_plane(root)
-    if plane is None:
-        return
+def add_xor_el(process: ET.Element, plane: ET.Element, spec: ShapeSpec) -> None:
     el = ET.SubElement(process, f"{{{_BPMN}}}exclusiveGateway")
     el.set("id", spec.element_id)
     if spec.name:
@@ -252,10 +252,21 @@ def add_xor_el(root: ET.Element, process: ET.Element, spec: ShapeSpec) -> None:
     add_shape(plane, spec, is_marker_visible=True)
 
 
-def add_flow_el(root: ET.Element, process: ET.Element, spec: FlowSpec) -> None:
-    plane = get_plane(root)
-    if plane is None:
-        return
+def add_flow_el(
+    root: ET.Element, process: ET.Element, plane: ET.Element, spec: FlowSpec
+) -> None:
+    """Add a sequenceFlow between two existing nodes, with refs and a DI edge.
+
+    Both endpoints must already be in the process: a flow referencing a node
+    that isn't there is a dangling ref — the corruption class this module
+    exists to avoid — so it is a caller bug, asserted rather than tolerated.
+    """
+    assert _find_node_by_id(process, spec.src) is not None, (
+        f"flow {spec.element_id!r}: source {spec.src!r} not in process"
+    )
+    assert _find_node_by_id(process, spec.tgt) is not None, (
+        f"flow {spec.element_id!r}: target {spec.tgt!r} not in process"
+    )
     flow = ET.SubElement(process, f"{{{_BPMN}}}sequenceFlow")
     flow.set("id", spec.element_id)
     flow.set("sourceRef", spec.src)

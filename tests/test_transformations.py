@@ -275,6 +275,23 @@ MULTI_OUTGOING_BPMN = """\
 """
 
 
+# Same single-in/single-out shape as MINIMAL_BPMN, but carrying no BPMNDiagram —
+# schema-legal (DI is minOccurs="0"), and the one input apply_pattern rejects
+# outright rather than transforming.
+NO_DI_BPMN = """\
+<?xml version="1.0" encoding="utf-8"?>
+<bpmn:definitions xmlns:bpmn="http://www.omg.org/spec/BPMN/20100524/MODEL" id="def_1">
+  <bpmn:process id="proc_1" isExecutable="true">
+    <bpmn:startEvent id="start_1"/>
+    <bpmn:task id="task_1" name="Test Task"/>
+    <bpmn:endEvent id="end_1"/>
+    <bpmn:sequenceFlow id="flow_in"  sourceRef="start_1" targetRef="task_1"/>
+    <bpmn:sequenceFlow id="flow_out" sourceRef="task_1"  targetRef="end_1"/>
+  </bpmn:process>
+</bpmn:definitions>
+"""
+
+
 # ── TestMultiFlowNotImplemented ───────────────────────────────────────────────
 
 
@@ -364,6 +381,26 @@ class TestApplyPattern:
     def test_missing_activity_raises(self, pattern, bpmn_file, tmp_path):
         with pytest.raises(ValueError, match="not found"):
             pattern.apply_pattern(bpmn_file, "Nonexistent Activity", tmp_path / "out")
+
+    def test_di_less_model_raises(self, pattern, tmp_path):
+        # A DI-less model is schema-legal and Prosimos-executable, but the BPMN
+        # ships as an externally-inspected export and the pattern is laid out
+        # against the existing diagram — so it is rejected, not half-applied.
+        bpmn = tmp_path / "no_di.bpmn"
+        bpmn.write_text(NO_DI_BPMN, encoding="utf-8")
+        with pytest.raises(ValueError, match="No <bpmndi:BPMNDiagram> found"):
+            pattern.apply_pattern(bpmn, "Test Task", tmp_path / "out")
+
+    def test_di_less_model_writes_no_output(self, pattern, tmp_path):
+        # The regression this guards: the adders used to bail on a missing plane
+        # while the rewiring ran anyway, emitting a model whose real flows
+        # pointed at gateways that were never created.
+        bpmn = tmp_path / "no_di.bpmn"
+        bpmn.write_text(NO_DI_BPMN, encoding="utf-8")
+        out_dir = tmp_path / "out"
+        with pytest.raises(ValueError):
+            pattern.apply_pattern(bpmn, "Test Task", out_dir)
+        assert not (out_dir / "model.bpmn").exists()
 
 
 # ── TestBuildBaseJson ─────────────────────────────────────────────────────────

@@ -35,6 +35,7 @@ from .bpmn.query import (
     flows_targeting,
     flows_from,
     diagram_extents,
+    get_plane,
 )
 from .bpmn.edit import (
     FlowSpec,
@@ -496,6 +497,14 @@ class XORSplitAutomation(Transformation):
                 "Pattern doesn't yet handle tasks fed by gateways directly."
             )
 
+        # The pattern is laid out relative to the existing diagram and the BPMN
+        # ships as an externally-inspected export, so a model with no diagram is
+        # rejected here rather than half-applied: the adders below place shapes
+        # unconditionally, and the rewiring after them runs either way.
+        plane = get_plane(root)
+        if plane is None:
+            raise ValueError(f"No <bpmndi:BPMNDiagram> found in {bpmn_in}")
+
         ids = _make_ids(T_id, T_name)
         in_flow_id = incoming[0].get("id", "")
         out_flow_id = outgoing[0].get("id", "")
@@ -504,34 +513,34 @@ class XORSplitAutomation(Transformation):
         # 1. Add all new elements in free space below the existing diagram.
         lo = _xor_bypass_layout(root, ids)
         add_task_el(
-            root,
             process,
+            plane,
             ShapeSpec(ids.bot_id, f"Auto {T_name}", *lo[ids.bot_id], TASK_W, TASK_H),
         )
         add_xor_el(
-            root,
             process,
+            plane,
             ShapeSpec(
                 ids.automation_gate, GW1_NAME, *lo[ids.automation_gate], GW_W, GW_H
             ),
         )
         add_xor_el(
-            root,
             process,
+            plane,
             ShapeSpec(
                 ids.bot_result_gate, GW2_NAME, *lo[ids.bot_result_gate], GW_W, GW_H
             ),
         )
         add_xor_el(
-            root,
             process,
+            plane,
             ShapeSpec(
                 ids.fallback_merge, GW3_NAME, *lo[ids.fallback_merge], GW_W, GW_H
             ),
         )
         add_xor_el(
-            root,
             process,
+            plane,
             ShapeSpec(
                 ids.final_join_gate, GW4_NAME, *lo[ids.final_join_gate], GW_W, GW_H
             ),
@@ -547,6 +556,7 @@ class XORSplitAutomation(Transformation):
         add_flow_el(
             root,
             process,
+            plane,
             FlowSpec(
                 ids.automation_branch, ids.automation_gate, ids.bot_id, BOT_BRANCH_LABEL
             ),
@@ -554,6 +564,7 @@ class XORSplitAutomation(Transformation):
         add_flow_el(
             root,
             process,
+            plane,
             FlowSpec(
                 ids.manual_branch,
                 ids.automation_gate,
@@ -562,11 +573,15 @@ class XORSplitAutomation(Transformation):
             ),
         )
         add_flow_el(
-            root, process, FlowSpec(ids.bot_output, ids.bot_id, ids.bot_result_gate)
+            root,
+            process,
+            plane,
+            FlowSpec(ids.bot_output, ids.bot_id, ids.bot_result_gate),
         )
         add_flow_el(
             root,
             process,
+            plane,
             FlowSpec(
                 ids.bot_success,
                 ids.bot_result_gate,
@@ -577,6 +592,7 @@ class XORSplitAutomation(Transformation):
         add_flow_el(
             root,
             process,
+            plane,
             FlowSpec(
                 ids.bot_failure,
                 ids.bot_result_gate,
@@ -584,10 +600,13 @@ class XORSplitAutomation(Transformation):
                 BOT_FAILURE_LABEL,
             ),
         )
-        add_flow_el(root, process, FlowSpec(ids.to_human, ids.fallback_merge, T_id))
+        add_flow_el(
+            root, process, plane, FlowSpec(ids.to_human, ids.fallback_merge, T_id)
+        )
         add_flow_el(
             root,
             process,
+            plane,
             FlowSpec(ids.exit_flow, ids.final_join_gate, original_next_id),
         )
 
