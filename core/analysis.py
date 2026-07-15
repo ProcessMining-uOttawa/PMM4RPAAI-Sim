@@ -46,7 +46,7 @@ _NON_FACTOR_COLS = frozenset(
 
 
 def _factor_cols(df: pd.DataFrame) -> list[str]:
-    return [c for c in df.columns if c not in _NON_FACTOR_COLS]
+    return [col for col in df.columns if col not in _NON_FACTOR_COLS]
 
 
 def aggregate(results: pd.DataFrame) -> pd.DataFrame:
@@ -85,31 +85,39 @@ def compare_to_baseline(
     num_cases_col = F_NUM_CASES if F_NUM_CASES in agg.columns else None
     rows: list[dict] = []
     for n_cases in sorted(baseline_agg):
-        b = baseline_agg[n_cases]
-        b_vals = {s.column: s.display_fn(b[s.column]) for s in specs}
+        baseline = baseline_agg[n_cases]
+        baseline_values = {
+            spec.column: spec.display_fn(baseline[spec.column]) for spec in specs
+        }
         baseline_row: dict = {
             "Scenario": f"Baseline ({n_cases} cases)",
             "Cases": n_cases,
         }
-        for s in specs:
-            baseline_row[s.display_name] = round(b_vals[s.column], s.decimal_places)
-            if s.delta_name is not None:
-                baseline_row[s.delta_name] = 0.0
-            if s.pct_change_name is not None:
-                baseline_row[s.pct_change_name] = 0.0
+        for spec in specs:
+            baseline_row[spec.display_name] = round(
+                baseline_values[spec.column], spec.decimal_places
+            )
+            if spec.delta_name is not None:
+                baseline_row[spec.delta_name] = 0.0
+            if spec.pct_change_name is not None:
+                baseline_row[spec.pct_change_name] = 0.0
         rows.append(baseline_row)
         group = agg if num_cases_col is None else agg[agg[num_cases_col] == n_cases]
         for _, row in group.iterrows():
-            s_vals = {s.column: s.display_fn(row[s.column]) for s in specs}
+            scenario_values = {
+                spec.column: spec.display_fn(row[spec.column]) for spec in specs
+            }
             scenario_row: dict = {"Scenario": row["scenario_id"], "Cases": n_cases}
-            for s in specs:
-                delta = s_vals[s.column] - b_vals[s.column]
-                scenario_row[s.display_name] = round(s_vals[s.column], s.decimal_places)
-                if s.delta_name is not None:
-                    scenario_row[s.delta_name] = round(delta, s.decimal_places)
-                if s.pct_change_name is not None:
-                    scenario_row[s.pct_change_name] = _pct_delta(
-                        delta, b_vals[s.column]
+            for spec in specs:
+                delta = scenario_values[spec.column] - baseline_values[spec.column]
+                scenario_row[spec.display_name] = round(
+                    scenario_values[spec.column], spec.decimal_places
+                )
+                if spec.delta_name is not None:
+                    scenario_row[spec.delta_name] = round(delta, spec.decimal_places)
+                if spec.pct_change_name is not None:
+                    scenario_row[spec.pct_change_name] = _pct_delta(
+                        delta, baseline_values[spec.column]
                     )
             rows.append(scenario_row)
     return pd.DataFrame(rows)
@@ -120,13 +128,13 @@ def signal_to_noise(
     direction: MetricDirection = MetricDirection.SMALLER_IS_BETTER,
     floor: float = 0.0,
 ) -> float:
-    vals = [v + floor for v in values if v is not None and v + floor > 0]
-    if not vals:
+    adjusted = [v + floor for v in values if v is not None and v + floor > 0]
+    if not adjusted:
         return float("nan")
     if direction == MetricDirection.SMALLER_IS_BETTER:
-        return -10 * math.log10(sum(v * v for v in vals) / len(vals))
+        return -10 * math.log10(sum(v * v for v in adjusted) / len(adjusted))
     if direction == MetricDirection.LARGER_IS_BETTER:
-        return -10 * math.log10(sum(1 / (v * v) for v in vals) / len(vals))
+        return -10 * math.log10(sum(1 / (v * v) for v in adjusted) / len(adjusted))
     raise ValueError(direction)
 
 
@@ -136,19 +144,19 @@ def main_effects(results: pd.DataFrame, metric: Metric) -> pd.DataFrame:
         raise ValueError(
             f"main_effects() requires a metric with per_case data; got {metric}"
         )
-    pc = metric.per_case
-    col = pc.results_column
-    direction = pc.mean.direction
+    per_case = metric.per_case
+    col = per_case.results_column
+    direction = per_case.mean.direction
     floor = metric.sn_floor
     rows = []
-    for f in _factor_cols(results):
-        for level, sub in results.groupby(f):
+    for factor in _factor_cols(results):
+        for level, level_rows in results.groupby(factor):
             rows.append(
                 {
-                    "factor": f,
+                    "factor": factor,
                     "level": level,
-                    "mean": sub[col].mean(),
-                    "sn": signal_to_noise(sub[col].tolist(), direction, floor),
+                    "mean": level_rows[col].mean(),
+                    "sn": signal_to_noise(level_rows[col].tolist(), direction, floor),
                 }
             )
     return pd.DataFrame(rows)
@@ -162,7 +170,9 @@ def sn_ranking(effects: pd.DataFrame) -> pd.DataFrame:
     ranking. Factors whose delta is NaN (all-NaN S/N) rank last. Rows are
     sorted by rank; within a factor the level order from main_effects() is kept.
     """
-    factor_deltas = effects.groupby("factor")["sn"].agg(lambda s: s.max() - s.min())
+    factor_deltas = effects.groupby("factor")["sn"].agg(
+        lambda sn_values: sn_values.max() - sn_values.min()
+    )
     factor_ranks = factor_deltas.rank(
         method="dense", ascending=False, na_option="bottom"
     )
@@ -221,8 +231,8 @@ def rank(agg: pd.DataFrame, goals: list[Goal]) -> pd.DataFrame:
             # the PRIMARY metric so prepare_ranked_display picks it up unchanged.
             secondary = goal.secondary
             goal_scores = out.apply(
-                lambda row, g=goal, s=secondary: g.weighted_score(
-                    row[g.metric], row[s.metric]
+                lambda row, goal=goal, secondary=secondary: goal.weighted_score(
+                    row[goal.metric], row[secondary.metric]
                 ),
                 axis=1,
             )
