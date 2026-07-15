@@ -275,6 +275,71 @@ MULTI_OUTGOING_BPMN = """\
 """
 
 
+# Same single-in/single-out shape as MINIMAL_BPMN, but carrying no BPMNDiagram —
+# schema-legal (DI is minOccurs="0"), and the one input apply_pattern rejects
+# outright rather than transforming.
+NO_DI_BPMN = """\
+<?xml version="1.0" encoding="utf-8"?>
+<bpmn:definitions xmlns:bpmn="http://www.omg.org/spec/BPMN/20100524/MODEL" id="def_1">
+  <bpmn:process id="proc_1" isExecutable="true">
+    <bpmn:startEvent id="start_1"/>
+    <bpmn:task id="task_1" name="Test Task"/>
+    <bpmn:endEvent id="end_1"/>
+    <bpmn:sequenceFlow id="flow_in"  sourceRef="start_1" targetRef="task_1"/>
+    <bpmn:sequenceFlow id="flow_out" sourceRef="task_1"  targetRef="end_1"/>
+  </bpmn:process>
+</bpmn:definitions>
+"""
+
+
+# Carries a <BPMNDiagram> but no <BPMNPlane> inside it. The plane is what holds
+# the shapes, so this is rejected too — but the message must name the plane, not
+# claim the diagram is missing from a model that has one.
+DIAGRAM_WITHOUT_PLANE_BPMN = """\
+<?xml version="1.0" encoding="utf-8"?>
+<bpmn:definitions
+    xmlns:bpmn="http://www.omg.org/spec/BPMN/20100524/MODEL"
+    xmlns:bpmndi="http://www.omg.org/spec/BPMN/20100524/DI"
+    id="def_1">
+  <bpmn:process id="proc_1" isExecutable="true">
+    <bpmn:startEvent id="start_1"/>
+    <bpmn:task id="task_1" name="Test Task"/>
+    <bpmn:endEvent id="end_1"/>
+    <bpmn:sequenceFlow id="flow_in"  sourceRef="start_1" targetRef="task_1"/>
+    <bpmn:sequenceFlow id="flow_out" sourceRef="task_1"  targetRef="end_1"/>
+  </bpmn:process>
+  <bpmndi:BPMNDiagram id="diagram_1"/>
+</bpmn:definitions>
+"""
+
+
+# The target's outgoing flow names no targetRef, so the pattern has nowhere to
+# re-attach the exit arc. Malformed input (targetRef is required on
+# tSequenceFlow) — rejected at the boundary rather than wired into a dangling ref.
+NO_TARGET_REF_BPMN = """\
+<?xml version="1.0" encoding="utf-8"?>
+<bpmn:definitions
+    xmlns:bpmn="http://www.omg.org/spec/BPMN/20100524/MODEL"
+    xmlns:bpmndi="http://www.omg.org/spec/BPMN/20100524/DI"
+    xmlns:dc="http://www.omg.org/spec/DD/20100524/DC"
+    id="def_1">
+  <bpmn:process id="proc_1" isExecutable="true">
+    <bpmn:startEvent id="start_1"/>
+    <bpmn:task id="task_1" name="Test Task"/>
+    <bpmn:sequenceFlow id="flow_in"  sourceRef="start_1" targetRef="task_1"/>
+    <bpmn:sequenceFlow id="flow_out" sourceRef="task_1"/>
+  </bpmn:process>
+  <bpmndi:BPMNDiagram id="diagram_1">
+    <bpmndi:BPMNPlane id="plane_1" bpmnElement="proc_1">
+      <bpmndi:BPMNShape id="task_1_di" bpmnElement="task_1">
+        <dc:Bounds x="100" y="100" width="100" height="80"/>
+      </bpmndi:BPMNShape>
+    </bpmndi:BPMNPlane>
+  </bpmndi:BPMNDiagram>
+</bpmn:definitions>
+"""
+
+
 # ── TestMultiFlowNotImplemented ───────────────────────────────────────────────
 
 
@@ -364,6 +429,44 @@ class TestApplyPattern:
     def test_missing_activity_raises(self, pattern, bpmn_file, tmp_path):
         with pytest.raises(ValueError, match="not found"):
             pattern.apply_pattern(bpmn_file, "Nonexistent Activity", tmp_path / "out")
+
+    def test_di_less_model_raises(self, pattern, tmp_path):
+        # A DI-less model is schema-legal and Prosimos-executable, but the BPMN
+        # ships as an externally-inspected export and the pattern is laid out
+        # against the existing diagram — so it is rejected, not half-applied.
+        bpmn = tmp_path / "no_di.bpmn"
+        bpmn.write_text(NO_DI_BPMN, encoding="utf-8")
+        with pytest.raises(ValueError, match="No <bpmndi:BPMNPlane> found"):
+            pattern.apply_pattern(bpmn, "Test Task", tmp_path / "out")
+
+    def test_diagram_without_a_plane_names_the_plane(self, pattern, tmp_path):
+        # The guard resolves the plane, so it must not claim the *diagram* is
+        # missing from a model that plainly has one — the error would send the
+        # reader looking for an element sitting right there in their file.
+        bpmn = tmp_path / "no_plane.bpmn"
+        bpmn.write_text(DIAGRAM_WITHOUT_PLANE_BPMN, encoding="utf-8")
+        with pytest.raises(ValueError, match="No <bpmndi:BPMNPlane> found"):
+            pattern.apply_pattern(bpmn, "Test Task", tmp_path / "out")
+
+    def test_outgoing_flow_without_target_ref_raises(self, pattern, tmp_path):
+        # Malformed input, not caller error: it must surface as a boundary
+        # ValueError, not as add_flow_el's assert tripping on an empty id once
+        # the wiring is underway.
+        bpmn = tmp_path / "no_target_ref.bpmn"
+        bpmn.write_text(NO_TARGET_REF_BPMN, encoding="utf-8")
+        with pytest.raises(ValueError, match="has no targetRef"):
+            pattern.apply_pattern(bpmn, "Test Task", tmp_path / "out")
+
+    def test_di_less_model_writes_no_output(self, pattern, tmp_path):
+        # The regression this guards: the adders used to bail on a missing plane
+        # while the rewiring ran anyway, emitting a model whose real flows
+        # pointed at gateways that were never created.
+        bpmn = tmp_path / "no_di.bpmn"
+        bpmn.write_text(NO_DI_BPMN, encoding="utf-8")
+        out_dir = tmp_path / "out"
+        with pytest.raises(ValueError):
+            pattern.apply_pattern(bpmn, "Test Task", out_dir)
+        assert not (out_dir / "model.bpmn").exists()
 
 
 # ── TestBuildBaseJson ─────────────────────────────────────────────────────────

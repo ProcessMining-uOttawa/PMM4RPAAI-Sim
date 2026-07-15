@@ -35,6 +35,7 @@ from .bpmn.query import (
     flows_targeting,
     flows_from,
     diagram_extents,
+    get_plane,
 )
 from .bpmn.edit import (
     FlowSpec,
@@ -496,42 +497,61 @@ class XORSplitAutomation(Transformation):
                 "Pattern doesn't yet handle tasks fed by gateways directly."
             )
 
+        # The pattern reuses the target's exit arc, so that arc must name where it
+        # goes. A missing targetRef is malformed input, and catching it here keeps
+        # it a boundary ValueError instead of add_flow_el's assert — a caller-bug
+        # signal — firing on an empty id once the wiring is already underway.
+        original_next_id = outgoing[0].get("targetRef", "")
+        if not original_next_id:
+            raise ValueError(
+                f"Outgoing flow {outgoing[0].get('id', '')!r} of {target_activity!r} "
+                f"has no targetRef in {bpmn_in}"
+            )
+
+        # The pattern is laid out relative to the existing diagram and the BPMN
+        # ships as an externally-inspected export, so a model with no diagram is
+        # rejected here rather than half-applied: the adders below place shapes
+        # unconditionally, and the rewiring after them runs either way. The plane
+        # is what carries the shapes, so it — not <BPMNDiagram> — is what's named.
+        plane = get_plane(root)
+        if plane is None:
+            raise ValueError(f"No <bpmndi:BPMNPlane> found in {bpmn_in}")
+
         ids = _make_ids(T_id, T_name)
         in_flow_id = incoming[0].get("id", "")
         out_flow_id = outgoing[0].get("id", "")
-        original_next_id = outgoing[0].get("targetRef", "")
 
         # 1. Add all new elements in free space below the existing diagram.
         lo = _xor_bypass_layout(root, ids)
         add_task_el(
-            root,
             process,
+            plane,
             ShapeSpec(ids.bot_id, f"Auto {T_name}", *lo[ids.bot_id], TASK_W, TASK_H),
         )
         add_xor_el(
-            root,
             process,
+            plane,
             ShapeSpec(
                 ids.automation_gate, GW1_NAME, *lo[ids.automation_gate], GW_W, GW_H
             ),
         )
         add_xor_el(
-            root,
             process,
+            plane,
             ShapeSpec(
                 ids.bot_result_gate, GW2_NAME, *lo[ids.bot_result_gate], GW_W, GW_H
             ),
         )
         add_xor_el(
-            root,
             process,
+            plane,
             ShapeSpec(
                 ids.fallback_merge, GW3_NAME, *lo[ids.fallback_merge], GW_W, GW_H
             ),
         )
         add_xor_el(
-            root,
             process,
+            plane,
             ShapeSpec(
                 ids.final_join_gate, GW4_NAME, *lo[ids.final_join_gate], GW_W, GW_H
             ),
@@ -540,20 +560,20 @@ class XORSplitAutomation(Transformation):
         # 2. Redirect boundary flows.
         # out_flow already originates from the original task, so we reuse it as
         # the human-exit arc (task → final_join_gate) rather than adding a new flow.
-        update_flow_target(root, process, in_flow_id, ids.automation_gate)
-        update_flow_target(root, process, out_flow_id, ids.final_join_gate)
+        update_flow_target(process, plane, in_flow_id, ids.automation_gate)
+        update_flow_target(process, plane, out_flow_id, ids.final_join_gate)
 
         # 3. Wire the seven internal flows
         add_flow_el(
-            root,
             process,
+            plane,
             FlowSpec(
                 ids.automation_branch, ids.automation_gate, ids.bot_id, BOT_BRANCH_LABEL
             ),
         )
         add_flow_el(
-            root,
             process,
+            plane,
             FlowSpec(
                 ids.manual_branch,
                 ids.automation_gate,
@@ -562,11 +582,13 @@ class XORSplitAutomation(Transformation):
             ),
         )
         add_flow_el(
-            root, process, FlowSpec(ids.bot_output, ids.bot_id, ids.bot_result_gate)
+            process,
+            plane,
+            FlowSpec(ids.bot_output, ids.bot_id, ids.bot_result_gate),
         )
         add_flow_el(
-            root,
             process,
+            plane,
             FlowSpec(
                 ids.bot_success,
                 ids.bot_result_gate,
@@ -575,8 +597,8 @@ class XORSplitAutomation(Transformation):
             ),
         )
         add_flow_el(
-            root,
             process,
+            plane,
             FlowSpec(
                 ids.bot_failure,
                 ids.bot_result_gate,
@@ -584,10 +606,10 @@ class XORSplitAutomation(Transformation):
                 BOT_FAILURE_LABEL,
             ),
         )
-        add_flow_el(root, process, FlowSpec(ids.to_human, ids.fallback_merge, T_id))
+        add_flow_el(process, plane, FlowSpec(ids.to_human, ids.fallback_merge, T_id))
         add_flow_el(
-            root,
             process,
+            plane,
             FlowSpec(ids.exit_flow, ids.final_join_gate, original_next_id),
         )
 

@@ -62,15 +62,15 @@ def _bounds_of(shape: ET.Element) -> dict[str, float] | None:
     return {key: float(bounds.get(key, 0)) for key in ("x", "y", "width", "height")}
 
 
-def get_shape_bounds(root: ET.Element, element_id: str) -> dict[str, float] | None:
-    """Return {x, y, width, height} for one element's BPMNShape.
+def get_shape_bounds(plane: ET.Element, element_id: str) -> dict[str, float] | None:
+    """Return {x, y, width, height} for one element's BPMNShape in this plane.
 
-    None when the diagram, the shape, or its Bounds are absent. Reading DI lives
-    here beside diagram_extents; edit.py writes DI but reads it through this.
+    None when the shape, or its Bounds, are absent — a node the diagram never
+    drew. Takes the plane, not the root: whether the model has a diagram at all
+    is its caller's question, settled once at a boundary (see
+    XORSplitAutomation.apply_pattern), so this never re-resolves it. Reading DI
+    lives here beside diagram_extents; edit.py writes DI but reads it through this.
     """
-    plane = get_plane(root)
-    if plane is None:
-        return None
     for shape in plane.findall(f"{{{_BPMNDI}}}BPMNShape"):
         if shape.get("bpmnElement") == element_id:
             return _bounds_of(shape)
