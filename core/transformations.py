@@ -510,8 +510,8 @@ class XORSplitAutomation(Transformation):
 
         # The pattern is laid out relative to the existing diagram and the BPMN
         # ships as an externally-inspected export, so a model with no diagram is
-        # rejected here rather than half-applied: the adders below place shapes
-        # unconditionally, and the rewiring after them runs either way.
+        # rejected up front. This is the one plane check in the pipeline: the
+        # adders require a resolved plane, and update_flow_target never checks.
         plane = get_plane(root)
         if plane is None:
             raise ValueError(f"No <bpmndi:BPMNPlane> found in {bpmn_in}")

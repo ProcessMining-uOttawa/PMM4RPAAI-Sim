@@ -263,7 +263,7 @@ class TestCompareToBaseline:
         assert s02["Δ Cost (%)"] == pytest.approx(-20.0)
         # S01 has a NON-zero cycle-time delta, so it pins the seconds→hours
         # display_fn on the delta itself: 7200/3600 − 3600/3600 = 2.0 − 1.0 = 1.0 h.
-        # A raw-seconds-delta regression gives 3600.0.
+        # A raw-seconds delta would give 3600.0.
         s01 = df[df["Scenario"] == "S01"].iloc[0]
         assert s01["Δ Time (h)"] == pytest.approx(1.0)
         assert s01["Δ Time (%)"] == pytest.approx(100.0)
