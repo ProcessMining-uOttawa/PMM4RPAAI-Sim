@@ -501,7 +501,7 @@ def _check_di(root: ET.Element, graph: _Graph) -> list[Violation]:
 def verify_fragment(bpmn_path: Path | str, target_activity: str) -> VerificationResult:
     """Verify the XORSplitAutomation fragment for `target_activity` in a BPMN.
 
-    Runs all four checks in one pass, so a maintainer sees every dangling ref,
+    Runs every check in one pass, so a maintainer sees every dangling ref,
     list-drift, and diagram issue at once. The fragment-topology walk is the one
     exception: it anchors on the target and stops at the first fatal structural
     break (it cannot meaningfully continue past a broken anchor), reporting that

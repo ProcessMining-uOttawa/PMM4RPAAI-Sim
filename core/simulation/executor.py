@@ -94,7 +94,7 @@ def run_all(
     When stop_check is set, the wait loop polls it every _STOP_POLL_SECONDS and, on
     cancel, kills the in-flight Prosimos subprocesses so the pool join unblocks
     promptly instead of waiting out the longest running replication. With stop_check
-    None the loop blocks on FIRST_COMPLETED as before. max_workers defaults to
+    None the loop blocks on FIRST_COMPLETED. max_workers defaults to
     os.cpu_count() when None.
     """
     workers = max_workers if max_workers is not None else os.cpu_count()

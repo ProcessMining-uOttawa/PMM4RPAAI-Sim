@@ -6,8 +6,8 @@ fragment polls the DiscoverySession on a `run_every` timer: those auto-reruns ar
 fragment-scoped (only this panel re-renders — no full-page flicker, and no
 app-scoped st.rerun() storm to swallow the Cancel click). On success it commits
 the result and does one `st.rerun(scope="app")`; on Cancel it marks the session
-and reruns; a FAILED session is detected here too and handed to app.py's settled
-banner via one app rerun. Consumes ui/discovery_manager (a ui/interactive -> ui/
+and reruns; a failed outcome likewise reruns so app.py's FAILED banner renders.
+Consumes ui/discovery_manager (a ui/interactive -> ui/
 dependency). No pure surface, so it is exercised manually like app.py.
 """
 
@@ -46,8 +46,8 @@ def render_discovery_progress(ss: Any) -> None:
     if outcome is None:
         st.info("⏳ Running Simod discovery (~2 min for 100k events)…")
         if st.button("Cancel discovery"):
-            # The Simod subprocess keeps running (same limitation as a
-            # simulation cancel), but we stop waiting; app.py shows the
+            # The Simod subprocess keeps running (discovery has no kill path,
+            # unlike a simulation cancel), but we stop waiting; app.py shows the
             # cancelled banner and won't auto-re-discover this upload.
             cancel_discovery(ss)
             st.rerun(scope="app")

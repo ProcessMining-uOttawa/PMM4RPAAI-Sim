@@ -50,7 +50,7 @@ def _factor_cols(df: pd.DataFrame) -> list[str]:
 
 
 def aggregate(results: pd.DataFrame) -> pd.DataFrame:
-    """results: scenario_id, replication, + all eight metric cols (+ factor cols)."""
+    """results: scenario_id, replication, + the metric cols (+ factor cols)."""
     factor_cols = _factor_cols(results)
     agg_spec: dict = {
         COL_MEAN_CYCLE_H_MEAN: (COL_MEAN_CYCLE_H, "mean"),

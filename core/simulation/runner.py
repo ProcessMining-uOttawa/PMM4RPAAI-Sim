@@ -49,8 +49,7 @@ def _run_logged(
     `on_spawn`, when given, is called with the live Popen right after launch so
     the executor can register it for cancellation; such a process is spawned in
     its own session (POSIX) so terminate_process can group-kill it. When
-    `on_spawn` is None (e.g. discover()) this is a behaviour-preserving Popen+wait
-    equivalent of the former subprocess.run — no session change, no callback."""
+    `on_spawn` is None (e.g. discover()): no session change, no callback."""
     new_session = on_spawn is not None
     if proc_log is None:
         with _spawn(cmd, new_session=new_session, **kwargs) as proc:

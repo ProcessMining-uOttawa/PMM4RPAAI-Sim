@@ -36,7 +36,7 @@ class ExperimentCancelledError(RuntimeError):
 
 
 class SimulationError(RuntimeError):
-    """Raised when all simulation replications fail with no results to return."""
+    """Raised when every scenario replication fails with no results to return."""
 
 
 @dataclass(frozen=True)
@@ -94,7 +94,10 @@ def run_experiment(
     max_workers: int = 1,
     max_retries: int = 2,
 ) -> ExperimentResult:
-    """Run all scenario replications and return aggregated results.
+    """Run all scenario and baseline replications.
+
+    Scenario replications land as per-replication rows in `results`; baseline
+    replications are aggregated into `baseline_agg` (mean totals per n_cases).
 
     on_progress(done, total, scenario_id, rep) is called after each replication
     if provided — lets the caller update a progress bar without a Streamlit import here.

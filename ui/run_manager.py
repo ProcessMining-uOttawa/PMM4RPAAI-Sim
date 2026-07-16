@@ -74,7 +74,12 @@ def current_run(ss: Any) -> RunState | None:
 
 
 def cancel_experiment(ss: Any) -> None:
-    """Signal the running experiment to stop after its next completed task."""
+    """Signal the running experiment to stop.
+
+    Sets the stop event the executor's stop_check polls; a real-pipeline cancel
+    kills in-flight simulation subprocesses (see executor.run_all), so it takes
+    effect promptly rather than waiting out running replications.
+    """
     ev = ss.get("stop_event")
     if ev is not None:
         ev.set()
@@ -94,8 +99,8 @@ def clear_results(ss: Any) -> None:
 
     The negative counterpart to commit_result(): keep this field list in sync
     with ExperimentResult and commit_result() when adding a result field. Called
-    both to blank Panel 5 at the start of a new run and, via app._clear_log(),
-    when the loaded log itself is reset.
+    both to blank Panel 5 at the start of a new run and, via
+    app._clear_process_state(), when the loaded log is reset or replaced.
 
     Deliberately asymmetric on one field: baseline_agg is written by
     commit_result() but NOT cleared here. Its validity is log-scoped, not

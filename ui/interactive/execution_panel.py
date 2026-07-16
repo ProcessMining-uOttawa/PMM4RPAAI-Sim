@@ -93,7 +93,7 @@ def render_execution_panel(
 ) -> None:
     """Render the execution panel: run summary, run/cancel controls, and progress polling.
 
-    title is the caller-supplied section heading (e.g. "3 · Execution") — this
+    title is the caller-supplied section heading (e.g. "4 · Execution") — this
     component has no opinion on its position in the page layout, only on how the
     heading row is laid out alongside the run/cancel button.
     """

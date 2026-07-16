@@ -12,7 +12,8 @@ demo LoanApp model). Both must verify FULLY clean — edit.py keeps the
 no drift to tolerate.
 
 Behavioral mode has no automated test here — it needs the Prosimos venv and is
-exercised manually via the CLI (like runner.py, excluded from the coverage floor).
+exercised manually via the CLI (like runner.py's Simod/Prosimos invocation
+paths, excluded from the coverage floor).
 """
 
 from __future__ import annotations
@@ -164,7 +165,7 @@ class TestOracleTrust:
 
     def test_io_list_contradiction_is_warning_not_error(self, tmp_path):
         # A declared <incoming> that lies about its edge is drift, not a miswire:
-        # a WARNING that leaves the model passing (locks the R1 severity tiering).
+        # a WARNING that leaves the model passing (locks the ERROR/WARNING tiering).
         tree = ET.parse(str(GOLDEN))
         incoming = ET.SubElement(
             _node(_process(tree.getroot()), "end_1"), f"{{{_NS}}}incoming"

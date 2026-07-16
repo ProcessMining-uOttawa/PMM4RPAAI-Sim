@@ -34,7 +34,7 @@ def find_task_by_name(tree: ET.ElementTree[ET.Element], name: str) -> ET.Element
 
 
 def list_activities(bpmn_path) -> list[str]:
-    """Pull task names out of a BPMN file without loading pm4py."""
+    """Pull task names out of a BPMN file (stdlib XML only)."""
     tree = ET.parse(str(bpmn_path))
     names = []
     for tag in BPMN_TASK_TAGS:

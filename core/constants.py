@@ -11,7 +11,8 @@ COL_MEAN_COST = "mean_cost"  # mean cost per case, for one replication
 # total_cycle_s = mean_cycle_h × n × 3600 identity (mean carries that)
 COL_MEDIAN_CYCLE_H = "median_cycle_h"
 
-# mean of per-case metrics across replications (used in aggregate() and Panel 4)
+# mean of per-case metrics across replications (aggregate() output; feeds the
+# ranked results table)
 COL_MEAN_CYCLE_H_MEAN = "mean_cycle_h_mean"
 COL_MEAN_COST_MEAN = "mean_cost_mean"
 COL_MEDIAN_CYCLE_H_MEAN = "median_cycle_h_mean"
@@ -20,7 +21,8 @@ COL_MEDIAN_CYCLE_H_MEAN = "median_cycle_h_mean"
 COL_TOTAL_CYCLE_S = "total_cycle_s"
 COL_TOTAL_COST = "total_cost"
 
-# mean of run totals across replications (used in aggregate() and Panel 5)
+# mean of run totals across replications (aggregate() output; feeds the
+# Baseline tab)
 COL_TOTAL_CYCLE_S_MEAN = "total_cycle_s_mean"
 COL_TOTAL_COST_MEAN = "total_cost_mean"
 

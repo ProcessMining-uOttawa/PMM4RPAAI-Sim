@@ -458,9 +458,8 @@ class TestApplyPattern:
             pattern.apply_pattern(bpmn, "Test Task", tmp_path / "out")
 
     def test_di_less_model_writes_no_output(self, pattern, tmp_path):
-        # The regression this guards: the adders used to bail on a missing plane
-        # while the rewiring ran anyway, emitting a model whose real flows
-        # pointed at gateways that were never created.
+        # A rejected DI-less transform must write no output — a partial apply
+        # would leave real flows pointing at gateways that were never created.
         bpmn = tmp_path / "no_di.bpmn"
         bpmn.write_text(NO_DI_BPMN, encoding="utf-8")
         out_dir = tmp_path / "out"
