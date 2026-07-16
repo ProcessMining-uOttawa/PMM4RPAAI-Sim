@@ -29,7 +29,6 @@ from core.constants import (
     F_T_MANUAL,
     F_NUM_BOTS,
     F_NUM_MANUAL_RESOURCES,
-    F_NUM_CASES,
 )
 
 
@@ -554,7 +553,6 @@ _SCENARIO = AutomationParams(
     manual_execution_time=1800.0,
     num_bots=2,
     num_manual_resources=3,
-    num_cases=100,
     selected_resource_id="res_human_1",
 )
 
@@ -637,7 +635,6 @@ class TestApplyParams:
             manual_execution_time=1800.0,
             num_bots=1,
             num_manual_resources=3,
-            num_cases=100,
             selected_resource_id=None,
         )
         json_out = tmp_path / "scenario_none" / "params.json"
@@ -658,7 +655,6 @@ class TestAutomationParamsValidation:
         manual_execution_time=1800.0,
         num_bots=1,
         num_manual_resources=1,
-        num_cases=100,
     )
 
     def _make(self, **overrides):
@@ -691,14 +687,6 @@ class TestAutomationParamsValidation:
         with pytest.raises(ValueError, match="num_manual_resources"):
             self._make(num_manual_resources=0)
 
-    def test_num_cases_zero_raises(self):
-        with pytest.raises(ValueError, match="num_cases"):
-            self._make(num_cases=0)
-
-    def test_num_cases_negative_raises(self):
-        with pytest.raises(ValueError, match="num_cases"):
-            self._make(num_cases=-1)
-
 
 # ── TestParamsFromValues ──────────────────────────────────────────────────────
 
@@ -709,7 +697,6 @@ _VALUES = {
     F_T_MANUAL: 1800.0,
     F_NUM_BOTS: 2,
     F_NUM_MANUAL_RESOURCES: 3,
-    F_NUM_CASES: 500,
 }
 
 
@@ -734,7 +721,6 @@ class TestParamsFromValues:
         assert params.automation_rate == pytest.approx(0.50)
         assert params.bot_failure_rate == pytest.approx(0.10)
         assert params.bot_execution_time == pytest.approx(60.0)
-        assert params.num_cases == 500
 
     def test_selected_resource_id_propagated(self, pattern, bpmn_result):
         params = pattern.params_from_values(_VALUES, bpmn_result)
@@ -788,7 +774,6 @@ class TestBaselineParams:
         params = pattern.baseline_params(bpmn_result)
         assert params.bot_failure_rate == 0.0
         assert params.num_bots >= 1
-        assert params.num_cases >= 1
 
     def test_applied_baseline_routes_all_to_human(self, pattern, bpmn_result, tmp_path):
         out = tmp_path / "baseline.json"
@@ -834,7 +819,6 @@ class TestFromTaguchiValues:
         "t_manual": 1800.0,
         "num_bots": 2,
         "num_manual_resources": 3,
-        "num_cases": 500,
     }
 
     def test_full_values_mapped_correctly(self):
@@ -845,7 +829,6 @@ class TestFromTaguchiValues:
         assert s.manual_execution_time == pytest.approx(1800.0)
         assert s.num_bots == 2
         assert s.num_manual_resources == 3
-        assert s.num_cases == 500
 
     def test_empty_dict_uses_defaults(self):
         s = AutomationParams.from_taguchi_values({})
@@ -853,7 +836,6 @@ class TestFromTaguchiValues:
         assert s.bot_failure_rate == pytest.approx(0.10)
         assert s.num_bots == 1
         assert s.num_manual_resources == 1
-        assert s.num_cases == 100
 
     def test_num_bots_and_num_manual_keys_used(self):
         s = AutomationParams.from_taguchi_values(

@@ -21,11 +21,10 @@ from core.constants import (
     COL_TOTAL_REWORK_COUNT,
     COL_REWORK_RATE,
     COL_TOTAL_BOT_FAILURE_COUNT,
-    COL_TOTAL_CYCLE_S_MEAN,
+    COL_MEAN_CYCLE_H_MEAN,
     COL_MEDIAN_CYCLE_H_MEAN,
-    COL_TOTAL_COST_MEAN,
+    COL_MEAN_COST_MEAN,
     COL_REWORK_RATE_MEAN,
-    F_NUM_CASES,
 )
 from core.taguchi import build_scenarios
 from core.orchestrator import ExperimentCancelledError, ExperimentResult
@@ -39,19 +38,23 @@ def _scenarios():
     return scenarios
 
 
+# Run-config scalar every test passes to run_experiment / _fake_simulate.
+_N_CASES = 500
+
+
 class TestDemoRunExperiment:
     def test_returns_experiment_result(self):
-        result = demo.run_experiment(_scenarios(), n_reps=2)
+        result = demo.run_experiment(_scenarios(), n_reps=2, n_cases=_N_CASES)
         assert isinstance(result, ExperimentResult)
 
     def test_dataframe_row_count(self):
         scenarios = _scenarios()
         n_reps = 3
-        result = demo.run_experiment(scenarios, n_reps=n_reps)
+        result = demo.run_experiment(scenarios, n_reps=n_reps, n_cases=_N_CASES)
         assert len(result.results) == len(scenarios) * n_reps
 
     def test_dataframe_required_columns(self):
-        result = demo.run_experiment(_scenarios(), n_reps=1)
+        result = demo.run_experiment(_scenarios(), n_reps=1, n_cases=_N_CASES)
         required = {
             "scenario_id",
             "replication",
@@ -67,12 +70,12 @@ class TestDemoRunExperiment:
         assert required <= set(result.results.columns)
 
     def test_bpmn_path_and_json_paths_empty(self):
-        result = demo.run_experiment(_scenarios(), n_reps=1)
+        result = demo.run_experiment(_scenarios(), n_reps=1, n_cases=_N_CASES)
         assert result.experiment_bpmn_path is None
         assert result.scenario_json_paths == {}
 
     def test_baseline_agg_is_none(self):
-        result = demo.run_experiment(_scenarios(), n_reps=1)
+        result = demo.run_experiment(_scenarios(), n_reps=1, n_cases=_N_CASES)
         assert result.baseline_agg is None
 
     def test_on_progress_called_once_per_replication(self):
@@ -83,6 +86,7 @@ class TestDemoRunExperiment:
         demo.run_experiment(
             scenarios,
             n_reps=n_reps,
+            n_cases=_N_CASES,
             on_progress=lambda done, total, sid, rep: calls.append((done, total)),
         )
 
@@ -91,7 +95,7 @@ class TestDemoRunExperiment:
         assert calls[-1] == (expected, expected)
 
     def test_metric_values_finite_and_nonnegative(self):
-        result = demo.run_experiment(_scenarios(), n_reps=1)
+        result = demo.run_experiment(_scenarios(), n_reps=1, n_cases=_N_CASES)
         df = result.results
         for col in (COL_MEAN_CYCLE_H, COL_MEAN_COST, COL_TOTAL_CYCLE_S, COL_TOTAL_COST):
             assert (df[col] > 0).all(), f"{col} should be positive"
@@ -103,58 +107,64 @@ class TestDemoRunExperiment:
     def test_median_cycle_below_mean(self):
         # The demo assumes right-skewed cycle times, so the synthetic median
         # (a scoring-only second factor) sits below the mean in every row.
-        df = demo.run_experiment(_scenarios(), n_reps=1).results
+        df = demo.run_experiment(_scenarios(), n_reps=1, n_cases=_N_CASES).results
         assert (df[COL_MEDIAN_CYCLE_H] < df[COL_MEAN_CYCLE_H]).all()
 
     def test_nonzero_bot_cost_increases_cost(self):
         scenarios = _scenarios()
-        free = demo.run_experiment(scenarios, n_reps=1, bot_cost_per_hour=0.0)
-        costly = demo.run_experiment(scenarios, n_reps=1, bot_cost_per_hour=500.0)
+        free = demo.run_experiment(
+            scenarios, n_reps=1, n_cases=_N_CASES, bot_cost_per_hour=0.0
+        )
+        costly = demo.run_experiment(
+            scenarios, n_reps=1, n_cases=_N_CASES, bot_cost_per_hour=500.0
+        )
         assert costly.results[COL_MEAN_COST].mean() > free.results[COL_MEAN_COST].mean()
 
     def test_failed_replications_empty_in_demo(self):
-        result = demo.run_experiment(_scenarios(), n_reps=1)
+        result = demo.run_experiment(_scenarios(), n_reps=1, n_cases=_N_CASES)
         assert result.failed_replications == []
 
     def test_cross_field_total_identities(self):
         # The _SimResult totals are documented derivations of the per-case fields.
         # rel tolerance because totals use unrounded intermediates while the
         # per-case fields are rounded to 2 dp.
-        df = demo.run_experiment(_scenarios(), n_reps=2).results
+        df = demo.run_experiment(_scenarios(), n_reps=2, n_cases=_N_CASES).results
         for _, row in df.iterrows():
-            n = row[F_NUM_CASES]
             assert row[COL_TOTAL_COST] == pytest.approx(
-                row[COL_MEAN_COST] * n, rel=1e-2
+                row[COL_MEAN_COST] * _N_CASES, rel=1e-2
             )
             assert row[COL_TOTAL_CYCLE_S] == pytest.approx(
-                row[COL_MEAN_CYCLE_H] * 3600 * n, rel=1e-2
+                row[COL_MEAN_CYCLE_H] * 3600 * _N_CASES, rel=1e-2
             )
             assert row[COL_TOTAL_REWORK_COUNT] == pytest.approx(
-                row[COL_REWORK_RATE] / 100 * n, rel=1e-2
+                row[COL_REWORK_RATE] / 100 * _N_CASES, rel=1e-2
             )
 
 
 class TestDemoBaselineAgg:
-    def test_has_n1_key(self):
-        agg = demo.demo_baseline_agg()
-        assert 1 in agg
-
-    def test_contains_required_sub_keys(self):
+    def test_contains_per_case_keys(self):
+        # The flat record must carry every key baseline_per_case() picks.
         agg = demo.demo_baseline_agg()
         required = {
-            COL_TOTAL_CYCLE_S_MEAN,
+            COL_MEAN_CYCLE_H_MEAN,
             COL_MEDIAN_CYCLE_H_MEAN,
-            COL_TOTAL_COST_MEAN,
+            COL_MEAN_COST_MEAN,
             COL_REWORK_RATE_MEAN,
         }
-        assert required <= set(agg[1].keys())
+        assert required <= set(agg.keys())
+
+    def test_survives_baseline_per_case(self):
+        from core.goals import baseline_per_case
+
+        per_case = baseline_per_case(demo.demo_baseline_agg())
+        assert per_case[COL_MEAN_CYCLE_H_MEAN] == pytest.approx(demo.BASELINE_CYCLE_H)
+        assert per_case[COL_MEAN_COST_MEAN] == pytest.approx(demo.BASELINE_COST)
 
     def test_values_are_positive(self):
         agg = demo.demo_baseline_agg()
-        entry = agg[1]
-        assert entry[COL_TOTAL_CYCLE_S_MEAN] > 0
-        assert entry[COL_TOTAL_COST_MEAN] > 0
-        assert entry[COL_REWORK_RATE_MEAN] >= 0
+        assert agg[COL_MEAN_CYCLE_H_MEAN] > 0
+        assert agg[COL_MEAN_COST_MEAN] > 0
+        assert agg[COL_REWORK_RATE_MEAN] >= 0
 
 
 class TestDemoFixtures:
@@ -186,7 +196,9 @@ class TestExperimentCancellation:
         stop = threading.Event()
         stop.set()
         with pytest.raises(ExperimentCancelledError):
-            demo.run_experiment(_scenarios(), n_reps=1, stop_event=stop)
+            demo.run_experiment(
+                _scenarios(), n_reps=1, n_cases=_N_CASES, stop_event=stop
+            )
 
 
 # ── Demo monotonicity ─────────────────────────────────────────────────────────
@@ -202,11 +214,13 @@ class TestDemoMonotonicity:
             "t_manual": 300,
             "num_bots": 2,
             "num_manual_resources": 2,
-            "num_cases": 500,
         }
         vals.update(overrides)
         s = Scenario("S01", vals, "t_id", "Act")
-        return sum(_fake_simulate(s, r).mean_cycle_h for r in range(n_reps)) / n_reps
+        return (
+            sum(_fake_simulate(s, r, _N_CASES).mean_cycle_h for r in range(n_reps))
+            / n_reps
+        )
 
     def test_larger_resource_pool_reduces_cycle_time(self):
         assert self._mean_cycle(num_bots=3, num_manual_resources=3) < self._mean_cycle(
@@ -233,12 +247,11 @@ class TestDemoBotFailures:
                 "t_manual": 300,
                 "num_bots": 2,
                 "num_manual_resources": 2,
-                "num_cases": 500,
             },
             "t_id",
             "Act",
         )
-        return _fake_simulate(s, 0)
+        return _fake_simulate(s, 0, _N_CASES)
 
     def test_perfect_bot_has_zero_failures(self):
         assert self._simulate(pct_auto=50, pct_ok=100).total_bot_failure_count == 0.0

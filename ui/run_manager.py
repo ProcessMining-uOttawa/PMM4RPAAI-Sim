@@ -111,10 +111,11 @@ def clear_results(ss: Any) -> None:
     actually changes (log reset or replacement).
     """
     ss.results = None
+    ss.run_n_cases = None
     ss.experiment_bpmn_path = None
     ss.scenario_json_paths = {}
     ss.scenario_log_paths = {}
-    ss.baseline_log_paths = {}
+    ss.baseline_log_paths = []
     ss.failed_replications = []
 
 
@@ -123,8 +124,11 @@ def commit_result(ss: Any, result: ExperimentResult) -> None:
 
     The positive counterpart to clear_results(): keep this field list in sync
     with ExperimentResult and clear_results() when adding a result field.
+    One rename in the mapping: result.n_cases lands as ss.run_n_cases — a bare
+    ss.n_cases would read as the live run-config widget.
     """
     ss.results = result.results
+    ss.run_n_cases = result.n_cases
     ss.experiment_bpmn_path = result.experiment_bpmn_path
     ss.scenario_json_paths = result.scenario_json_paths
     ss.baseline_agg = result.baseline_agg

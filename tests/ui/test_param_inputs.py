@@ -40,7 +40,7 @@ class TestNumberInputKwargs:
 
     def test_categorical_uses_int_types(self):
         # Load-bearing: int value/step/min make st.number_input render an integer
-        # spinner (no decimals) for num_bots/num_cases/num_manual_resources.
+        # spinner (no decimals) for num_bots/num_manual_resources.
         # `==` wouldn't catch a float regression here (2 == 2.0), so assert types.
         kwargs = number_input_kwargs("categorical", 2.0)
         assert type(kwargs["value"]) is int

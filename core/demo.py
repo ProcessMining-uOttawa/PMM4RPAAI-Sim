@@ -17,7 +17,6 @@ from .constants import (
     F_T_MANUAL,
     F_NUM_BOTS,
     F_NUM_MANUAL_RESOURCES,
-    F_NUM_CASES,
 )
 from .constants import (
     COL_MEAN_CYCLE_H,
@@ -28,9 +27,9 @@ from .constants import (
     COL_TOTAL_REWORK_COUNT,
     COL_REWORK_RATE,
     COL_TOTAL_BOT_FAILURE_COUNT,
-    COL_TOTAL_CYCLE_S_MEAN,
+    COL_MEAN_CYCLE_H_MEAN,
     COL_MEDIAN_CYCLE_H_MEAN,
-    COL_TOTAL_COST_MEAN,
+    COL_MEAN_COST_MEAN,
     COL_REWORK_RATE_MEAN,
 )
 from .orchestrator import ExperimentCancelledError, ExperimentResult
@@ -63,25 +62,25 @@ class _SimResult:
     total_bot_failure_count: float
 
 
-def demo_baseline_agg() -> dict[int, dict]:
+def demo_baseline_agg() -> dict[str, float]:
     """Synthetic baseline_agg for goal target computation in demo mode.
 
-    Matches the shape produced by orchestrator.run_experiment() so
-    app.py can always call baseline_per_case() regardless of mode.
-    n=1 is used as the reference key so the division in baseline_per_case() cancels cleanly.
+    A flat record carrying the per-case keys baseline_per_case() picks, so
+    app.py can always call it regardless of mode.
     """
     return {
-        1: {
-            COL_TOTAL_CYCLE_S_MEAN: BASELINE_CYCLE_H * 3600,
-            COL_MEDIAN_CYCLE_H_MEAN: BASELINE_MEDIAN_CYCLE_H,
-            COL_TOTAL_COST_MEAN: BASELINE_COST,
-            COL_REWORK_RATE_MEAN: BASELINE_REWORK_RATE,
-        }
+        COL_MEAN_CYCLE_H_MEAN: BASELINE_CYCLE_H,
+        COL_MEDIAN_CYCLE_H_MEAN: BASELINE_MEDIAN_CYCLE_H,
+        COL_MEAN_COST_MEAN: BASELINE_COST,
+        COL_REWORK_RATE_MEAN: BASELINE_REWORK_RATE,
     }
 
 
 def _fake_simulate(
-    scenario: Scenario, replication: int, bot_cost_per_hour: float = 0.0
+    scenario: Scenario,
+    replication: int,
+    n_cases: int,
+    bot_cost_per_hour: float = 0.0,
 ) -> _SimResult:
     """Synthetic but monotonic: more automation → faster, cheaper, with noise."""
     rng = random.Random(hash((scenario.id, replication)) & 0xFFFFFFFF)
@@ -92,7 +91,6 @@ def _fake_simulate(
     t_man = scenario.values[F_T_MANUAL]
     num_bots = int(scenario.values[F_NUM_BOTS])
     num_man = int(scenario.values[F_NUM_MANUAL_RESOURCES])
-    n_cases = int(scenario.values[F_NUM_CASES])
 
     mean_task_s = (pct_auto / 100) * t_auto + (1 - pct_auto / 100) * t_man
     # Synthetic stand-in for Prosimos's resource scheduling: more resources reduce
@@ -142,6 +140,7 @@ def _fake_simulate(
 def run_experiment(
     scenarios: list[Scenario],
     n_reps: int,
+    n_cases: int,
     on_progress: Callable[[int, int, str, int], None] | None = None,
     bot_cost_per_hour: float = 0.0,
     stop_event: threading.Event | None = None,
@@ -155,7 +154,7 @@ def run_experiment(
         for rep in range(n_reps):
             if stop_event is not None and stop_event.is_set():
                 raise ExperimentCancelledError()
-            r = _fake_simulate(s, rep, bot_cost_per_hour)
+            r = _fake_simulate(s, rep, n_cases, bot_cost_per_hour)
             rows.append(
                 {
                     "scenario_id": s.id,
@@ -175,4 +174,4 @@ def run_experiment(
             if on_progress:
                 on_progress(done, total, s.id, rep)
 
-    return ExperimentResult(results=pd.DataFrame(rows))
+    return ExperimentResult(results=pd.DataFrame(rows), n_cases=n_cases)

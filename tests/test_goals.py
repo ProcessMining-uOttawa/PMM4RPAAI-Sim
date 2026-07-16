@@ -178,60 +178,48 @@ class TestGoalScore:
 
 
 class TestBaselinePerCase:
-    def _agg(
-        self,
-        total_cycle_s: float,
-        total_cost: float,
-        rework_rate: float,
-        median_cycle_h: float = 28.0,
-    ) -> dict:
-        return {
-            COL_TOTAL_CYCLE_S_MEAN: total_cycle_s,
-            COL_MEDIAN_CYCLE_H_MEAN: median_cycle_h,
-            COL_TOTAL_COST_MEAN: total_cost,
-            COL_REWORK_RATE_MEAN: rework_rate,
+    def _record(self, **overrides) -> dict:
+        """A flat baseline_agg record: per-case means beside the totals."""
+        record = {
+            COL_MEAN_CYCLE_H_MEAN: 1.0,
+            COL_MEDIAN_CYCLE_H_MEAN: 28.0,
+            COL_MEAN_COST_MEAN: 5.0,
+            COL_REWORK_RATE_MEAN: 5.0,
+            COL_TOTAL_CYCLE_S_MEAN: 360000.0,
+            COL_TOTAL_COST_MEAN: 500.0,
         }
+        record.update(overrides)
+        return record
 
-    def test_cycle_time_per_case(self):
-        agg = {100: self._agg(total_cycle_s=360000.0, total_cost=0.0, rework_rate=0.0)}
-        result = baseline_per_case(agg)
-        # 360000 s / 3600 / 100 cases = 1.0 h/case
-        assert result[COL_MEAN_CYCLE_H_MEAN] == pytest.approx(1.0)
-
-    def test_cost_per_case(self):
-        agg = {100: self._agg(total_cycle_s=1.0, total_cost=500.0, rework_rate=0.0)}
-        result = baseline_per_case(agg)
-        # 500 / 100 cases = 5.0 $/case
-        assert result[COL_MEAN_COST_MEAN] == pytest.approx(5.0)
-
-    def test_rework_rate_passed_through(self):
-        agg = {100: self._agg(total_cycle_s=1.0, total_cost=0.0, rework_rate=12.5)}
-        result = baseline_per_case(agg)
+    def test_per_case_values_picked_through(self):
+        result = baseline_per_case(
+            self._record(
+                **{
+                    COL_MEAN_CYCLE_H_MEAN: 1.5,
+                    COL_MEDIAN_CYCLE_H_MEAN: 27.5,
+                    COL_MEAN_COST_MEAN: 7.0,
+                    COL_REWORK_RATE_MEAN: 12.5,
+                }
+            )
+        )
+        assert result[COL_MEAN_CYCLE_H_MEAN] == pytest.approx(1.5)
+        assert result[COL_MEDIAN_CYCLE_H_MEAN] == pytest.approx(27.5)
+        assert result[COL_MEAN_COST_MEAN] == pytest.approx(7.0)
         assert result[COL_REWORK_RATE_MEAN] == pytest.approx(12.5)
 
-    def test_median_cycle_passed_through(self):
-        # Median is a pass-through (per-case already), NOT total ÷ N cases.
-        agg = {
-            100: self._agg(
-                total_cycle_s=1.0, total_cost=0.0, rework_rate=0.0, median_cycle_h=27.5
-            )
-        }
-        result = baseline_per_case(agg)
-        assert result[COL_MEDIAN_CYCLE_H_MEAN] == pytest.approx(27.5)
+    def test_totals_filtered_out(self):
+        # A filter, not a pass-through: Goal.from_metric gets exactly the
+        # per-case keys, never the totals riding along in the record.
+        result = baseline_per_case(self._record())
+        assert COL_TOTAL_CYCLE_S_MEAN not in result
+        assert COL_TOTAL_COST_MEAN not in result
 
-    def test_picks_smallest_n_cases_when_multiple(self):
-        # The 500-entry is deliberately NON-proportional (2.0 h/case, not 1.0) so
-        # this test actually distinguishes which level is picked. n_ref=100 →
-        # 360000/3600/100 = 1.0 h/case; picking n=500 → 3600000/3600/500 = 2.0;
-        # averaging the two levels → 1.5. Only the smallest-level pick gives 1.0.
-        agg = {
-            100: self._agg(total_cycle_s=360000.0, total_cost=500.0, rework_rate=5.0),
-            500: self._agg(
-                total_cycle_s=3_600_000.0, total_cost=2500.0, rework_rate=5.0
-            ),
-        }
-        result = baseline_per_case(agg)
-        assert result[COL_MEAN_CYCLE_H_MEAN] == pytest.approx(1.0)
+    def test_missing_per_case_key_raises(self):
+        # A record without a per-case key is malformed — loud, not defaulted.
+        record = self._record()
+        del record[COL_MEAN_COST_MEAN]
+        with pytest.raises(KeyError):
+            baseline_per_case(record)
 
 
 # ── Goal.weighted_score (two-factor goal) ─────────────────────────────────────
