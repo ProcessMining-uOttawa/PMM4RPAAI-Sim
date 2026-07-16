@@ -14,7 +14,9 @@ jobs:
       - uses: actions/setup-python@v5
         with:
           python-version: "3.12"
-      - run: pip install ruff
+      # Pinned exactly (not >=): ruff format's output is version-dependent, so an
+      # unpinned install would reformat unrelated code and redden CI on a new release.
+      - run: pip install ruff==0.15.21
       - run: ruff check .
       - run: ruff format --check .
 
