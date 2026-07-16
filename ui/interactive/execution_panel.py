@@ -82,6 +82,7 @@ def render_execution_panel(
     array_name: str,
     scenarios: list[Scenario],
     n_reps: int,
+    n_cases: int,
     demo_mode: bool,
     target: str,
     transformation: Transformation,
@@ -98,13 +99,16 @@ def render_execution_panel(
     heading row is laid out alongside the run/cancel button.
     """
     total_runs = len(scenarios) * n_reps
+    # The real pipeline also runs the 0%-automation baseline once per rep.
+    baseline_note = "" if demo_mode else f" + {n_reps} baseline"
     with st.container(border=True):
         left, right = st.columns([3, 1])
         left.markdown(
             f"##### {title}  "
             f"<span style='background:#eef2ff;color:#3b6cf2;font-size:11px;"
             f"padding:2px 8px;border-radius:10px'>{array_name} · "
-            f"{len(scenarios)} scenarios × {n_reps} reps = {total_runs} runs</span>",
+            f"{len(scenarios)} scenarios × {n_reps} reps = {total_runs} runs"
+            f"{baseline_note} · {n_cases} cases/rep</span>",
             unsafe_allow_html=True,
         )
         if demo_mode:
@@ -137,6 +141,7 @@ def render_execution_panel(
                         return demo.run_experiment(
                             scenarios,
                             n_reps,
+                            n_cases,
                             progress_cb,
                             bot_cost_per_hour=bot_cost_per_hour,
                             stop_event=stop_ev,
@@ -157,6 +162,7 @@ def render_execution_panel(
                             target_activity=target,
                             scenarios=scenarios,
                             n_reps=n_reps,
+                            n_cases=n_cases,
                             experiment_dir=experiment_dir,
                             on_progress=progress_cb,
                             selected_resource_id=selected_resource_id,

@@ -56,29 +56,27 @@ def replication_subprocess_log(exp: Path, scenario_id: str, replication: int) ->
 # ── Baseline replication paths ─────────────────────────────────────────────────
 
 
-def baseline_dir(exp: Path, n_cases: int) -> Path:
-    path = exp / "baseline" / f"cases_{n_cases}"
+def baseline_dir(exp: Path) -> Path:
+    path = exp / "baseline"
     path.mkdir(parents=True, exist_ok=True)
     return path
 
 
 def baseline_params_path(exp: Path) -> Path:
-    """The single shared baseline params.json — one config reused across all n_cases."""
-    base_dir = exp / "baseline"
-    base_dir.mkdir(parents=True, exist_ok=True)
-    return base_dir / "params.json"
+    """The baseline params.json — one config shared by every baseline replication."""
+    return baseline_dir(exp) / "params.json"
 
 
-def baseline_log(exp: Path, n_cases: int, replication: int) -> Path:
-    return _rep_path(baseline_dir(exp, n_cases), replication, "log.csv")
+def baseline_log(exp: Path, replication: int) -> Path:
+    return _rep_path(baseline_dir(exp), replication, "log.csv")
 
 
-def baseline_stats(exp: Path, n_cases: int, replication: int) -> Path:
-    return _rep_path(baseline_dir(exp, n_cases), replication, "stats.csv")
+def baseline_stats(exp: Path, replication: int) -> Path:
+    return _rep_path(baseline_dir(exp), replication, "stats.csv")
 
 
-def baseline_subprocess_log(exp: Path, n_cases: int, replication: int) -> Path:
-    return _rep_path(baseline_dir(exp, n_cases), replication, "prosimos.log")
+def baseline_subprocess_log(exp: Path, replication: int) -> Path:
+    return _rep_path(baseline_dir(exp), replication, "prosimos.log")
 
 
 # ── Export packaging ──────────────────────────────────────────────────────────
@@ -125,7 +123,7 @@ def group_zip(
 
 def event_logs_zip(
     scenario_log_paths: dict[str, list[Path]],
-    baseline_log_paths: dict[int, list[Path]],
+    baseline_log_paths: list[Path],
 ) -> bytes:
     """Pack Prosimos event log CSVs into a ZIP archive. Returns b"" if both are empty."""
     if not scenario_log_paths and not baseline_log_paths:
@@ -136,11 +134,8 @@ def event_logs_zip(
             for log_path in paths:
                 if log_path.exists():
                     archive.write(log_path, arcname=f"scenarios/{sid}/{log_path.name}")
-        for n_cases, paths in sorted(baseline_log_paths.items()):
-            for log_path in paths:
-                if log_path.exists():
-                    archive.write(
-                        log_path, arcname=f"baseline/cases_{n_cases}/{log_path.name}"
-                    )
+        for log_path in baseline_log_paths:
+            if log_path.exists():
+                archive.write(log_path, arcname=f"baseline/{log_path.name}")
 
     return _build_zip(_populate)

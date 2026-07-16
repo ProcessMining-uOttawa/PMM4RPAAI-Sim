@@ -10,8 +10,6 @@ from .constants import (
     COL_MEDIAN_CYCLE_H_MEAN,
     COL_MEAN_COST_MEAN,
     COL_REWORK_RATE_MEAN,
-    COL_TOTAL_CYCLE_S_MEAN,
-    COL_TOTAL_COST_MEAN,
 )
 from .metrics import Metric, MetricDirection
 
@@ -148,19 +146,19 @@ class Goal:
         )
 
 
-def baseline_per_case(baseline_agg: dict[int, dict]) -> dict[str, float]:
-    """Convert baseline_agg (aggregate totals keyed by n_cases) to per-case metric values.
+def baseline_per_case(baseline_agg: dict[str, float]) -> dict[str, float]:
+    """Pick the per-case metric values out of the flat baseline_agg record.
 
-    Uses the smallest n_cases level as representative; per-case metrics are
-    scale-independent across n_cases levels up to simulation variance.
+    The record carries per-case means at source (beside the totals), so this
+    is a filter, not a conversion — it guarantees Goal.from_metric a dict of
+    exactly the per-case keys.
     """
-    n_ref = sorted(baseline_agg)[0]
-    b_ref = baseline_agg[n_ref]
     return {
-        COL_MEAN_CYCLE_H_MEAN: b_ref[COL_TOTAL_CYCLE_S_MEAN] / 3600 / n_ref,
-        # Pass-through, NOT total ÷ N: median is per-case already and never
-        # carried the total-cycle identity (the reason it is a separate column).
-        COL_MEDIAN_CYCLE_H_MEAN: b_ref[COL_MEDIAN_CYCLE_H_MEAN],
-        COL_MEAN_COST_MEAN: b_ref[COL_TOTAL_COST_MEAN] / n_ref,
-        COL_REWORK_RATE_MEAN: b_ref[COL_REWORK_RATE_MEAN],
+        key: baseline_agg[key]
+        for key in (
+            COL_MEAN_CYCLE_H_MEAN,
+            COL_MEDIAN_CYCLE_H_MEAN,
+            COL_MEAN_COST_MEAN,
+            COL_REWORK_RATE_MEAN,
+        )
     }

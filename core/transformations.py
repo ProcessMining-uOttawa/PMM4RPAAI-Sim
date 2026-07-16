@@ -17,7 +17,6 @@ from .constants import (
     F_T_MANUAL,
     F_NUM_BOTS,
     F_NUM_MANUAL_RESOURCES,
-    F_NUM_CASES,
 )
 from .simulation.prosimos.editor import (
     set_uniform,
@@ -88,7 +87,6 @@ PCT_OK_LEVELS = [80, 90, 95]
 T_AUTO_FRACTIONS = [0.05, 0.10, 0.20]
 T_MANUAL_FACTORS = [0.80, 1.00, 1.20]
 NUM_BOTS_LEVELS = [1, 2, 3]
-NUM_CASES_LEVELS = [100, 500, 1000]
 # Human pool levels are centred on the discovered pool size (see _manual_pool_levels).
 # This default is used only when no pool size is known (e.g. demo mode, pre-discovery);
 # 1 matches the demo baseline's staffing.
@@ -124,7 +122,6 @@ class AutomationParams(ScenarioParams):
     manual_execution_time: float  # mean human task duration (seconds)
     num_bots: int  # bot resource pool size
     num_manual_resources: int  # human resource pool size
-    num_cases: int  # cases per replication
     selected_resource_id: str | None = (
         None  # resource to resize; None = skip pool resize
     )
@@ -139,7 +136,6 @@ class AutomationParams(ScenarioParams):
         for name, val in (
             ("num_bots", self.num_bots),
             ("num_manual_resources", self.num_manual_resources),
-            ("num_cases", self.num_cases),
         ):
             if val < 1:
                 raise ValueError(f"{name} must be ≥ 1, got {val}")
@@ -164,7 +160,6 @@ class AutomationParams(ScenarioParams):
             manual_execution_time=float(values.get(F_T_MANUAL, 1800.0)),
             num_bots=int(float(values.get(F_NUM_BOTS, 1.0))),
             num_manual_resources=int(float(values.get(F_NUM_MANUAL_RESOURCES, 1.0))),
-            num_cases=int(float(values.get(F_NUM_CASES, 100.0))),
             selected_resource_id=selected_resource_id,
         )
 
@@ -427,12 +422,6 @@ class XORSplitAutomation(Transformation):
                 kind="categorical",
                 frozen=pool_frozen,
             ),
-            Parameter(
-                F_NUM_CASES,
-                "Cases per replication",
-                levels=list(NUM_CASES_LEVELS),
-                kind="categorical",
-            ),
         ]
 
     # --- params_from_values --------------------------------------------------
@@ -463,7 +452,6 @@ class XORSplitAutomation(Transformation):
             manual_execution_time=manual_s,
             num_bots=1,  # inert: bot pool unused
             num_manual_resources=1,  # inert: resize skipped via selected_resource_id=None
-            num_cases=1,  # inert: cases-per-rep is a CLI arg, not in the JSON
             selected_resource_id=None,
         )
 

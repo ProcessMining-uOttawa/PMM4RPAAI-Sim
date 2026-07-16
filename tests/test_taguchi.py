@@ -85,7 +85,7 @@ class TestPickArray:
         assert cols == len(arr[0])
 
     def test_eight_factors_raises(self):
-        # No L27: the single pattern tops out at 7 factors, so 8+ has no OA.
+        # No L27: L18's seven 3-level columns are the ceiling, so 8+ has no OA.
         with pytest.raises(ValueError):
             pick_array(8)
 
@@ -104,13 +104,14 @@ class TestBuildScenarios:
         assert name == "L9" and len(scenarios) == 9
 
     def test_six_active_factors_gives_l18_eighteen_scenarios(self):
+        # The real pattern's factor count (6; 5 with a frozen manual pool).
         name, scenarios = build_scenarios(
             self._params(6), "xor_split_automation", "Check credit"
         )
         assert name == "L18" and len(scenarios) == 18
 
     def test_seven_active_factors_gives_l18_eighteen_scenarios(self):
-        # The real pattern's factor count (7) — the largest supported design.
+        # L18's full column capacity — the largest supported design.
         name, scenarios = build_scenarios(
             self._params(7), "xor_split_automation", "Check credit"
         )

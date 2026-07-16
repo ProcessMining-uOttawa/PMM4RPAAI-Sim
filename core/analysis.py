@@ -26,7 +26,6 @@ from .constants import (
 from .goals import Goal
 from .metrics import Metric, MetricDirection, MetricRegistry
 from .parameters import Parameter
-from .constants import F_NUM_CASES
 
 
 _NON_FACTOR_COLS = frozenset(
@@ -74,52 +73,45 @@ def _pct_delta(delta: float, baseline: float) -> float:
 
 
 def compare_to_baseline(
-    agg: pd.DataFrame, baseline_agg: dict[int, dict]
+    agg: pd.DataFrame, baseline_agg: dict[str, float]
 ) -> pd.DataFrame:
-    """Build a display DataFrame comparing each scenario's totals to its matching baseline.
+    """Build a display DataFrame comparing every scenario's totals to the baseline.
 
-    baseline_agg maps {n_cases: {col: value}} for each aggregate MetricSpec column.
-    Scenarios are grouped by their cases level; each group is preceded by its baseline row.
+    baseline_agg is one flat {col: value} record covering each aggregate
+    MetricSpec column; every scenario ran at the same case count, so all rows
+    compare against the single baseline row that precedes them.
     """
     specs = [m.aggregate for m in MetricRegistry.all() if m.aggregate is not None]
-    num_cases_col = F_NUM_CASES if F_NUM_CASES in agg.columns else None
-    rows: list[dict] = []
-    for n_cases in sorted(baseline_agg):
-        baseline = baseline_agg[n_cases]
-        baseline_values = {
-            spec.column: spec.display_fn(baseline[spec.column]) for spec in specs
+    baseline_values = {
+        spec.column: spec.display_fn(baseline_agg[spec.column]) for spec in specs
+    }
+    baseline_row: dict = {"Scenario": "Baseline"}
+    for spec in specs:
+        baseline_row[spec.display_name] = round(
+            baseline_values[spec.column], spec.decimal_places
+        )
+        if spec.delta_name is not None:
+            baseline_row[spec.delta_name] = 0.0
+        if spec.pct_change_name is not None:
+            baseline_row[spec.pct_change_name] = 0.0
+    rows: list[dict] = [baseline_row]
+    for _, row in agg.iterrows():
+        scenario_values = {
+            spec.column: spec.display_fn(row[spec.column]) for spec in specs
         }
-        baseline_row: dict = {
-            "Scenario": f"Baseline ({n_cases} cases)",
-            "Cases": n_cases,
-        }
+        scenario_row: dict = {"Scenario": row["scenario_id"]}
         for spec in specs:
-            baseline_row[spec.display_name] = round(
-                baseline_values[spec.column], spec.decimal_places
+            delta = scenario_values[spec.column] - baseline_values[spec.column]
+            scenario_row[spec.display_name] = round(
+                scenario_values[spec.column], spec.decimal_places
             )
             if spec.delta_name is not None:
-                baseline_row[spec.delta_name] = 0.0
+                scenario_row[spec.delta_name] = round(delta, spec.decimal_places)
             if spec.pct_change_name is not None:
-                baseline_row[spec.pct_change_name] = 0.0
-        rows.append(baseline_row)
-        group = agg if num_cases_col is None else agg[agg[num_cases_col] == n_cases]
-        for _, row in group.iterrows():
-            scenario_values = {
-                spec.column: spec.display_fn(row[spec.column]) for spec in specs
-            }
-            scenario_row: dict = {"Scenario": row["scenario_id"], "Cases": n_cases}
-            for spec in specs:
-                delta = scenario_values[spec.column] - baseline_values[spec.column]
-                scenario_row[spec.display_name] = round(
-                    scenario_values[spec.column], spec.decimal_places
+                scenario_row[spec.pct_change_name] = _pct_delta(
+                    delta, baseline_values[spec.column]
                 )
-                if spec.delta_name is not None:
-                    scenario_row[spec.delta_name] = round(delta, spec.decimal_places)
-                if spec.pct_change_name is not None:
-                    scenario_row[spec.pct_change_name] = _pct_delta(
-                        delta, baseline_values[spec.column]
-                    )
-            rows.append(scenario_row)
+        rows.append(scenario_row)
     return pd.DataFrame(rows)
 
 

@@ -13,6 +13,10 @@ from .simulation import store
 from .simulation.prosimos.reader import replication_metrics
 from .simulation.executor import SimulationTask, run_all
 from .constants import (
+    COL_MEAN_CYCLE_H,
+    COL_MEAN_CYCLE_H_MEAN,
+    COL_MEAN_COST,
+    COL_MEAN_COST_MEAN,
     COL_MEDIAN_CYCLE_H,
     COL_MEDIAN_CYCLE_H_MEAN,
     COL_TOTAL_CYCLE_S,
@@ -25,7 +29,6 @@ from .constants import (
     COL_REWORK_RATE_MEAN,
     COL_TOTAL_BOT_FAILURE_COUNT,
     COL_TOTAL_BOT_FAILURE_COUNT_MEAN,
-    F_NUM_CASES,
 )
 from .parameters import Scenario
 from .transformations import Transformation
@@ -41,7 +44,6 @@ class SimulationError(RuntimeError):
 
 @dataclass(frozen=True)
 class BaselineMeta:
-    n_cases: int
     rep: int
 
 
@@ -71,11 +73,15 @@ def _unpack_meta(meta: object) -> tuple[str, int]:
 @dataclass
 class ExperimentResult:
     results: pd.DataFrame
+    # Cases per replication the run executed at — the totals' scale, recorded so
+    # consumers of a committed result read the run's own value, not the current
+    # run config.
+    n_cases: int
     experiment_bpmn_path: Path | None = None
     scenario_json_paths: dict[str, Path] = field(default_factory=dict)
-    baseline_agg: dict[int, dict] | None = None  # {n_cases: mean totals}
+    baseline_agg: dict[str, float] | None = None  # per-case + total means, one record
     scenario_log_paths: dict[str, list[Path]] = field(default_factory=dict)
-    baseline_log_paths: dict[int, list[Path]] = field(default_factory=dict)
+    baseline_log_paths: list[Path] = field(default_factory=list)
     failed_replications: list[FailedReplication] = field(default_factory=list)
 
 
@@ -86,6 +92,7 @@ def run_experiment(
     target_activity: str,
     scenarios: list[Scenario],
     n_reps: int,
+    n_cases: int,
     experiment_dir: Path,
     on_progress: Callable[[int, int, str, int], None] | None = None,
     selected_resource_id: str | None = None,
@@ -96,8 +103,9 @@ def run_experiment(
 ) -> ExperimentResult:
     """Run all scenario and baseline replications.
 
-    Scenario replications land as per-replication rows in `results`; baseline
-    replications are aggregated into `baseline_agg` (mean totals per n_cases).
+    Every replication simulates `n_cases` cases. Scenario replications land as
+    per-replication rows in `results`; baseline replications are aggregated
+    into `baseline_agg` — one flat record of per-case and total means.
 
     on_progress(done, total, scenario_id, rep) is called after each replication
     if provided — lets the caller update a progress bar without a Streamlit import here.
@@ -111,7 +119,6 @@ def run_experiment(
         selected_resource_id=selected_resource_id,
     )
     experiment_bpmn_path = bpmn_tr.bpmn_path
-    cases_levels = sorted({int(s.values[F_NUM_CASES]) for s in scenarios})
 
     # Pre-generate all scenario JSONs sequentially — XML/JSON mutation is not
     # thread-safe and must complete before workers read the output files.
@@ -126,8 +133,8 @@ def run_experiment(
         )
         scenario_json_paths[s.id] = s_json
 
-    # The baseline is the pattern applied with 0% automation — generated once and
-    # reused across every n_cases level (cases-per-rep is a CLI arg, not in the JSON).
+    # The baseline is the pattern applied with 0% automation — generated once
+    # (cases-per-rep is a CLI arg, not in the JSON).
     baseline_json_path = transformation.apply_params(
         bpmn_tr.scenario_template,
         bpmn_tr.ids,
@@ -135,33 +142,29 @@ def run_experiment(
         store.baseline_params_path(experiment_dir),
     )
 
-    total = len(scenarios) * n_reps + len(cases_levels) * n_reps
+    total = len(scenarios) * n_reps + n_reps
     done = 0
     rows: list[dict] = []
-    baseline_reps: dict[int, list[dict]] = {n: [] for n in cases_levels}
+    baseline_reps: list[dict] = []
     scenario_log_paths: dict[str, list[Path]] = {s.id: [] for s in scenarios}
-    baseline_log_paths: dict[int, list[Path]] = {n: [] for n in cases_levels}
+    baseline_log_paths: list[Path] = []
 
     tasks: list[SimulationTask] = []
-    for n_cases in cases_levels:
-        for rep in range(n_reps):
-            tasks.append(
-                SimulationTask(
-                    bpmn_path=bpmn_tr.bpmn_path,
-                    json_path=baseline_json_path,
-                    n_cases=n_cases,
-                    out_log=store.baseline_log(experiment_dir, n_cases, rep),
-                    out_stat=store.baseline_stats(experiment_dir, n_cases, rep),
-                    proc_log=store.baseline_subprocess_log(
-                        experiment_dir, n_cases, rep
-                    ),
-                    metadata=BaselineMeta(n_cases=n_cases, rep=rep),
-                    max_retries=max_retries,
-                )
+    for rep in range(n_reps):
+        tasks.append(
+            SimulationTask(
+                bpmn_path=bpmn_tr.bpmn_path,
+                json_path=baseline_json_path,
+                n_cases=n_cases,
+                out_log=store.baseline_log(experiment_dir, rep),
+                out_stat=store.baseline_stats(experiment_dir, rep),
+                proc_log=store.baseline_subprocess_log(experiment_dir, rep),
+                metadata=BaselineMeta(rep=rep),
+                max_retries=max_retries,
             )
+        )
     for s in scenarios:
         s_json = scenario_json_paths[s.id]
-        n_cases = int(s.values[F_NUM_CASES])
         for rep in range(n_reps):
             tasks.append(
                 SimulationTask(
@@ -192,7 +195,7 @@ def run_experiment(
         meta = task.metadata
         assert task.out_stat is not None
         if isinstance(meta, BaselineMeta):
-            baseline_reps[meta.n_cases].append(
+            baseline_reps.append(
                 dataclasses.asdict(
                     replication_metrics(
                         task.out_log,
@@ -202,7 +205,7 @@ def run_experiment(
                     )
                 )
             )
-            baseline_log_paths[meta.n_cases].append(task.out_log)
+            baseline_log_paths.append(task.out_log)
             _tick("baseline", meta.rep)
         else:  # ScenarioMeta
             m = dataclasses.asdict(
@@ -246,14 +249,17 @@ def run_experiment(
             f"First error: {failures[0].error}"
         )
 
-    baseline_agg: dict[int, dict] = {}
-    for n_cases, rep_list in baseline_reps.items():
-        if not rep_list:
-            continue  # all baseline replications for this n_cases level failed
-        means = pd.DataFrame(rep_list).mean()
-        baseline_agg[n_cases] = {
-            COL_TOTAL_CYCLE_S_MEAN: means[COL_TOTAL_CYCLE_S],
+    # One flat record: per-case means stored beside the totals, so consumers
+    # never derive per-case by dividing a total by the case count.
+    baseline_agg: dict[str, float] | None = None
+    if baseline_reps:  # stays None (never {}) when all baseline reps failed —
+        # app.py gates the Baseline tab and goal seeding on "is not None"
+        means = pd.DataFrame(baseline_reps).mean()
+        baseline_agg = {
+            COL_MEAN_CYCLE_H_MEAN: means[COL_MEAN_CYCLE_H],
             COL_MEDIAN_CYCLE_H_MEAN: means[COL_MEDIAN_CYCLE_H],
+            COL_MEAN_COST_MEAN: means[COL_MEAN_COST],
+            COL_TOTAL_CYCLE_S_MEAN: means[COL_TOTAL_CYCLE_S],
             COL_TOTAL_COST_MEAN: means[COL_TOTAL_COST],
             COL_TOTAL_REWORK_COUNT_MEAN: means[COL_TOTAL_REWORK_COUNT],
             COL_REWORK_RATE_MEAN: means[COL_REWORK_RATE],
@@ -264,9 +270,10 @@ def run_experiment(
 
     return ExperimentResult(
         results=pd.DataFrame(rows),
+        n_cases=n_cases,
         experiment_bpmn_path=experiment_bpmn_path,
         scenario_json_paths=scenario_json_paths,
-        baseline_agg=baseline_agg or None,  # {} → None when all baseline reps failed
+        baseline_agg=baseline_agg,
         scenario_log_paths=scenario_log_paths,
         baseline_log_paths=baseline_log_paths,
         failed_replications=failures,

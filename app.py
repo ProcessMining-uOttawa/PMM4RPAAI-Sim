@@ -53,9 +53,8 @@ ss.setdefault(
 )  # single transformed BPMN, shared across scenarios
 ss.setdefault("scenario_json_paths", {})  # sid -> Path, one params.json per scenario
 ss.setdefault("scenario_log_paths", {})  # sid -> list[Path], one log per replication
-ss.setdefault(
-    "baseline_log_paths", {}
-)  # n_cases -> list[Path], one log per replication
+ss.setdefault("baseline_log_paths", [])  # one log per baseline replication
+ss.setdefault("run_n_cases", None)  # cases/rep the committed run executed at
 ss.setdefault("array_name", None)
 ss.setdefault("scenarios", [])
 ss.setdefault("baseline_agg", None)
@@ -219,6 +218,14 @@ with st.sidebar:
     st.divider()
     st.subheader("Run config")
     n_reps = st.number_input("Replications (N)", 1, 100, 5)
+    n_cases = st.number_input(
+        "Cases per replication",
+        min_value=1,
+        value=1000,
+        step=100,
+        help="How many cases each Prosimos replication simulates. Applies uniformly "
+        "to every scenario and the baseline.",
+    )
     max_workers = st.number_input(
         "Parallel workers",
         min_value=1,
@@ -329,6 +336,7 @@ render_execution_panel(
     array_name,
     scenarios,
     n_reps,
+    n_cases,
     demo_mode,
     target,
     transformation,
@@ -397,12 +405,15 @@ if ss.results is not None:
         if show_baseline:
             with result_tabs[-1]:
                 if baseline_agg is not None:
+                    # ss.run_n_cases, not the widget value: the caption describes the
+                    # committed run, which the widget may have moved past since.
                     st.caption(
-                        "Total metrics averaged across replications. Δ values are relative to "
-                        "the 0%-automation baseline — the pattern with every case on the human "
-                        "path, at Simod-discovered durations and staffing. Bot failures are "
-                        "structurally zero in the baseline (no case reaches the bot), so its "
-                        "Δ is the scenario's own count."
+                        f"Total metrics averaged across replications, at {ss.run_n_cases} "
+                        "cases per replication. Δ values are relative to the 0%-automation "
+                        "baseline — the pattern with every case on the human path, at "
+                        "Simod-discovered durations and staffing. Bot failures are "
+                        "structurally zero in the baseline (no case reaches the bot), so "
+                        "its Δ is the scenario's own count."
                     )
                     st.dataframe(
                         analysis.compare_to_baseline(agg, baseline_agg),

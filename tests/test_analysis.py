@@ -211,7 +211,6 @@ class TestCompareToBaseline:
             [
                 {
                     "scenario_id": "S01",
-                    "num_cases": 100,
                     COL_TOTAL_CYCLE_S_MEAN: 7200.0,
                     COL_TOTAL_COST_MEAN: 200.0,
                     COL_TOTAL_REWORK_COUNT_MEAN: 5.0,
@@ -220,7 +219,6 @@ class TestCompareToBaseline:
                 },
                 {
                     "scenario_id": "S02",
-                    "num_cases": 100,
                     COL_TOTAL_CYCLE_S_MEAN: 3600.0,
                     COL_TOTAL_COST_MEAN: 80.0,
                     COL_TOTAL_REWORK_COUNT_MEAN: 2.0,
@@ -232,18 +230,16 @@ class TestCompareToBaseline:
 
     def _baseline(self):
         return {
-            100: {
-                COL_TOTAL_CYCLE_S_MEAN: 3600.0,
-                COL_TOTAL_COST_MEAN: 100.0,
-                COL_TOTAL_REWORK_COUNT_MEAN: 4.0,
-                COL_REWORK_RATE_MEAN: 8.0,
-                COL_TOTAL_BOT_FAILURE_COUNT_MEAN: 0.0,  # structurally 0 at 0% auto
-            }
+            COL_TOTAL_CYCLE_S_MEAN: 3600.0,
+            COL_TOTAL_COST_MEAN: 100.0,
+            COL_TOTAL_REWORK_COUNT_MEAN: 4.0,
+            COL_REWORK_RATE_MEAN: 8.0,
+            COL_TOTAL_BOT_FAILURE_COUNT_MEAN: 0.0,  # structurally 0 at 0% auto
         }
 
     def test_baseline_row_is_first(self):
         df = compare_to_baseline(self._agg(), self._baseline())
-        assert df.iloc[0]["Scenario"] == "Baseline (100 cases)"
+        assert df.iloc[0]["Scenario"] == "Baseline"
 
     def test_row_count(self):
         df = compare_to_baseline(self._agg(), self._baseline())
@@ -271,15 +267,7 @@ class TestCompareToBaseline:
     def test_zero_baseline_cost_gives_nan_pct(self):
         # _pct_delta returns NaN when the baseline value is 0 (documented as a
         # blank cell). S01 cost is 200 vs a zero baseline → percent is undefined.
-        baseline = {
-            100: {
-                COL_TOTAL_CYCLE_S_MEAN: 3600.0,
-                COL_TOTAL_COST_MEAN: 0.0,
-                COL_TOTAL_REWORK_COUNT_MEAN: 4.0,
-                COL_REWORK_RATE_MEAN: 8.0,
-                COL_TOTAL_BOT_FAILURE_COUNT_MEAN: 0.0,
-            }
-        }
+        baseline = {**self._baseline(), COL_TOTAL_COST_MEAN: 0.0}
         df = compare_to_baseline(self._agg(), baseline)
         s01 = df[df["Scenario"] == "S01"].iloc[0]
         assert math.isnan(s01["Δ Cost (%)"])
@@ -311,49 +299,12 @@ class TestCompareToBaseline:
         # No percent-change column: pct vs a structurally-zero baseline is undefined.
         assert not any("Bot Failures (%)" in c for c in df.columns)
 
-    def test_multiple_levels_produce_multiple_baseline_rows(self):
-        agg = pd.DataFrame(
-            [
-                {
-                    "scenario_id": "S01",
-                    "num_cases": 100,
-                    COL_TOTAL_CYCLE_S_MEAN: 3600.0,
-                    COL_TOTAL_COST_MEAN: 100.0,
-                    COL_TOTAL_REWORK_COUNT_MEAN: 4.0,
-                    COL_REWORK_RATE_MEAN: 8.0,
-                    COL_TOTAL_BOT_FAILURE_COUNT_MEAN: 2.0,
-                },
-                {
-                    "scenario_id": "S02",
-                    "num_cases": 1000,
-                    COL_TOTAL_CYCLE_S_MEAN: 3600.0,
-                    COL_TOTAL_COST_MEAN: 100.0,
-                    COL_TOTAL_REWORK_COUNT_MEAN: 4.0,
-                    COL_REWORK_RATE_MEAN: 8.0,
-                    COL_TOTAL_BOT_FAILURE_COUNT_MEAN: 20.0,
-                },
-            ]
-        )
-        baseline = {
-            100: {
-                COL_TOTAL_CYCLE_S_MEAN: 3600.0,
-                COL_TOTAL_COST_MEAN: 100.0,
-                COL_TOTAL_REWORK_COUNT_MEAN: 4.0,
-                COL_REWORK_RATE_MEAN: 8.0,
-                COL_TOTAL_BOT_FAILURE_COUNT_MEAN: 0.0,
-            },
-            1000: {
-                COL_TOTAL_CYCLE_S_MEAN: 36000.0,
-                COL_TOTAL_COST_MEAN: 1000.0,
-                COL_TOTAL_REWORK_COUNT_MEAN: 40.0,
-                COL_REWORK_RATE_MEAN: 8.0,
-                COL_TOTAL_BOT_FAILURE_COUNT_MEAN: 0.0,
-            },
-        }
-        df = compare_to_baseline(agg, baseline)
-        baseline_rows = df[df["Scenario"].str.startswith("Baseline")]
-        assert len(baseline_rows) == 2
-        assert set(baseline_rows["Cases"]) == {100, 1000}
+    def test_single_baseline_row_and_no_cases_column(self):
+        # One uniform case count → exactly one baseline row precedes all scenarios.
+        df = compare_to_baseline(self._agg(), self._baseline())
+        baseline_rows = df[df["Scenario"] == "Baseline"]
+        assert len(baseline_rows) == 1
+        assert "Cases" not in df.columns  # one uniform case count → no per-row Cases
 
 
 # ── main_effects ──────────────────────────────────────────────────────────────
