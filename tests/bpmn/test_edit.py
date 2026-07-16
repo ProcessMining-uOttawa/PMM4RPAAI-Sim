@@ -64,7 +64,7 @@ _BPMN_XML = f"""\
 """
 
 # Same process structure, but no BPMNDiagram (schema-legal — DI is minOccurs="0").
-# The adders can no longer see this case: they take a resolved plane, and
+# The adders cannot see this case: they take a resolved plane, and
 # apply_pattern rejects a DI-less model at its boundary. update_flow_target still
 # accepts one, since its process work is real and only the redraw needs a diagram.
 _BPMN_XML_NO_DI = f"""\
@@ -427,8 +427,9 @@ class TestUpdateFlowTarget:
         assert waypoints[1].get("x") == "400" and waypoints[1].get("y") == "120"
 
     def test_target_updated_when_no_plane(self):
-        # First early return (`if plane is None`): targetRef is set *before* the
-        # plane lookup, so the flow is still rewired even with no DI diagram.
+        # update_flow_target's process work runs unconditionally; only the
+        # _redraw_edge DI step no-ops on plane=None, so the flow is still
+        # rewired even with no DI diagram.
         root, process, plane = _parse(_BPMN_XML_NO_DI)
         assert plane is None
         update_flow_target(process, plane, "flow_1", "new_tgt")
@@ -436,8 +437,8 @@ class TestUpdateFlowTarget:
         assert flow.get("targetRef") == "new_tgt"
 
     def test_waypoints_recomputed_for_target_with_shape(self):
-        # Second early return NOT taken (edge present) + waypoints recomputed
-        # from real shapes: rewire onto new_task (x=500, y=200, h=80) →
+        # _redraw_edge finds the edge (its edge-missing no-op is NOT taken) and
+        # recomputes waypoints from real shapes: rewire onto new_task (x=500, y=200, h=80) →
         # src right-edge (200,140) → new target left-edge (500,240). The existing
         # test covers the no-shape fallback; this covers the has-shape branch.
         root, process, plane = _parse(_BPMN_XML_THREE)
@@ -485,7 +486,7 @@ class TestFlowRefMaintenance:
         assert _refs(_task(process, "tgt_task"), "incoming") == ["f_new"]
 
     def test_rewire_drops_stale_incoming_from_old_target(self):
-        # The bug: the old target kept listing a flow that no longer targets it.
+        # A rewired flow must not stay listed on its old target's <incoming>.
         _, process, plane = _parse(_BPMN_XML_WITH_REFS)
         update_flow_target(process, plane, "flow_1", "new_task")
         assert _refs(_task(process, "tgt_task"), "incoming") == []

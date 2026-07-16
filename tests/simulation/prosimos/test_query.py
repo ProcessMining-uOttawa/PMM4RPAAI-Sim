@@ -240,8 +240,7 @@ class TestResourceSelectorConfig:
 
     def test_single_shared_resource_frozen(self):
         """A task's only resource, shared with another task, is frozen + pinned —
-        not selectable. Regression for the len<=1 early return that skipped the
-        shared check (20b)."""
+        not selectable."""
         data = {
             "resource_profiles": [
                 {

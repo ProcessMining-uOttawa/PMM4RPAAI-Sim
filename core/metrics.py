@@ -38,9 +38,8 @@ def _seconds_to_hours(value: float) -> float:
 class MetricSpec(NamedTuple):
     """One displayable representation of a metric: a column plus its display config.
 
-    display_fn converts the stored value to display units (only the aggregate
-    cycle-time spec converts — seconds to hours); named functions, not lambdas,
-    so specs stay picklable.
+    display_fn converts the stored value to display units; named functions, not
+    lambdas, so specs stay picklable.
     """
 
     column: str
@@ -80,7 +79,7 @@ class Metric:
     upper_bound: float | None = None
 
     def _require_per_case(self) -> PerCaseMetric:
-        """per_case, raising on metrics without one (REWORK_COUNT, BOT_FAILURE_COUNT).
+        """per_case, raising on metrics without one.
 
         The per-case accessors below are non-Optional so consumers gated on
         rankable() need no assert-narrowing; calling them on a per_case-less
@@ -257,7 +256,6 @@ class MetricRegistry:
 
         Compares by value (==), NOT identity (is): st.selectbox returns a
         value-equal-but-not-identical Metric copy through session_state, so an
-        `is` check silently fails and drops the entire two-factor goal UI (the
-        bug the original _SECOND_FACTOR dict avoided via __eq__/__hash__).
+        `is` check silently fails and drops the entire two-factor goal UI.
         """
         return cls.CYCLE_TIME_MEDIAN if metric == cls.CYCLE_TIME else None

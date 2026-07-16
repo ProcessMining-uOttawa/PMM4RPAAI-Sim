@@ -1,4 +1,5 @@
-"""On-disk experiment store. Each experiment is a folder; status via files."""
+"""On-disk experiment store: per-experiment folder layout under runs/ and the
+export ZIP packagers."""
 
 from __future__ import annotations
 import io

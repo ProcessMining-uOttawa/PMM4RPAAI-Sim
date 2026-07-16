@@ -19,9 +19,9 @@ def render_simod_preflight(demo_mode: bool) -> tuple[bool, str | None]:
     """Render the Simod preflight expander; return (all_checks_ok, java_home).
 
     Skipped entirely in demo mode — nothing to check — returning (True, None).
-    Also returns (False, None) if run_checks() itself raises (e.g. a detection
-    subprocess or filesystem call fails unexpectedly) — surfaced via st.error
-    rather than crashing the sidebar.
+    Also returns (False, None) if run_checks() raises OSError (a detection
+    subprocess or filesystem call failing) — surfaced via st.error rather than
+    crashing the sidebar. Other exceptions propagate.
     """
     if demo_mode:
         return True, None

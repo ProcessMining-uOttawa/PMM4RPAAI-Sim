@@ -1,7 +1,8 @@
 """Low-level BPMN XML editing primitives (xml.etree.ElementTree).
 
 Covers two concerns:
-- DI (Diagram Interchange): reading/writing BPMNShape and BPMNEdge elements.
+- DI (Diagram Interchange): writing BPMNShape and BPMNEdge elements (DI
+  reading goes through query.py).
 - Process operations: adding tasks, gateways, and sequence flows to the
   <bpmn:process> element, and rewiring existing flows.
 
@@ -15,12 +16,9 @@ are passed explicitly via ShapeSpec rather than computed here.
 
 Nothing here takes the document root: every mutator is handed an already-resolved
 `plane`, because whether the model carries a diagram at all is settled once by the
-caller at its trust boundary (see XORSplitAutomation.apply_pattern). Re-checking it
-per call is what produced the bug this shape replaced — the adders skipped their
-*process* work on a DI-less model while rewiring ran regardless, silently emitting
-a broken model rather than no model. The adders require a plane; update_flow_target
-takes `plane | None`, since only its redraw needs a diagram and its rewiring is
-process-level truth either way.
+caller at its trust boundary (see XORSplitAutomation.apply_pattern). The adders
+require a plane; update_flow_target takes `plane | None`, since only its redraw
+needs a diagram and its rewiring is process-level truth either way.
 
 Flow endpoints supplied by the caller are asserted to be real flow nodes: a
 dangling ref is the corruption class this module exists to avoid. Values read out
@@ -136,9 +134,7 @@ def _add_edge(plane: ET.Element, flow_id: str, pts: list[tuple[float, float]]) -
 def _redraw_edge(plane: ET.Element | None, flow_id: str, src: str, tgt: str) -> None:
     """Re-lay a flow's DI edge between its (possibly moved) endpoints.
 
-    A no-op when the model carries no diagram, or no edge for this flow. Unlike
-    the adders, this tolerates plane=None: drawing is all it does, so having no
-    diagram makes it a genuine no-op rather than a skipped side-effect.
+    A no-op when the model carries no diagram, or no edge for this flow.
     """
     if plane is None:
         return
@@ -313,8 +309,7 @@ def update_flow_target(
     new_target must be a flow node in the process — retargeting onto something
     that isn't leaves the same dangling ref add_flow_el asserts against, and it
     lands worse than a no-op, since the old target's <incoming> is dropped and
-    nothing replaces it. A caller bug, so asserted. `plane` is optional here
-    because only the redraw needs a diagram; the rewiring is process-level truth.
+    nothing replaces it. A caller bug, so asserted.
     """
     flow = _find_flow(process, flow_id)
     if flow is None:

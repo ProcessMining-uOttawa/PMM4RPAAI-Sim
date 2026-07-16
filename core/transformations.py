@@ -91,7 +91,7 @@ NUM_BOTS_LEVELS = [1, 2, 3]
 NUM_CASES_LEVELS = [100, 500, 1000]
 # Human pool levels are centred on the discovered pool size (see _manual_pool_levels).
 # This default is used only when no pool size is known (e.g. demo mode, pre-discovery);
-# 1 reproduces the historical [1, 2, 3] levels and matches the demo baseline's staffing.
+# 1 matches the demo baseline's staffing.
 DEFAULT_MANUAL_POOL_SIZE = 1
 
 
@@ -511,8 +511,7 @@ class XORSplitAutomation(Transformation):
         # The pattern is laid out relative to the existing diagram and the BPMN
         # ships as an externally-inspected export, so a model with no diagram is
         # rejected here rather than half-applied: the adders below place shapes
-        # unconditionally, and the rewiring after them runs either way. The plane
-        # is what carries the shapes, so it — not <BPMNDiagram> — is what's named.
+        # unconditionally, and the rewiring after them runs either way.
         plane = get_plane(root)
         if plane is None:
             raise ValueError(f"No <bpmndi:BPMNPlane> found in {bpmn_in}")

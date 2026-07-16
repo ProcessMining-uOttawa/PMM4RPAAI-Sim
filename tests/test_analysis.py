@@ -263,7 +263,7 @@ class TestCompareToBaseline:
         assert s02["Δ Cost (%)"] == pytest.approx(-20.0)
         # S01 has a NON-zero cycle-time delta, so it pins the seconds→hours
         # display_fn on the delta itself: 7200/3600 − 3600/3600 = 2.0 − 1.0 = 1.0 h.
-        # A raw-seconds-delta regression (the historical display_fn bug) gives 3600.0.
+        # A raw-seconds-delta regression gives 3600.0.
         s01 = df[df["Scenario"] == "S01"].iloc[0]
         assert s01["Δ Time (h)"] == pytest.approx(1.0)
         assert s01["Δ Time (%)"] == pytest.approx(100.0)
@@ -530,7 +530,7 @@ class TestSnExportTable:
 
 
 def _sib_goal(metric: str, baseline: float) -> Goal:
-    """Smaller-is-better goal with target=0.9×b, threshold=b, worst=1.1×b."""
+    """Smaller-is-better goal with target=0.9×b, baseline_ref=b, worst=1.1×b."""
     from core.metrics import MetricDirection
 
     return Goal.from_baseline(metric, baseline, MetricDirection.SMALLER_IS_BETTER)
@@ -554,7 +554,7 @@ class TestRank:
         assert ranked.iloc[0][f"{COL_MEAN_CYCLE_H_MEAN}_score"] == pytest.approx(100.0)
 
     def test_score_at_threshold_is_50(self):
-        # value = baseline → at threshold → score 50
+        # value = baseline_ref → score 50
         agg = pd.DataFrame([{"scenario_id": "S01", COL_MEAN_CYCLE_H_MEAN: 100.0}])
         ranked = rank(agg, [_sib_goal(COL_MEAN_CYCLE_H_MEAN, 100.0)])
         assert ranked.iloc[0][f"{COL_MEAN_CYCLE_H_MEAN}_score"] == pytest.approx(50.0)
@@ -593,7 +593,7 @@ class TestRank:
         assert ranked.iloc[0]["score"] == pytest.approx(50.0)
 
     def test_sorted_descending_by_score(self):
-        # S01: at threshold (score 50); S02: at target (score 100) → S02 ranked first
+        # S01: at baseline_ref (score 50); S02: at target (score 100) → S02 ranked first
         agg = pd.DataFrame(
             [
                 {"scenario_id": "S01", COL_MEAN_CYCLE_H_MEAN: 100.0},

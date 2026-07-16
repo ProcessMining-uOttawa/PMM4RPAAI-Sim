@@ -37,8 +37,8 @@ from .orchestrator import ExperimentCancelledError, ExperimentResult
 
 
 # Pre-baked demo discovery: a real Simod output (synthetic LoanApp benchmark) so
-# demo mode reuses the real activity-list + factor-prepopulation path rather than a
-# parallel fake_discovery. See demo/README.md for provenance.
+# demo mode reuses the real activity-list + factor-prepopulation path. See
+# demo/README.md for provenance.
 _DEMO_DIR = Path(__file__).resolve().parent.parent / "demo"
 DEMO_BPMN = _DEMO_DIR / "model.bpmn"
 DEMO_JSON = _DEMO_DIR / "params.json"

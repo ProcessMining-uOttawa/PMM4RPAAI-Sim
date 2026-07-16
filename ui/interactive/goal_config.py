@@ -37,10 +37,8 @@ from core.goals import GOAL_IMPROVEMENT_PCT, Goal
 from core.metrics import Metric, MetricRegistry
 
 # Goal-row column ratio: label | target | baseline | worst. Owned here, not
-# imported from factor_levels: the goals grid stands in its own panel (3 · Goals)
-# now, so it need not align with the factor grid — the previous shared-ROW_LAYOUT
-# coupling only existed to keep the two grids column-aligned when stacked in one
-# panel.
+# imported from factor_levels: the goals grid stands in its own panel (3 · Goals),
+# so it need not align with the factor grid.
 ROW_LAYOUT = [3, 1, 1, 1]
 
 
