@@ -6,40 +6,42 @@ import math
 import pandas as pd
 
 from .constants import (
-    COL_MEAN_CYCLE_H,
-    COL_MEDIAN_CYCLE_H,
-    COL_MEAN_COST,
-    COL_MEAN_CYCLE_H_MEAN,
-    COL_MEDIAN_CYCLE_H_MEAN,
-    COL_MEAN_COST_MEAN,
     COL_TOTAL_CYCLE_S,
     COL_TOTAL_COST,
     COL_TOTAL_CYCLE_S_MEAN,
     COL_TOTAL_COST_MEAN,
     COL_TOTAL_REWORK_COUNT,
-    COL_REWORK_RATE,
     COL_TOTAL_REWORK_COUNT_MEAN,
-    COL_REWORK_RATE_MEAN,
     COL_TOTAL_BOT_FAILURE_COUNT,
     COL_TOTAL_BOT_FAILURE_COUNT_MEAN,
 )
-from .goals import Goal
+from .goals import MetricGoal
 from .metrics import Metric, MetricDirection, MetricRegistry
 from .parameters import Parameter
 
 
+# The run-total raw columns — hand-listed because they never grow with the
+# indicator set (indicators never create a total; see CLAUDE.md §8). Shared by
+# _NON_FACTOR_COLS and aggregate()'s totals so the pairing lives in one place.
+_TOTAL_RESULT_COLS: tuple[tuple[str, str], ...] = (
+    (COL_TOTAL_CYCLE_S_MEAN, COL_TOTAL_CYCLE_S),
+    (COL_TOTAL_COST_MEAN, COL_TOTAL_COST),
+    (COL_TOTAL_REWORK_COUNT_MEAN, COL_TOTAL_REWORK_COUNT),
+    (COL_TOTAL_BOT_FAILURE_COUNT_MEAN, COL_TOTAL_BOT_FAILURE_COUNT),
+)
+
+# Non-factor columns are everything the results DataFrame carries that is NOT a
+# Taguchi factor: the two structural columns, every registered indicator's raw
+# per-replication column, and the run totals. Registry-derived so a new
+# indicator never has to be added here — omitting one would make aggregate()
+# group by it as a phantom factor.
 _NON_FACTOR_COLS = frozenset(
-    {
-        "scenario_id",
-        "replication",
-        COL_MEAN_CYCLE_H,
-        COL_MEDIAN_CYCLE_H,
-        COL_MEAN_COST,
-        COL_TOTAL_CYCLE_S,
-        COL_TOTAL_COST,
-        COL_TOTAL_REWORK_COUNT,
-        COL_REWORK_RATE,
-        COL_TOTAL_BOT_FAILURE_COUNT,
+    {"scenario_id", "replication"}
+    | {raw for _, raw in _TOTAL_RESULT_COLS}
+    | {
+        indicator.results_column
+        for metric in MetricRegistry.all()
+        for indicator in metric.indicators
     }
 )
 
@@ -51,18 +53,14 @@ def _factor_cols(df: pd.DataFrame) -> list[str]:
 def aggregate(results: pd.DataFrame) -> pd.DataFrame:
     """results: scenario_id, replication, + the metric cols (+ factor cols)."""
     factor_cols = _factor_cols(results)
-    agg_spec: dict = {
-        COL_MEAN_CYCLE_H_MEAN: (COL_MEAN_CYCLE_H, "mean"),
-        "mean_cycle_h_std": (COL_MEAN_CYCLE_H, "std"),
-        COL_MEDIAN_CYCLE_H_MEAN: (COL_MEDIAN_CYCLE_H, "mean"),
-        COL_MEAN_COST_MEAN: (COL_MEAN_COST, "mean"),
-        "mean_cost_std": (COL_MEAN_COST, "std"),
-        COL_TOTAL_CYCLE_S_MEAN: (COL_TOTAL_CYCLE_S, "mean"),
-        COL_TOTAL_COST_MEAN: (COL_TOTAL_COST, "mean"),
-        COL_TOTAL_REWORK_COUNT_MEAN: (COL_TOTAL_REWORK_COUNT, "mean"),
-        COL_REWORK_RATE_MEAN: (COL_REWORK_RATE, "mean"),
-        COL_TOTAL_BOT_FAILURE_COUNT_MEAN: (COL_TOTAL_BOT_FAILURE_COUNT, "mean"),
-    }
+    agg_spec: dict = {}
+    for metric in MetricRegistry.all():
+        for indicator in metric.indicators:
+            agg_spec[indicator.mean.column] = (indicator.results_column, "mean")
+            if indicator.std is not None:
+                agg_spec[indicator.std.column] = (indicator.results_column, "std")
+    for out_col, raw_col in _TOTAL_RESULT_COLS:
+        agg_spec[out_col] = (raw_col, "mean")
     return results.groupby(["scenario_id", *factor_cols], as_index=False).agg(
         **agg_spec
     )  # type: ignore[call-overload]
@@ -131,14 +129,17 @@ def signal_to_noise(
 
 
 def main_effects(results: pd.DataFrame, metric: Metric) -> pd.DataFrame:
-    """For each factor × level: mean metric and S/N ratio."""
-    if metric.per_case is None:
+    """For each factor × level: mean metric and S/N ratio.
+
+    Scored on the metric's default indicator — the ranked, S/N-analysed one.
+    """
+    if not metric.indicators:
         raise ValueError(
-            f"main_effects() requires a metric with per_case data; got {metric}"
+            f"main_effects() requires a metric with indicators; got {metric}"
         )
-    per_case = metric.per_case
-    col = per_case.results_column
-    direction = per_case.mean.direction
+    indicator = metric.default_indicator
+    col = indicator.results_column
+    direction = indicator.mean.direction
     floor = metric.sn_floor
     rows = []
     for factor in _factor_cols(results):
@@ -205,30 +206,21 @@ def sn_export_table(results: pd.DataFrame, parameters: list[Parameter]) -> pd.Da
     ]
 
 
-def rank(agg: pd.DataFrame, goals: list[Goal]) -> pd.DataFrame:
-    """Adds per-goal '{metric}_score' columns plus an aggregate 'score'.
+def rank(agg: pd.DataFrame, goals: list[MetricGoal]) -> pd.DataFrame:
+    """Adds a per-metric '{column}_score' column plus an aggregate 'score'.
 
-    Per-goal score: piecewise linear 0–100 (100 = target met, 50 = at baseline, 0 = at worst).
-    Aggregate score: min of all per-goal scores (weakest-link rule).
+    Per-metric score: MetricGoal.score — the weight-normalised mean of its
+    indicators' piecewise-linear scores (0–100). One uniform path for one- and
+    many-indicator goals; the score column is keyed by the default indicator so
+    prepare_ranked_display picks it up unchanged.
+    Aggregate score: min of all per-metric scores (weakest-link rule).
     Scenarios are sorted descending by aggregate score (higher is better).
     """
     out = agg.copy()
     per_goal_scores: list[pd.Series] = []
     for goal in goals:
-        if goal.secondary is None:
-            goal_scores = out[goal.metric].apply(goal.score)
-        else:
-            # Two-factor goal: weighted sum of the two factors' scores, each
-            # judged against its own breakpoints. The score column stays keyed by
-            # the PRIMARY metric so prepare_ranked_display picks it up unchanged.
-            secondary = goal.secondary
-            goal_scores = out.apply(
-                lambda row, goal=goal, secondary=secondary: goal.weighted_score(
-                    row[goal.metric], row[secondary.metric]
-                ),
-                axis=1,
-            )
-        out[f"{goal.metric}_score"] = goal_scores.round(1)
+        goal_scores = out.apply(lambda row, goal=goal: goal.score(row), axis=1).round(1)
+        out[goal.score_column] = goal_scores
         per_goal_scores.append(goal_scores)
     if per_goal_scores:
         out["score"] = pd.concat(per_goal_scores, axis=1).min(axis=1).round(1)

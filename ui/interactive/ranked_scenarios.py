@@ -14,8 +14,8 @@ import pandas as pd
 import streamlit as st
 
 from core import analysis
-from core.goals import Goal
-from core.metrics import Metric
+from core.goals import MetricGoal
+from core.metrics import IndicatorSpec, Metric
 from core.parameters import Parameter
 from ui.table import prepare_ranked_display
 
@@ -23,15 +23,16 @@ from ui.table import prepare_ranked_display
 def render_ranked_scenarios(
     agg: pd.DataFrame,
     goal_metrics: list[Metric],
-    scorable_goals: list[Goal],
+    scorable_goals: list[MetricGoal],
+    selected_extras: dict[str, list[IndicatorSpec]],
     parameters: list[Parameter],
 ) -> pd.DataFrame:
     """Render the goal-scored ranked-scenarios table.
 
-    goal_metrics drives the display columns; scorable_goals (a subset when a
-    slot's thresholds failed validation) drives the scoring. Returns the
-    ranked DataFrame (also used by app.py for the Statistics CSV export).
-    With no scorable goals the table degrades to KPIs only.
+    goal_metrics + selected_extras drive the display columns; scorable_goals (a
+    subset when a slot's thresholds failed validation) drives the scoring.
+    Returns the ranked DataFrame (also used by app.py for the Statistics CSV
+    export). With no scorable goals the table degrades to KPIs only.
     """
     ranked = analysis.rank(agg, scorable_goals)
     if not scorable_goals:
@@ -43,7 +44,9 @@ def render_ranked_scenarios(
 
     show_factors = st.checkbox("Show Taguchi factors", value=False, key="show_factors")
     st.dataframe(
-        prepare_ranked_display(ranked, goal_metrics, parameters, show_factors),
+        prepare_ranked_display(
+            ranked, goal_metrics, parameters, selected_extras, show_factors
+        ),
         use_container_width=True,
         hide_index=True,
     )

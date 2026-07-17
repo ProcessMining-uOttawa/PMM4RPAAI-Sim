@@ -25,6 +25,7 @@ from core.constants import (
     COL_TOTAL_COST,
     COL_TOTAL_REWORK_COUNT,
     COL_REWORK_RATE,
+    COL_MEAN_REWORK_COUNT,
 )
 
 
@@ -289,6 +290,23 @@ class TestReplicationMetrics:
         assert m.mean_cycle_h == pytest.approx(4.0)
         assert m.median_cycle_h == pytest.approx(2.0)
 
+    def test_cycle_time_min_max(self, tmp_path):
+        log = tmp_path / "log.csv"
+        stats = tmp_path / "stats.csv"
+        _write_log(
+            log,
+            [
+                ("c1", "2025-01-01T08:00:00", "2025-01-01T10:00:00"),  # 2 h
+                ("c2", "2025-01-01T08:00:00", "2025-01-01T10:00:00"),  # 2 h
+                ("c3", "2025-01-01T08:00:00", "2025-01-01T16:00:00"),  # 8 h
+            ],
+        )
+        _write_full_stats(stats, [("task_a", 0.0)], accumulated_cycle_s=1.0)
+        m = replication_metrics(log, stats)
+        # Order statistics over the per-case spans [2, 2, 8].
+        assert m.min_cycle_h == pytest.approx(2.0)
+        assert m.max_cycle_h == pytest.approx(8.0)
+
     def test_cycle_time_groups_by_case(self, tmp_path):
         log = tmp_path / "log.csv"
         stats = tmp_path / "stats.csv"
@@ -404,6 +422,12 @@ class TestReworkMetrics:
         r = _rework_metrics(df)
         assert r[COL_REWORK_RATE] == pytest.approx(50.0)
 
+    def test_mean_rework_count(self):
+        # C1 repeats ORIG (1 excess), C2 none → total 1 over 2 cases → mean 0.5.
+        df = _df(("C1", ORIG), ("C1", ORIG), ("C2", ORIG))
+        r = _rework_metrics(df)
+        assert r[COL_MEAN_REWORK_COUNT] == pytest.approx(0.5)
+
     def test_standard_rework_three_repeats(self):
         df = _df(("C1", ORIG), ("C1", ORIG), ("C1", ORIG))
         r = _rework_metrics(df)
@@ -447,6 +471,7 @@ class TestReworkMetrics:
         r = _rework_metrics(pd.DataFrame({"case_id": ["C1"]}))
         assert r[COL_TOTAL_REWORK_COUNT] == 0.0
         assert r[COL_REWORK_RATE] == 0.0
+        assert r[COL_MEAN_REWORK_COUNT] == 0.0
 
 
 # ── _bot_failure_count ────────────────────────────────────────────────────────

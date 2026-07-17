@@ -9,12 +9,18 @@ from typing import Callable, NamedTuple
 from .constants import (
     COL_MEAN_CYCLE_H,
     COL_MEDIAN_CYCLE_H,
+    COL_MIN_CYCLE_H,
+    COL_MAX_CYCLE_H,
     COL_MEAN_COST,
     COL_REWORK_RATE,
+    COL_MEAN_REWORK_COUNT,
     COL_MEAN_CYCLE_H_MEAN,
     COL_MEDIAN_CYCLE_H_MEAN,
+    COL_MIN_CYCLE_H_MEAN,
+    COL_MAX_CYCLE_H_MEAN,
     COL_MEAN_COST_MEAN,
     COL_REWORK_RATE_MEAN,
+    COL_MEAN_REWORK_COUNT_MEAN,
     COL_TOTAL_CYCLE_S_MEAN,
     COL_TOTAL_COST_MEAN,
     COL_TOTAL_REWORK_COUNT_MEAN,
@@ -53,79 +59,138 @@ class MetricSpec(NamedTuple):
 
 
 @dataclass(frozen=True)
-class PerCaseMetric:
-    """A metric's per-case representation: its raw results column + display specs."""
+class IndicatorSpec:
+    """One selectable indicator of a metric: its raw results column + display specs.
+
+    An indicator is a per-case factor that can contribute to a metric's goal
+    score (e.g. mean / median / min / max case time for the time metric). Its
+    across-replication mean is `mean.column`; the raw per-replication column it
+    aggregates from is `results_column`.
+
+    upper_bound is the indicator's value-domain ceiling (None = unbounded above;
+    only the rework-rate percentage caps, at 100) — it lives here, not on Metric,
+    because the ceiling is a fact about the indicator's own values (rework *rate*
+    caps at 100, rework *count* does not), and it drives the goal-threshold
+    widgets' max_value and seed clamp.
+    """
 
     results_column: str  # column in the raw per-replication results DataFrame
     mean: MetricSpec
     std: MetricSpec | None = None  # hidden by default; registered for future toggle
+    upper_bound: float | None = None
+
+    # Display accessors used by the UI; the data column/direction are read
+    # directly off `.mean` (one settled idiom for those, no facade).
+    @property
+    def display_name(self) -> str:
+        return self.mean.display_name
+
+    @property
+    def compact_label(self) -> str:
+        """short_label when available, falling back to display_name."""
+        return self.mean.short_label or self.mean.display_name
+
+    @property
+    def decimal_places(self) -> int:
+        return self.mean.decimal_places
 
 
 @dataclass(frozen=True)
 class Metric:
-    """A KPI composed of optional per-case and aggregate representations.
+    """A KPI composed of an ordered indicator list and an optional aggregate.
 
-    rankable, sn_floor, and upper_bound are policy/domain facts about the
-    metric as a whole: whether it can be a ranking goal, the offset that keeps
-    S/N finite for metrics that legitimately reach zero, and the hard ceiling
-    of the metric's value domain (None = unbounded above; only the rework-rate
-    percentage is capped, at 100).
+    indicators[0] is the locked default indicator (always in the metric's goal
+    score, ranked, and S/N-analysed); indicators[1:] are optional extras the
+    user may add with weights. An empty tuple marks a display-only metric with
+    no per-case representation (REWORK_COUNT, BOT_FAILURE_COUNT).
+
+    rankable and sn_floor are policy/domain facts about the metric as a whole:
+    whether it can be a ranking goal, and the offset that keeps S/N finite for
+    metrics that legitimately reach zero.
     """
 
-    per_case: PerCaseMetric | None
+    indicators: tuple[IndicatorSpec, ...]
     aggregate: MetricSpec | None
     rankable: bool
     sn_floor: float = 0.0
-    upper_bound: float | None = None
 
-    def _require_per_case(self) -> PerCaseMetric:
-        """per_case, raising on metrics without one.
+    @property
+    def default_indicator(self) -> IndicatorSpec:
+        """The locked first indicator, raising on a metric that has none.
 
         The per-case accessors below are non-Optional so consumers gated on
-        rankable() need no assert-narrowing; calling them on a per_case-less
+        rankable() need no assert-narrowing; calling them on an indicator-less
         metric is a programming error, surfaced loudly.
         """
-        if self.per_case is None:
+        if not self.indicators:
             raise ValueError(
-                f"per-case accessor requires a metric with per_case data; got {self}"
+                f"metric accessor requires a metric with indicators; got {self}"
             )
-        return self.per_case
+        return self.indicators[0]
+
+    @property
+    def extra_indicators(self) -> tuple[IndicatorSpec, ...]:
+        """The optional (non-default) indicators, in registry order."""
+        return self.indicators[1:]
 
     @property
     def per_case_column(self) -> str:
-        return self._require_per_case().mean.column
+        return self.default_indicator.mean.column
 
     @property
     def per_case_display_name(self) -> str:
-        return self._require_per_case().mean.display_name
+        return self.default_indicator.display_name
 
     @property
     def per_case_compact_label(self) -> str:
-        """short_label when available, falling back to display_name."""
-        mean = self._require_per_case().mean
-        return mean.short_label or mean.display_name
-
-    @property
-    def per_case_decimal_places(self) -> int:
-        return self._require_per_case().mean.decimal_places
+        return self.default_indicator.compact_label
 
 
 class MetricRegistry:
     """The KPIs as class-level singletons; all() order is the display order."""
 
     CYCLE_TIME: Metric = Metric(
-        per_case=PerCaseMetric(
-            results_column=COL_MEAN_CYCLE_H,
-            mean=MetricSpec(
-                column=COL_MEAN_CYCLE_H_MEAN,
-                display_name="Cycle Time (h/case)",
-                decimal_places=2,
-                short_label="Cycle Time",
+        indicators=(
+            IndicatorSpec(
+                results_column=COL_MEAN_CYCLE_H,
+                mean=MetricSpec(
+                    column=COL_MEAN_CYCLE_H_MEAN,
+                    display_name="Cycle Time (h/case)",
+                    decimal_places=2,
+                    short_label="Cycle Time",
+                ),
+                std=MetricSpec(
+                    column="mean_cycle_h_std",
+                    display_name="Cycle Time Std Dev (h)",
+                    decimal_places=2,
+                ),
             ),
-            std=MetricSpec(
-                column="mean_cycle_h_std",
-                display_name="Cycle Time Std Dev (h)",
-                decimal_places=2,
+            IndicatorSpec(
+                results_column=COL_MEDIAN_CYCLE_H,
+                mean=MetricSpec(
+                    column=COL_MEDIAN_CYCLE_H_MEAN,
+                    display_name="Median Cycle Time (h/case)",
+                    decimal_places=2,
+                    short_label="Median Cycle Time",
+                ),
+            ),
+            IndicatorSpec(
+                results_column=COL_MIN_CYCLE_H,
+                mean=MetricSpec(
+                    column=COL_MIN_CYCLE_H_MEAN,
+                    display_name="Min Cycle Time (h/case)",
+                    decimal_places=2,
+                    short_label="Min Cycle Time",
+                ),
+            ),
+            IndicatorSpec(
+                results_column=COL_MAX_CYCLE_H,
+                mean=MetricSpec(
+                    column=COL_MAX_CYCLE_H_MEAN,
+                    display_name="Max Cycle Time (h/case)",
+                    decimal_places=2,
+                    short_label="Max Cycle Time",
+                ),
             ),
         ),
         aggregate=MetricSpec(
@@ -140,18 +205,20 @@ class MetricRegistry:
     )
 
     COST: Metric = Metric(
-        per_case=PerCaseMetric(
-            results_column=COL_MEAN_COST,
-            mean=MetricSpec(
-                column=COL_MEAN_COST_MEAN,
-                display_name="Cost ($/case)",
-                decimal_places=2,
-                short_label="Cost",
-            ),
-            std=MetricSpec(
-                column="mean_cost_std",
-                display_name="Cost Std Dev ($)",
-                decimal_places=2,
+        indicators=(
+            IndicatorSpec(
+                results_column=COL_MEAN_COST,
+                mean=MetricSpec(
+                    column=COL_MEAN_COST_MEAN,
+                    display_name="Cost ($/case)",
+                    decimal_places=2,
+                    short_label="Cost",
+                ),
+                std=MetricSpec(
+                    column="mean_cost_std",
+                    display_name="Cost Std Dev ($)",
+                    decimal_places=2,
+                ),
             ),
         ),
         aggregate=MetricSpec(
@@ -165,7 +232,7 @@ class MetricRegistry:
     )
 
     REWORK_COUNT: Metric = Metric(
-        per_case=None,
+        indicators=(),
         aggregate=MetricSpec(
             column=COL_TOTAL_REWORK_COUNT_MEAN,
             display_name="Rework Count",
@@ -177,15 +244,26 @@ class MetricRegistry:
     )
 
     REWORK_RATE: Metric = Metric(
-        per_case=PerCaseMetric(
-            results_column=COL_REWORK_RATE,
-            mean=MetricSpec(
-                column=COL_REWORK_RATE_MEAN,
-                display_name="Rework Rate (%)",
-                decimal_places=1,
-                short_label="Rework Rate",
+        indicators=(
+            IndicatorSpec(
+                results_column=COL_REWORK_RATE,
+                mean=MetricSpec(
+                    column=COL_REWORK_RATE_MEAN,
+                    display_name="Rework Rate (%)",
+                    decimal_places=1,
+                    short_label="Rework Rate",
+                ),
+                upper_bound=100.0,  # a percentage of cases
             ),
-            std=None,
+            IndicatorSpec(
+                results_column=COL_MEAN_REWORK_COUNT,
+                mean=MetricSpec(
+                    column=COL_MEAN_REWORK_COUNT_MEAN,
+                    display_name="Rework Count (/case)",
+                    decimal_places=2,
+                    short_label="Rework Count/case",
+                ),
+            ),
         ),
         aggregate=MetricSpec(
             column=COL_REWORK_RATE_MEAN,
@@ -195,39 +273,19 @@ class MetricRegistry:
         ),
         rankable=True,
         sn_floor=0.01,
-        upper_bound=100.0,
     )
 
     # Display-only, like REWORK_COUNT. Not rankable — the count is input-derivable
     # in expectation, so a goal on it would reward configuration, not discovery.
     # No pct_change_name: the baseline value is structurally 0 (see CLAUDE.md §8).
     BOT_FAILURE_COUNT: Metric = Metric(
-        per_case=None,
+        indicators=(),
         aggregate=MetricSpec(
             column=COL_TOTAL_BOT_FAILURE_COUNT_MEAN,
             display_name="Bot Failures",
             decimal_places=2,
             delta_name="Δ Bot Failures",
         ),
-        rankable=False,
-    )
-
-    # Sub-factor of CYCLE_TIME (the time goal's optional second factor), NOT an
-    # independent metric: deliberately excluded from all()/rankable() so it never
-    # surfaces as its own selectable goal, KPI column, S/N row, or Panel 5 row.
-    # Defined as a Metric only to reuse Goal.from_metric() + the threshold-input
-    # helpers in goal_config. See goals.Goal.secondary and the two-factor goal.
-    CYCLE_TIME_MEDIAN: Metric = Metric(
-        per_case=PerCaseMetric(
-            results_column=COL_MEDIAN_CYCLE_H,
-            mean=MetricSpec(
-                column=COL_MEDIAN_CYCLE_H_MEAN,
-                display_name="Median Cycle Time (h/case)",
-                decimal_places=2,
-                short_label="Median Cycle Time",
-            ),
-        ),
-        aggregate=None,
         rankable=False,
     )
 
@@ -244,18 +302,3 @@ class MetricRegistry:
     @classmethod
     def rankable(cls) -> list[Metric]:
         return [metric for metric in cls.all() if metric.rankable]
-
-    @classmethod
-    def second_factor(cls, metric: Metric) -> Metric | None:
-        """The optional weighted second scoring factor for a rankable metric.
-
-        Only the time goal has one (mean → median cycle time); every other metric
-        returns None. Centralized here (domain policy) so both goal construction
-        (ui.interactive.goal_config) and the ranked-table display (ui.table) read
-        one source rather than each hardcoding the pairing.
-
-        Compares by value (==), NOT identity (is): st.selectbox returns a
-        value-equal-but-not-identical Metric copy through session_state, so an
-        `is` check silently fails and drops the entire two-factor goal UI.
-        """
-        return cls.CYCLE_TIME_MEDIAN if metric == cls.CYCLE_TIME else None

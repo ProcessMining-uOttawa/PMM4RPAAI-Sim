@@ -13,6 +13,13 @@ from core.metrics import MetricRegistry
 from core.parameters import Parameter
 from ui.table import prepare_ranked_display
 
+# The median cycle-time indicator (an extra of the CYCLE_TIME metric).
+_MEDIAN_INDICATOR = next(
+    ind
+    for ind in MetricRegistry.CYCLE_TIME.extra_indicators
+    if ind.mean.column == COL_MEDIAN_CYCLE_H_MEAN
+)
+
 
 def _ranked() -> pd.DataFrame:
     """Minimal rank() output: scenario, the cycle-time KPI, its goal score, overall."""
@@ -35,7 +42,7 @@ def _factor_param() -> Parameter:
 class TestPrepareRankedDisplay:
     def test_columns_and_order(self):
         result = prepare_ranked_display(
-            _ranked(), [MetricRegistry.CYCLE_TIME], [], show_factors=False
+            _ranked(), [MetricRegistry.CYCLE_TIME], [], {}, show_factors=False
         )
         assert list(result.columns) == [
             "rank",
@@ -46,11 +53,11 @@ class TestPrepareRankedDisplay:
         ]
 
     def test_rank_is_one_based(self):
-        result = prepare_ranked_display(_ranked(), [MetricRegistry.CYCLE_TIME], [])
+        result = prepare_ranked_display(_ranked(), [MetricRegistry.CYCLE_TIME], [], {})
         assert result["rank"].tolist() == [1, 2]
 
     def test_scenario_id_renamed(self):
-        result = prepare_ranked_display(_ranked(), [MetricRegistry.CYCLE_TIME], [])
+        result = prepare_ranked_display(_ranked(), [MetricRegistry.CYCLE_TIME], [], {})
         assert "Scenario" in result.columns
         assert "scenario_id" not in result.columns
 
@@ -58,7 +65,7 @@ class TestPrepareRankedDisplay:
         ranked = _ranked()
         ranked["pct_auto"] = [25, 50]
         result = prepare_ranked_display(
-            ranked, [MetricRegistry.CYCLE_TIME], [_factor_param()]
+            ranked, [MetricRegistry.CYCLE_TIME], [_factor_param()], {}
         )
         assert "Auto %" not in result.columns
 
@@ -66,7 +73,11 @@ class TestPrepareRankedDisplay:
         ranked = _ranked()
         ranked["pct_auto"] = [25, 50]
         result = prepare_ranked_display(
-            ranked, [MetricRegistry.CYCLE_TIME], [_factor_param()], show_factors=True
+            ranked,
+            [MetricRegistry.CYCLE_TIME],
+            [_factor_param()],
+            {},
+            show_factors=True,
         )
         assert "Auto %" in result.columns
 
@@ -89,6 +100,7 @@ class TestPrepareRankedDisplay:
             ranked,
             [MetricRegistry.CYCLE_TIME],
             [_factor_param(), frozen],
+            {},
             show_factors=True,
         )
         assert "Auto %" in result.columns
@@ -101,7 +113,11 @@ class TestPrepareRankedDisplay:
         ranked = _ranked()
         ranked["pct_auto"] = [25, 50]
         result = prepare_ranked_display(
-            ranked, [MetricRegistry.CYCLE_TIME], [_factor_param()], show_factors=True
+            ranked,
+            [MetricRegistry.CYCLE_TIME],
+            [_factor_param()],
+            {},
+            show_factors=True,
         )
         cols = list(result.columns)
         assert (
@@ -113,15 +129,18 @@ class TestPrepareRankedDisplay:
     def test_metric_absent_from_ranked_is_skipped(self):
         # Only cycle-time columns exist; Cost's KPI column does not, so it must be
         # silently filtered out (the `col in ranked.columns` guard).
-        result = prepare_ranked_display(_ranked(), [MetricRegistry.CYCLE_TIME], [])
+        result = prepare_ranked_display(_ranked(), [MetricRegistry.CYCLE_TIME], [], {})
         assert "Cost ($/case)" not in result.columns
 
-    def test_median_shown_beside_cycle_when_time_goal_active(self):
-        # The two-factor time goal's median second factor appears right after the
-        # mean-cycle KPI so its input to the combined Cycle Time Score is visible.
+    def test_selected_extra_shown_beside_its_metric(self):
+        # A chosen extra indicator (median) appears right after the metric's
+        # default KPI so its input to the combined score is visible.
         ranked = _ranked()
         ranked[COL_MEDIAN_CYCLE_H_MEAN] = [4.0, 5.0]
-        result = prepare_ranked_display(ranked, [MetricRegistry.CYCLE_TIME], [])
+        selected_extras = {COL_MEAN_CYCLE_H_MEAN: [_MEDIAN_INDICATOR]}
+        result = prepare_ranked_display(
+            ranked, [MetricRegistry.CYCLE_TIME], [], selected_extras
+        )
         cols = list(result.columns)
         assert "Median Cycle Time (h/case)" in cols
         assert (
@@ -129,13 +148,12 @@ class TestPrepareRankedDisplay:
             == cols.index("Cycle Time (h/case)") + 1
         )
 
-    def test_median_hidden_when_time_goal_not_active(self):
-        # Median is the time goal's factor, not a standalone KPI — suppressed
-        # when Cycle Time is not among the chosen goals, even if the column exists.
+    def test_unselected_extra_hidden(self):
+        # With no extras selected, the median column is suppressed even though it
+        # exists in `ranked` — it is an indicator, not a standalone KPI.
         ranked = _ranked()
         ranked[COL_MEDIAN_CYCLE_H_MEAN] = [4.0, 5.0]
-        ranked[COL_MEAN_COST_MEAN] = [3.0, 4.0]
-        result = prepare_ranked_display(ranked, [MetricRegistry.COST], [])
+        result = prepare_ranked_display(ranked, [MetricRegistry.CYCLE_TIME], [], {})
         assert "Median Cycle Time (h/case)" not in result.columns
 
     def test_dropped_goal_keeps_kpi_but_skips_score_column(self):
@@ -146,7 +164,7 @@ class TestPrepareRankedDisplay:
         ranked = _ranked()
         ranked[COL_MEAN_COST_MEAN] = [3.0, 4.0]  # Cost KPI present, no cost score
         result = prepare_ranked_display(
-            ranked, [MetricRegistry.CYCLE_TIME, MetricRegistry.COST], []
+            ranked, [MetricRegistry.CYCLE_TIME, MetricRegistry.COST], [], {}
         )
         assert "Cost ($/case)" in result.columns
         assert "Cost Score" not in result.columns

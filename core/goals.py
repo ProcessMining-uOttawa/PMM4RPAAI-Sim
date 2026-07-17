@@ -3,15 +3,10 @@
 from __future__ import annotations
 
 import math
+from collections.abc import Mapping
 from dataclasses import dataclass
 
-from .constants import (
-    COL_MEAN_CYCLE_H_MEAN,
-    COL_MEDIAN_CYCLE_H_MEAN,
-    COL_MEAN_COST_MEAN,
-    COL_REWORK_RATE_MEAN,
-)
-from .metrics import Metric, MetricDirection
+from .metrics import IndicatorSpec, MetricDirection, MetricRegistry
 
 # Percentage by which target beats the baseline (and worst lags it).
 # Exported so the UI caption can stay in sync without duplicating the value.
@@ -23,19 +18,12 @@ _WORST_MULTIPLIER = 1 + GOAL_IMPROVEMENT_PCT / 100
 
 @dataclass(frozen=True)
 class Goal:
+    """Piecewise-linear scoring for one indicator (one column, three breakpoints)."""
+
     metric: str
     target: float  # best-case breakpoint → score 100
     baseline_ref: float  # reference breakpoint → score 50 (baseline value)
     worst: float  # unacceptable breakpoint → score 0
-    # Optional second factor: a full Goal (its own metric column + breakpoints)
-    # weighted against this (primary) one — only the time goal uses it for now.
-    # weight applies to THIS factor; the secondary gets 1 - weight. This is an
-    # *intra-goal* weight between two factors of one goal, NOT the cross-goal
-    # weight that was deliberately removed — the inter-goal aggregate stays a
-    # weakest-link min (see analysis.rank). A Goal used *as* a secondary ignores
-    # its own weight/secondary fields; only the primary's weight is read.
-    secondary: Goal | None = None
-    weight: float = 1.0
 
     def __post_init__(self) -> None:
         """Reject breakpoints that cannot score coherently.
@@ -56,10 +44,6 @@ class Goal:
                 f"({self.baseline_ref}) must lie between target ({self.target}) "
                 f"and worst ({self.worst})"
             )
-        if self.secondary is not None and self.secondary.secondary is not None:
-            raise ValueError("a Goal may have at most one secondary factor")
-        if not 0.0 <= self.weight <= 1.0:
-            raise ValueError(f"Goal weight must be in [0, 1]; got {self.weight}")
 
     def score(self, value: float) -> float:
         """Piecewise linear score in [0, 100]: 100 at target, 50 at baseline_ref, 0 at worst.
@@ -88,36 +72,19 @@ class Goal:
         span = worst_ - baseline_ref_
         return -(val - baseline_ref_) / span * 50.0 + 50.0 if span else 0.0
 
-    def weighted_score(
-        self, primary_value: float, secondary_value: float = float("nan")
-    ) -> float:
-        """Combined 0–100 score across this goal's one or two weighted factors.
-
-        Single-factor (secondary is None): just score(primary_value). Two-factor:
-        weight·score(primary) + (1 - weight)·secondary.score(secondary_value),
-        each factor judged against its own breakpoints. secondary_value is unused
-        (and irrelevant) when there is no secondary factor.
-        """
-        primary = self.score(primary_value)
-        if self.secondary is None:
-            return primary
-        secondary = self.secondary.score(secondary_value)
-        return self.weight * primary + (1 - self.weight) * secondary
-
     @classmethod
-    def from_metric(cls, metric: Metric, baseline: dict[str, float]) -> Goal:
-        """Construct a Goal for a Metric using its per-case baseline value from a baseline dict.
+    def from_indicator(
+        cls, indicator: IndicatorSpec, baseline: dict[str, float]
+    ) -> Goal:
+        """Construct a Goal for one indicator using its per-case baseline value.
 
-        Reads the per-case column and direction from the Metric internally.
-        Raises ValueError if the metric has no per_case data.
+        Reads the indicator's mean column and direction internally; the baseline
+        dict must carry that column (baseline_per_case guarantees it).
         """
-        if metric.per_case is None:
-            raise ValueError(
-                f"Goal.from_metric() requires a metric with per_case data; got {metric}"
-            )
-        pc = metric.per_case
         return cls.from_baseline(
-            pc.mean.column, baseline[pc.mean.column], pc.mean.direction
+            indicator.mean.column,
+            baseline[indicator.mean.column],
+            indicator.mean.direction,
         )
 
     @classmethod
@@ -146,19 +113,61 @@ class Goal:
         )
 
 
-def baseline_per_case(baseline_agg: dict[str, float]) -> dict[str, float]:
-    """Pick the per-case metric values out of the flat baseline_agg record.
+@dataclass(frozen=True)
+class MetricGoal:
+    """One metric's goal: a weighted set of per-indicator Goals scored together.
 
-    The record carries per-case means at source (beside the totals), so this
-    is a filter, not a conversion — it guarantees Goal.from_metric a dict of
-    exactly the per-case keys.
+    indicator_goals[0] is the metric's locked default indicator's Goal; the rest
+    are the user's added extras. weights are parallel integers (each ≥ 1),
+    normalised by their sum at scoring — so a weight of 3 counts 3× a weight of 1.
+    The metric's score is Σ wᵢ·score(vᵢ) / Σ wᵢ. The cross-metric aggregate
+    (analysis.rank) stays a weakest-link min across MetricGoals — these weights
+    are strictly intra-metric.
+    """
+
+    indicator_goals: tuple[Goal, ...]
+    weights: tuple[int, ...]
+
+    def __post_init__(self) -> None:
+        if not self.indicator_goals:
+            raise ValueError("a MetricGoal needs at least one indicator")
+        if len(self.weights) != len(self.indicator_goals):
+            raise ValueError(
+                f"weights ({len(self.weights)}) must match indicators "
+                f"({len(self.indicator_goals)})"
+            )
+        if any(weight < 1 for weight in self.weights):
+            raise ValueError(f"indicator weights must be >= 1; got {self.weights}")
+
+    @property
+    def score_column(self) -> str:
+        """The '{column}_score' column key, keyed by the default indicator."""
+        return f"{self.indicator_goals[0].metric}_score"
+
+    def score(self, values: Mapping[str, float]) -> float:
+        """Weight-normalised 0–100 score across the indicators.
+
+        values maps each indicator's metric column to the scenario's value; a
+        pandas row Series is a valid Mapping here.
+        """
+        total_weight = sum(self.weights)
+        weighted = sum(
+            weight * goal.score(values[goal.metric])
+            for goal, weight in zip(self.indicator_goals, self.weights)
+        )
+        return weighted / total_weight
+
+
+def baseline_per_case(baseline_agg: dict[str, float]) -> dict[str, float]:
+    """Pick the per-case indicator values out of the flat baseline_agg record.
+
+    The record carries per-case means at source (beside the totals), so this is
+    a filter, not a conversion — it returns exactly every registered indicator's
+    mean column, which Goal.from_indicator reads. A missing key is malformed
+    input and raises loudly.
     """
     return {
-        key: baseline_agg[key]
-        for key in (
-            COL_MEAN_CYCLE_H_MEAN,
-            COL_MEDIAN_CYCLE_H_MEAN,
-            COL_MEAN_COST_MEAN,
-            COL_REWORK_RATE_MEAN,
-        )
+        indicator.mean.column: baseline_agg[indicator.mean.column]
+        for metric in MetricRegistry.all()
+        for indicator in metric.indicators
     }

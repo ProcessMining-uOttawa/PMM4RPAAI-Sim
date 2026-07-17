@@ -12,20 +12,28 @@ from ...constants import (
     COL_TOTAL_COST,
     COL_TOTAL_REWORK_COUNT,
     COL_REWORK_RATE,
+    COL_MEAN_REWORK_COUNT,
 )
 
 
 @dataclass(frozen=True)
 class ReplicationMetrics:
-    """All per-replication metrics for one Prosimos simulation run."""
+    """All per-replication metrics for one Prosimos simulation run.
+
+    Field names mirror the COL_* constant string values so dataclasses.asdict()
+    produces the exact DataFrame column keys downstream expects.
+    """
 
     mean_cycle_h: float
     median_cycle_h: float
+    min_cycle_h: float
+    max_cycle_h: float
     mean_cost: float
     total_cycle_s: float
     total_cost: float
     total_rework_count: float
     rework_rate: float
+    mean_rework_count: float
     total_bot_failure_count: float
 
 
@@ -82,20 +90,25 @@ def _rework_metrics(event_log: pd.DataFrame) -> dict:
     separately by _bot_failure_count().
     """
     if "activity" not in event_log.columns:
-        return {COL_TOTAL_REWORK_COUNT: 0.0, COL_REWORK_RATE: 0.0}
+        return {
+            COL_TOTAL_REWORK_COUNT: 0.0,
+            COL_REWORK_RATE: 0.0,
+            COL_MEAN_REWORK_COUNT: 0.0,
+        }
 
     # Each repeat of an activity within a case counts once.
     activity_counts = event_log.groupby(["case_id", "activity"]).size()
     excess = activity_counts[activity_counts > 1] - 1  # type: ignore[index]
     rework_per_case: pd.Series = excess.groupby(level="case_id").sum()  # type: ignore[assignment]
 
-    # Restore cases with no rework so the rate denominator is every case.
+    # Restore cases with no rework so the rate/mean denominator is every case.
     rework_per_case = rework_per_case.reindex(
         event_log["case_id"].unique(), fill_value=0.0
     )
     return {
         COL_TOTAL_REWORK_COUNT: float(rework_per_case.sum()),
         COL_REWORK_RATE: float((rework_per_case > 0).mean()) * 100.0,
+        COL_MEAN_REWORK_COUNT: float(rework_per_case.mean()),
     }
 
 
@@ -183,13 +196,17 @@ def replication_metrics(
     rework = _rework_metrics(event_log)
     return ReplicationMetrics(
         mean_cycle_h=float(cycle_h.mean()),
-        # median is a scoring-only second factor; it feeds no total (see constants)
+        # median / min / max are scoring-only cycle-time indicators; they feed no
+        # total (the mean carries the total_cycle_s identity — see constants).
         median_cycle_h=float(cycle_h.median()),
+        min_cycle_h=float(cycle_h.min()),
+        max_cycle_h=float(cycle_h.max()),
         mean_cost=totals[COL_TOTAL_COST] / len(per_case),
         total_cycle_s=totals[COL_TOTAL_CYCLE_S],
         total_cost=totals[COL_TOTAL_COST],
         total_rework_count=rework[COL_TOTAL_REWORK_COUNT],
         rework_rate=rework[COL_REWORK_RATE],
+        mean_rework_count=rework[COL_MEAN_REWORK_COUNT],
         total_bot_failure_count=_bot_failure_count(
             event_log, bot_task_name, original_task_name
         ),
