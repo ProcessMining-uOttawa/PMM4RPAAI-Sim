@@ -42,10 +42,12 @@ import streamlit as st
 from core.goals import GOAL_IMPROVEMENT_PCT, Goal, MetricGoal
 from core.metrics import IndicatorSpec, Metric, MetricRegistry
 
-# Threshold-row column ratio: label | target | baseline | worst. Owned here, not
-# imported from factor_levels: the goals grid stands in its own panel (3 · Goals),
-# so it need not align with the factor grid. Weights render on their own row.
-ROW_LAYOUT = [3, 1, 1, 1]
+# Threshold-row column ratios: label | target | baseline | worst, plus a weight
+# cell when the metric scores more than one indicator. Owned here, not imported
+# from factor_levels: the goals grid stands in its own panel (3 · Goals), so it
+# need not align with the factor grid.
+THRESHOLD_ROW = [3, 1, 1, 1]
+THRESHOLD_ROW_WEIGHTED = [*THRESHOLD_ROW, 1]
 
 
 @dataclass
@@ -105,10 +107,20 @@ def _metric_slot_key(slot: int) -> str:
     return f"goal_metric_{slot}"
 
 
+def _goal_label(slot: int) -> str:
+    """User-visible name of one goal slot ("Goal 1").
+
+    Shared by the tab list, the slot's metric-picker label, and the exclusion
+    summary — the summary points the user at a tab by this name, so the sites
+    must stay in lockstep.
+    """
+    return f"Goal {slot + 1}"
+
+
 def _metric_picker(slot: int, available: list[Metric]) -> Metric:
     """Render one slot's metric selectbox in the active container; return the pick."""
     return st.selectbox(
-        f"Goal {slot + 1}",
+        _goal_label(slot),
         options=available,
         format_func=lambda metric: metric.per_case_display_name,
         key=_metric_slot_key(slot),
@@ -222,11 +234,13 @@ def _coerce_weight(saved: float) -> int:
 def _weight_input(container, indicator: IndicatorSpec) -> int:
     """Render one indicator's integer weight (≥ 1) and return it, persisting edits.
 
-    The weight rides in goal_threshold_overrides under the indicator column's
-    dict (key "weight"), so Reset and log reset already clear it. Its default
-    never drifts with the baseline, so the key need not embed the seed — a stable
-    key persists edits across re-runs and the override survives widget unmount.
-    The reset generation is embedded so "Reset to defaults" re-keys it too.
+    Renders label-collapsed like the threshold cells — the grid's "Weight"
+    header caption labels the column. The weight rides in
+    goal_threshold_overrides under the indicator column's dict (key "weight"),
+    so Reset and log reset already clear it. Its default never drifts with the
+    baseline, so the key need not embed the seed — a stable key persists edits
+    across re-runs and the override survives widget unmount. The reset
+    generation is embedded so "Reset to defaults" re-keys it too.
     """
     overrides: dict[str, dict[str, float]] = st.session_state.goal_threshold_overrides
     indicator_column = indicator.mean.column
@@ -240,6 +254,7 @@ def _weight_input(container, indicator: IndicatorSpec) -> int:
             step=1,
             key=f"goal_weight_{indicator_column}"
             f"_gen{st.session_state.goal_threshold_reset_generation}",
+            label_visibility="collapsed",
         )
     )
     if value != seed:
@@ -285,23 +300,6 @@ def _configure_indicator(
     )
 
 
-def _weight_row(indicators: list[IndicatorSpec]) -> list[int]:
-    """Render one integer weight per indicator + a normalised-split caption."""
-    cells = st.columns(len(indicators))
-    weights = [
-        _weight_input(cell, indicator) for cell, indicator in zip(cells, indicators)
-    ]
-    total = sum(weights)
-    st.caption(
-        "Weights · "
-        + " · ".join(
-            f"{indicator.compact_label} {weight / total:.0%}"
-            for indicator, weight in zip(indicators, weights)
-        )
-    )
-    return weights
-
-
 def _configure_metric_goal(
     indicators: list[IndicatorSpec],
     per_case_baseline: dict[str, float],
@@ -309,30 +307,45 @@ def _configure_metric_goal(
     """Render a metric's selected indicators (thresholds + weights) → one MetricGoal.
 
     indicators[0] is the locked default; the rest are the user's chosen extras.
-    Each gets a threshold row; when more than one is selected, a weight row lets
-    the user split the metric's score across them (integer weights, normalised by
-    sum). The whole slot is dropped (None) if any indicator's thresholds cannot
-    score coherently.
+    Each indicator is one grid row; when more than one is selected, the row
+    gains a Weight cell so the user splits the metric's score across them
+    (integer weights, normalised by sum). The whole slot is dropped (None) if
+    any indicator's thresholds cannot score coherently.
     """
-    # Short header labels — the 100/50/0 meaning lives in the panel caption, and
-    # the goal columns are narrow (goals lay out side by side).
-    header = st.columns(ROW_LAYOUT)
+    show_weights = len(indicators) > 1
+    layout = THRESHOLD_ROW_WEIGHTED if show_weights else THRESHOLD_ROW
+    # Short header labels — the 100/50/0 meaning lives in the panel caption.
+    header = st.columns(layout)
     header[0].caption("Indicator")
     header[1].caption("Target")
     header[2].caption("Baseline")
     header[3].caption("Worst")
+    if show_weights:
+        header[4].caption("Weight")
 
     goals: list[Goal | None] = []
+    weights: list[int] = []
     for indicator in indicators:
-        label_cell, target_cell, baseline_cell, worst_cell = st.columns(ROW_LAYOUT)
+        label_cell, target_cell, baseline_cell, worst_cell, *weight_cells = st.columns(
+            layout
+        )
         label_cell.caption(indicator.compact_label)
         goals.append(
             _configure_indicator(
                 target_cell, baseline_cell, worst_cell, indicator, per_case_baseline
             )
         )
+        weights.append(_weight_input(weight_cells[0], indicator) if show_weights else 1)
 
-    weights = _weight_row(indicators) if len(indicators) > 1 else [1] * len(indicators)
+    if show_weights:
+        total = sum(weights)
+        st.caption(
+            "Weights · "
+            + " · ".join(
+                f"{indicator.compact_label} {weight / total:.0%}"
+                for indicator, weight in zip(indicators, weights)
+            )
+        )
 
     if any(goal is None for goal in goals):
         return None
@@ -375,10 +388,13 @@ def configure_goals(per_case_baseline: dict[str, float] | None) -> GoalConfig:
     chosen_metrics: list[Metric] = []
     scorable_goals: list[MetricGoal] = []
     selected_extras: dict[str, list[IndicatorSpec]] = {}
-    # Lay the goals out side by side so adding a goal widens the panel instead of
-    # lengthening it; a lone goal is held to half width so its threshold inputs
-    # don't stretch across the whole page.
-    goal_cols = st.columns([1, 1] if goal_count == 1 else [1] * goal_count)
+    excluded: list[tuple[int, Metric]] = []
+    # One tab per goal slot, so each goal's threshold grid gets the full panel
+    # width. Labelled by slot, not by metric: st.tabs has no key — the active
+    # tab is client-side state that survives a rerun only while the label list
+    # is unchanged, so a metric-derived label would snap the user back to the
+    # first tab every time a slot's metric is reassigned.
+    tabs = st.tabs([_goal_label(slot) for slot in range(goal_count)])
     for slot in range(goal_count):
         available = [
             metric for metric in rankable_metrics if metric not in chosen_metrics
@@ -388,7 +404,7 @@ def configure_goals(per_case_baseline: dict[str, float] | None) -> GoalConfig:
         if st.session_state.get(slot_key) not in available:
             st.session_state[slot_key] = available[0]
 
-        with goal_cols[slot]:
+        with tabs[slot]:
             metric = _metric_picker(slot, available)
             chosen_metrics.append(metric)
             extras = _select_indicators(metric)
@@ -398,6 +414,20 @@ def configure_goals(per_case_baseline: dict[str, float] | None) -> GoalConfig:
                 metric_goal = _configure_metric_goal(selected, per_case_baseline)
                 if metric_goal is not None:
                     scorable_goals.append(metric_goal)
+                else:
+                    excluded.append((slot, metric))
+
+    # Every tab's contents render each run but only the active tab's are
+    # visible, so the in-tab 🚫 error alone would let a goal drop its Panel 5
+    # score column with no visible cause. This summary below the tabs is the
+    # always-visible pointer (not a tab-label badge — a label change resets the
+    # active tab, see above).
+    for slot, metric in excluded:
+        st.warning(
+            f"{_goal_label(slot)} ({metric.per_case_compact_label}) is excluded "
+            f"from ranking — fix its thresholds in its tab.",
+            icon="⚠️",
+        )
 
     if per_case_baseline is not None:
         st.button(
