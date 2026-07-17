@@ -499,14 +499,14 @@ class TestSnExportTable:
 # ── rank ──────────────────────────────────────────────────────────────────────
 
 
-def _sib_goal(metric: str, baseline: float) -> Goal:
+def _sib_goal(column: str, baseline: float) -> Goal:
     """Smaller-is-better indicator Goal with target=0.9×b, baseline_ref=b, worst=1.1×b."""
-    return Goal.from_baseline(metric, baseline, MetricDirection.SMALLER_IS_BETTER)
+    return Goal.from_baseline(column, baseline, MetricDirection.SMALLER_IS_BETTER)
 
 
-def _mg(metric: str, baseline: float) -> MetricGoal:
+def _mg(column: str, baseline: float) -> MetricGoal:
     """A single-indicator MetricGoal — the common case rank() scores."""
-    return MetricGoal(indicator_goals=(_sib_goal(metric, baseline),), weights=(1,))
+    return MetricGoal(indicator_goals=(_sib_goal(column, baseline),), weights=(1,))
 
 
 class TestRank:

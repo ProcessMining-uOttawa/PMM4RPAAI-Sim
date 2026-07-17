@@ -79,7 +79,8 @@ def _clear_process_state() -> None:
 
     Cancels any in-flight run (its commit would land in the wrong session),
     abandons any in-flight discovery, drops its results, the baseline
-    (log-scoped — clear_results deliberately keeps it), and the goal thresholds.
+    (log-scoped — clear_results deliberately keeps it), the goal thresholds, and
+    the indicator selection.
     Called when the log is reset or replaced — the two events after which this
     state would describe a different process.
     """

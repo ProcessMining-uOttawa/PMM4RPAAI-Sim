@@ -20,7 +20,7 @@ _WORST_MULTIPLIER = 1 + GOAL_IMPROVEMENT_PCT / 100
 class Goal:
     """Piecewise-linear scoring for one indicator (one column, three breakpoints)."""
 
-    metric: str
+    indicator_column: str  # the indicator's column in the agg/results frame
     target: float  # best-case breakpoint → score 100
     baseline_ref: float  # reference breakpoint → score 50 (baseline value)
     worst: float  # unacceptable breakpoint → score 0
@@ -40,7 +40,7 @@ class Goal:
             <= max(self.target, self.worst)
         ):
             raise ValueError(
-                f"Goal breakpoints out of order for {self.metric!r}: baseline_ref "
+                f"Goal breakpoints out of order for {self.indicator_column!r}: baseline_ref "
                 f"({self.baseline_ref}) must lie between target ({self.target}) "
                 f"and worst ({self.worst})"
             )
@@ -89,7 +89,7 @@ class Goal:
 
     @classmethod
     def from_baseline(
-        cls, metric: str, baseline_val: float, direction: MetricDirection
+        cls, indicator_column: str, baseline_val: float, direction: MetricDirection
     ) -> Goal:
         """Construct a Goal from a baseline value using fixed ±GOAL_IMPROVEMENT_PCT breakpoints.
 
@@ -100,13 +100,13 @@ class Goal:
         """
         if direction == MetricDirection.SMALLER_IS_BETTER:
             return cls(
-                metric=metric,
+                indicator_column=indicator_column,
                 target=baseline_val * _TARGET_MULTIPLIER,
                 baseline_ref=baseline_val,
                 worst=baseline_val * _WORST_MULTIPLIER,
             )
         return cls(
-            metric=metric,
+            indicator_column=indicator_column,
             target=baseline_val * _WORST_MULTIPLIER,
             baseline_ref=baseline_val,
             worst=baseline_val * _TARGET_MULTIPLIER,
@@ -142,17 +142,17 @@ class MetricGoal:
     @property
     def score_column(self) -> str:
         """The '{column}_score' column key, keyed by the default indicator."""
-        return f"{self.indicator_goals[0].metric}_score"
+        return f"{self.indicator_goals[0].indicator_column}_score"
 
     def score(self, values: Mapping[str, float]) -> float:
         """Weight-normalised 0–100 score across the indicators.
 
-        values maps each indicator's metric column to the scenario's value; a
-        pandas row Series is a valid Mapping here.
+        values maps each indicator's column to the scenario's value; a pandas row
+        Series is a valid Mapping here.
         """
         total_weight = sum(self.weights)
         weighted = sum(
-            weight * goal.score(values[goal.metric])
+            weight * goal.score(values[goal.indicator_column])
             for goal, weight in zip(self.indicator_goals, self.weights)
         )
         return weighted / total_weight

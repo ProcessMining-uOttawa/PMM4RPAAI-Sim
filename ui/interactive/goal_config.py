@@ -278,7 +278,7 @@ def _configure_indicator(
         )
         return None
     return Goal(
-        metric=indicator.mean.column,
+        indicator_column=indicator.mean.column,
         target=target,
         baseline_ref=baseline_value,
         worst=worst,

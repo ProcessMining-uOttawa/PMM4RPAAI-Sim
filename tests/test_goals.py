@@ -26,7 +26,7 @@ class TestFromIndicator:
     def test_reads_column_and_direction_from_indicator(self):
         indicator = MetricRegistry.CYCLE_TIME.default_indicator
         goal = Goal.from_indicator(indicator, {COL_MEAN_CYCLE_H_MEAN: 100.0})
-        assert goal.metric == COL_MEAN_CYCLE_H_MEAN
+        assert goal.indicator_column == COL_MEAN_CYCLE_H_MEAN
         assert goal.target == pytest.approx(90.0)
         assert goal.baseline_ref == pytest.approx(100.0)
         assert goal.worst == pytest.approx(110.0)
@@ -36,7 +36,7 @@ class TestFromIndicator:
         median = MetricRegistry.CYCLE_TIME.extra_indicators[0]
         assert median.mean.column == COL_MEDIAN_CYCLE_H_MEAN
         goal = Goal.from_indicator(median, {COL_MEDIAN_CYCLE_H_MEAN: 50.0})
-        assert goal.metric == COL_MEDIAN_CYCLE_H_MEAN
+        assert goal.indicator_column == COL_MEDIAN_CYCLE_H_MEAN
         assert goal.baseline_ref == pytest.approx(50.0)
 
 
@@ -68,11 +68,11 @@ class TestFromBaseline:
         goal = Goal.from_baseline("col", 100.0, MetricDirection.LARGER_IS_BETTER)
         assert goal.worst == pytest.approx(90.0)
 
-    def test_metric_name_preserved(self):
+    def test_indicator_column_preserved(self):
         goal = Goal.from_baseline(
             "mean_cycle_h_mean", 10.0, MetricDirection.SMALLER_IS_BETTER
         )
-        assert goal.metric == "mean_cycle_h_mean"
+        assert goal.indicator_column == "mean_cycle_h_mean"
 
     def test_zero_baseline_produces_all_zero_breakpoints(self):
         goal = Goal.from_baseline("col", 0.0, MetricDirection.SMALLER_IS_BETTER)
@@ -90,32 +90,43 @@ class TestGoalOrderingGuard:
     def test_baseline_above_both_raises(self):
         # SIB shape but baseline beyond worst: score() would cliff, so construction fails.
         with pytest.raises(ValueError, match="must lie between"):
-            Goal(metric="col", target=90.0, baseline_ref=120.0, worst=110.0)
+            Goal(indicator_column="col", target=90.0, baseline_ref=120.0, worst=110.0)
 
     def test_baseline_below_both_raises(self):
         with pytest.raises(ValueError, match="must lie between"):
-            Goal(metric="col", target=90.0, baseline_ref=80.0, worst=110.0)
+            Goal(indicator_column="col", target=90.0, baseline_ref=80.0, worst=110.0)
 
-    def test_error_names_the_metric(self):
+    def test_error_names_the_indicator_column(self):
         with pytest.raises(ValueError, match="mean_cost_mean"):
-            Goal(metric="mean_cost_mean", target=5.0, baseline_ref=20.0, worst=10.0)
+            Goal(
+                indicator_column="mean_cost_mean",
+                target=5.0,
+                baseline_ref=20.0,
+                worst=10.0,
+            )
 
     def test_baseline_equal_target_is_allowed(self):
-        goal = Goal(metric="col", target=100.0, baseline_ref=100.0, worst=110.0)
+        goal = Goal(
+            indicator_column="col", target=100.0, baseline_ref=100.0, worst=110.0
+        )
         assert goal.baseline_ref == pytest.approx(100.0)
 
     def test_baseline_equal_worst_is_allowed(self):
-        goal = Goal(metric="col", target=90.0, baseline_ref=110.0, worst=110.0)
+        goal = Goal(
+            indicator_column="col", target=90.0, baseline_ref=110.0, worst=110.0
+        )
         assert goal.baseline_ref == pytest.approx(110.0)
 
     def test_degenerate_all_equal_is_allowed(self):
         # from_baseline(0.0) produces this shape; score() handles the zero spans.
-        goal = Goal(metric="col", target=0.0, baseline_ref=0.0, worst=0.0)
+        goal = Goal(indicator_column="col", target=0.0, baseline_ref=0.0, worst=0.0)
         assert goal.score(0.0) == pytest.approx(100.0)
 
     def test_lib_ordering_is_allowed(self):
         # Larger-is-better: target above worst, baseline between.
-        goal = Goal(metric="col", target=110.0, baseline_ref=100.0, worst=90.0)
+        goal = Goal(
+            indicator_column="col", target=110.0, baseline_ref=100.0, worst=90.0
+        )
         assert goal.score(100.0) == pytest.approx(50.0)
 
 
