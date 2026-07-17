@@ -76,7 +76,6 @@ class IndicatorSpec:
 
     results_column: str  # column in the raw per-replication results DataFrame
     mean: MetricSpec
-    std: MetricSpec | None = None  # hidden by default; registered for future toggle
     upper_bound: float | None = None
 
     # Display accessors used by the UI; the data column/direction are read
@@ -159,11 +158,6 @@ class MetricRegistry:
                     decimal_places=2,
                     short_label="Cycle Time",
                 ),
-                std=MetricSpec(
-                    column="mean_cycle_h_std",
-                    display_name="Cycle Time Std Dev (h)",
-                    decimal_places=2,
-                ),
             ),
             IndicatorSpec(
                 results_column=COL_MEDIAN_CYCLE_H,
@@ -213,11 +207,6 @@ class MetricRegistry:
                     display_name="Cost ($/case)",
                     decimal_places=2,
                     short_label="Cost",
-                ),
-                std=MetricSpec(
-                    column="mean_cost_std",
-                    display_name="Cost Std Dev ($)",
-                    decimal_places=2,
                 ),
             ),
         ),
