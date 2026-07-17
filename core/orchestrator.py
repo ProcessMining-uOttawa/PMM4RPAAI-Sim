@@ -13,23 +13,16 @@ from .simulation import store
 from .simulation.prosimos.reader import replication_metrics
 from .simulation.executor import SimulationTask, run_all
 from .constants import (
-    COL_MEAN_CYCLE_H,
-    COL_MEAN_CYCLE_H_MEAN,
-    COL_MEAN_COST,
-    COL_MEAN_COST_MEAN,
-    COL_MEDIAN_CYCLE_H,
-    COL_MEDIAN_CYCLE_H_MEAN,
     COL_TOTAL_CYCLE_S,
     COL_TOTAL_COST,
     COL_TOTAL_CYCLE_S_MEAN,
     COL_TOTAL_COST_MEAN,
     COL_TOTAL_REWORK_COUNT,
-    COL_REWORK_RATE,
     COL_TOTAL_REWORK_COUNT_MEAN,
-    COL_REWORK_RATE_MEAN,
     COL_TOTAL_BOT_FAILURE_COUNT,
     COL_TOTAL_BOT_FAILURE_COUNT_MEAN,
 )
+from .metrics import MetricRegistry
 from .parameters import Scenario
 from .transformations import Transformation
 
@@ -249,24 +242,30 @@ def run_experiment(
             f"First error: {failures[0].error}"
         )
 
-    # One flat record: per-case means stored beside the totals, so consumers
-    # never derive per-case by dividing a total by the case count.
+    # One flat record: every registered indicator's per-case mean stored at
+    # source (so consumers never derive per-case by dividing a total), beside the
+    # four run-total means. The per-case half is registry-driven — a new
+    # indicator flows in without touching this block; the totals are hand-listed
+    # because they never grow with the indicator set (CLAUDE.md §8).
     baseline_agg: dict[str, float] | None = None
     if baseline_reps:  # stays None (never {}) when all baseline reps failed —
         # app.py gates the Baseline tab and goal seeding on "is not None"
         means = pd.DataFrame(baseline_reps).mean()
         baseline_agg = {
-            COL_MEAN_CYCLE_H_MEAN: means[COL_MEAN_CYCLE_H],
-            COL_MEDIAN_CYCLE_H_MEAN: means[COL_MEDIAN_CYCLE_H],
-            COL_MEAN_COST_MEAN: means[COL_MEAN_COST],
-            COL_TOTAL_CYCLE_S_MEAN: means[COL_TOTAL_CYCLE_S],
-            COL_TOTAL_COST_MEAN: means[COL_TOTAL_COST],
-            COL_TOTAL_REWORK_COUNT_MEAN: means[COL_TOTAL_REWORK_COUNT],
-            COL_REWORK_RATE_MEAN: means[COL_REWORK_RATE],
-            # Structurally 0 at 0% automation (no case reaches the bot), but
-            # read from the data rather than hardcoded — Panel 5 needs the key.
-            COL_TOTAL_BOT_FAILURE_COUNT_MEAN: means[COL_TOTAL_BOT_FAILURE_COUNT],
+            indicator.mean.column: means[indicator.results_column]
+            for metric in MetricRegistry.all()
+            for indicator in metric.indicators
         }
+        baseline_agg.update(
+            {
+                COL_TOTAL_CYCLE_S_MEAN: means[COL_TOTAL_CYCLE_S],
+                COL_TOTAL_COST_MEAN: means[COL_TOTAL_COST],
+                COL_TOTAL_REWORK_COUNT_MEAN: means[COL_TOTAL_REWORK_COUNT],
+                # Bot failures are structurally 0 at 0% automation (no case
+                # reaches the bot), but read from the data — Panel 5 needs the key.
+                COL_TOTAL_BOT_FAILURE_COUNT_MEAN: means[COL_TOTAL_BOT_FAILURE_COUNT],
+            }
+        )
 
     return ExperimentResult(
         results=pd.DataFrame(rows),

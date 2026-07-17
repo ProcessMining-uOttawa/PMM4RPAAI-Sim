@@ -6,16 +6,26 @@ COL_MEAN_CYCLE_H = (
     "mean_cycle_h"  # mean cycle time per case in hours, for one replication
 )
 COL_MEAN_COST = "mean_cost"  # mean cost per case, for one replication
-# median cycle time per case in hours, for one replication — a scoring-only
-# second factor for the time goal; deliberately never wired into a total or the
-# total_cycle_s = mean_cycle_h × n × 3600 identity (mean carries that)
+# Optional per-case cycle-time indicators (median / min / max over the case
+# durations of one replication). Each is scoring-only: a goal may weight it as
+# an indicator, but none feeds a total — the total_cycle_s = mean_cycle_h × n ×
+# 3600 identity is carried by the mean alone.
 COL_MEDIAN_CYCLE_H = "median_cycle_h"
+COL_MIN_CYCLE_H = "min_cycle_h"
+COL_MAX_CYCLE_H = "max_cycle_h"
+# Mean per-case rework count (excess repeated-activity occurrences per case) — an
+# optional scoring indicator for the rework metric; equals total_rework_count /
+# n_cases, stored at source like every per-case mean.
+COL_MEAN_REWORK_COUNT = "mean_rework_count"
 
 # mean of per-case metrics across replications (aggregate() output; feeds the
 # ranked results table)
 COL_MEAN_CYCLE_H_MEAN = "mean_cycle_h_mean"
 COL_MEAN_COST_MEAN = "mean_cost_mean"
 COL_MEDIAN_CYCLE_H_MEAN = "median_cycle_h_mean"
+COL_MIN_CYCLE_H_MEAN = "min_cycle_h_mean"
+COL_MAX_CYCLE_H_MEAN = "max_cycle_h_mean"
+COL_MEAN_REWORK_COUNT_MEAN = "mean_rework_count_mean"
 
 # per-replication run totals (accumulated across all cases in one Prosimos run)
 COL_TOTAL_CYCLE_S = "total_cycle_s"

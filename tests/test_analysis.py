@@ -15,12 +15,14 @@ from core.analysis import (
     sn_export_table,
     rank,
 )
-from core.goals import Goal
+from core.goals import Goal, MetricGoal
 from core.metrics import MetricDirection, MetricRegistry
 from core.parameters import Parameter
 from core.constants import (
     COL_MEAN_CYCLE_H,
     COL_MEDIAN_CYCLE_H,
+    COL_MIN_CYCLE_H,
+    COL_MAX_CYCLE_H,
     COL_MEAN_COST,
     COL_MEAN_CYCLE_H_MEAN,
     COL_MEDIAN_CYCLE_H_MEAN,
@@ -31,6 +33,7 @@ from core.constants import (
     COL_TOTAL_COST_MEAN,
     COL_TOTAL_REWORK_COUNT,
     COL_REWORK_RATE,
+    COL_MEAN_REWORK_COUNT,
     COL_TOTAL_REWORK_COUNT_MEAN,
     COL_REWORK_RATE_MEAN,
     COL_TOTAL_BOT_FAILURE_COUNT,
@@ -49,12 +52,15 @@ def _results_df() -> pd.DataFrame:
                 "replication": 0,
                 COL_MEAN_CYCLE_H: 10.0,
                 COL_MEDIAN_CYCLE_H: 9.0,
+                COL_MIN_CYCLE_H: 5.0,
+                COL_MAX_CYCLE_H: 20.0,
                 COL_MEAN_COST: 5.0,
                 "f_a": "low",
                 COL_TOTAL_CYCLE_S: 36000.0,
                 COL_TOTAL_COST: 500.0,
                 COL_TOTAL_REWORK_COUNT: 2.0,
                 COL_REWORK_RATE: 10.0,
+                COL_MEAN_REWORK_COUNT: 0.2,
                 COL_TOTAL_BOT_FAILURE_COUNT: 1.0,
             },
             {
@@ -62,12 +68,15 @@ def _results_df() -> pd.DataFrame:
                 "replication": 1,
                 COL_MEAN_CYCLE_H: 12.0,
                 COL_MEDIAN_CYCLE_H: 11.0,
+                COL_MIN_CYCLE_H: 6.0,
+                COL_MAX_CYCLE_H: 24.0,
                 COL_MEAN_COST: 7.0,
                 "f_a": "low",
                 COL_TOTAL_CYCLE_S: 43200.0,
                 COL_TOTAL_COST: 700.0,
                 COL_TOTAL_REWORK_COUNT: 4.0,
                 COL_REWORK_RATE: 20.0,
+                COL_MEAN_REWORK_COUNT: 0.4,
                 COL_TOTAL_BOT_FAILURE_COUNT: 3.0,
             },
             {
@@ -75,12 +84,15 @@ def _results_df() -> pd.DataFrame:
                 "replication": 0,
                 COL_MEAN_CYCLE_H: 20.0,
                 COL_MEDIAN_CYCLE_H: 18.0,
+                COL_MIN_CYCLE_H: 10.0,
+                COL_MAX_CYCLE_H: 40.0,
                 COL_MEAN_COST: 10.0,
                 "f_a": "high",
                 COL_TOTAL_CYCLE_S: 72000.0,
                 COL_TOTAL_COST: 1000.0,
                 COL_TOTAL_REWORK_COUNT: 0.0,
                 COL_REWORK_RATE: 0.0,
+                COL_MEAN_REWORK_COUNT: 0.0,
                 COL_TOTAL_BOT_FAILURE_COUNT: 0.0,
             },
             {
@@ -88,12 +100,15 @@ def _results_df() -> pd.DataFrame:
                 "replication": 1,
                 COL_MEAN_CYCLE_H: 22.0,
                 COL_MEDIAN_CYCLE_H: 20.0,
+                COL_MIN_CYCLE_H: 11.0,
+                COL_MAX_CYCLE_H: 44.0,
                 COL_MEAN_COST: 12.0,
                 "f_a": "high",
                 COL_TOTAL_CYCLE_S: 79200.0,
                 COL_TOTAL_COST: 1200.0,
                 COL_TOTAL_REWORK_COUNT: 2.0,
                 COL_REWORK_RATE: 10.0,
+                COL_MEAN_REWORK_COUNT: 0.2,
                 COL_TOTAL_BOT_FAILURE_COUNT: 2.0,
             },
         ]
@@ -151,9 +166,10 @@ class TestSignalToNoise:
 
 class TestAggregate:
     def test_one_row_per_scenario(self):
-        # Two scenarios in → two rows out. Also guards _NON_FACTOR_COLS excluding
-        # median: were median grouped as a factor, aggregate() would fragment the
-        # groups and this count would exceed 2.
+        # Two scenarios in → two rows out. Also guards _NON_FACTOR_COLS covering
+        # every indicator column (median/min/max/mean_rework_count included): were
+        # any grouped as a phantom factor, aggregate() would fragment the groups
+        # and this count would exceed 2.
         assert len(aggregate(_results_df())) == 2
 
     def test_means_correct(self):
@@ -189,11 +205,14 @@ class TestAggregate:
                     "f_a": "low",
                     COL_MEAN_CYCLE_H: 10.0,
                     COL_MEDIAN_CYCLE_H: 9.0,
+                    COL_MIN_CYCLE_H: 5.0,
+                    COL_MAX_CYCLE_H: 20.0,
                     COL_MEAN_COST: float("nan"),
                     COL_TOTAL_CYCLE_S: 36000.0,
                     COL_TOTAL_COST: 500.0,
                     COL_TOTAL_REWORK_COUNT: 2.0,
                     COL_REWORK_RATE: 5.0,
+                    COL_MEAN_REWORK_COUNT: 0.1,
                     COL_TOTAL_BOT_FAILURE_COUNT: 1.0,
                 }
             ]
@@ -480,47 +499,50 @@ class TestSnExportTable:
 # ── rank ──────────────────────────────────────────────────────────────────────
 
 
-def _sib_goal(metric: str, baseline: float) -> Goal:
-    """Smaller-is-better goal with target=0.9×b, baseline_ref=b, worst=1.1×b."""
-    from core.metrics import MetricDirection
+def _sib_goal(column: str, baseline: float) -> Goal:
+    """Smaller-is-better indicator Goal with target=0.9×b, baseline_ref=b, worst=1.1×b."""
+    return Goal.from_baseline(column, baseline, MetricDirection.SMALLER_IS_BETTER)
 
-    return Goal.from_baseline(metric, baseline, MetricDirection.SMALLER_IS_BETTER)
+
+def _mg(column: str, baseline: float) -> MetricGoal:
+    """A single-indicator MetricGoal — the common case rank() scores."""
+    return MetricGoal(indicator_goals=(_sib_goal(column, baseline),), weights=(1,))
 
 
 class TestRank:
     def test_per_goal_score_column_added(self):
         agg = pd.DataFrame([{"scenario_id": "S01", COL_MEAN_CYCLE_H_MEAN: 100.0}])
-        ranked = rank(agg, [_sib_goal(COL_MEAN_CYCLE_H_MEAN, 100.0)])
+        ranked = rank(agg, [_mg(COL_MEAN_CYCLE_H_MEAN, 100.0)])
         assert f"{COL_MEAN_CYCLE_H_MEAN}_score" in ranked.columns
 
     def test_overall_score_column_added(self):
         agg = pd.DataFrame([{"scenario_id": "S01", COL_MEAN_CYCLE_H_MEAN: 100.0}])
-        ranked = rank(agg, [_sib_goal(COL_MEAN_CYCLE_H_MEAN, 100.0)])
+        ranked = rank(agg, [_mg(COL_MEAN_CYCLE_H_MEAN, 100.0)])
         assert "score" in ranked.columns
 
     def test_score_at_target_is_100(self):
         # value = 0.9 × baseline → at target → score 100
         agg = pd.DataFrame([{"scenario_id": "S01", COL_MEAN_CYCLE_H_MEAN: 90.0}])
-        ranked = rank(agg, [_sib_goal(COL_MEAN_CYCLE_H_MEAN, 100.0)])
+        ranked = rank(agg, [_mg(COL_MEAN_CYCLE_H_MEAN, 100.0)])
         assert ranked.iloc[0][f"{COL_MEAN_CYCLE_H_MEAN}_score"] == pytest.approx(100.0)
 
     def test_score_at_threshold_is_50(self):
         # value = baseline_ref → score 50
         agg = pd.DataFrame([{"scenario_id": "S01", COL_MEAN_CYCLE_H_MEAN: 100.0}])
-        ranked = rank(agg, [_sib_goal(COL_MEAN_CYCLE_H_MEAN, 100.0)])
+        ranked = rank(agg, [_mg(COL_MEAN_CYCLE_H_MEAN, 100.0)])
         assert ranked.iloc[0][f"{COL_MEAN_CYCLE_H_MEAN}_score"] == pytest.approx(50.0)
 
     def test_score_at_worst_is_0(self):
         # value = 1.1 × baseline → at worst → score 0
         agg = pd.DataFrame([{"scenario_id": "S01", COL_MEAN_CYCLE_H_MEAN: 110.0}])
-        ranked = rank(agg, [_sib_goal(COL_MEAN_CYCLE_H_MEAN, 100.0)])
+        ranked = rank(agg, [_mg(COL_MEAN_CYCLE_H_MEAN, 100.0)])
         assert ranked.iloc[0][f"{COL_MEAN_CYCLE_H_MEAN}_score"] == pytest.approx(0.0)
 
     def test_nan_gets_score_0(self):
         agg = pd.DataFrame(
             [{"scenario_id": "S01", COL_MEAN_CYCLE_H_MEAN: float("nan")}]
         )
-        ranked = rank(agg, [_sib_goal(COL_MEAN_CYCLE_H_MEAN, 100.0)])
+        ranked = rank(agg, [_mg(COL_MEAN_CYCLE_H_MEAN, 100.0)])
         assert ranked.iloc[0][f"{COL_MEAN_CYCLE_H_MEAN}_score"] == pytest.approx(0.0)
 
     def test_overall_score_is_min_of_per_goal_scores(self):
@@ -537,8 +559,8 @@ class TestRank:
             ]
         )
         goals = [
-            _sib_goal(COL_MEAN_CYCLE_H_MEAN, 100.0),
-            _sib_goal(COL_MEAN_COST_MEAN, 100.0),
+            _mg(COL_MEAN_CYCLE_H_MEAN, 100.0),
+            _mg(COL_MEAN_COST_MEAN, 100.0),
         ]
         ranked = rank(agg, goals)
         assert ranked.iloc[0]["score"] == pytest.approx(50.0)
@@ -551,15 +573,15 @@ class TestRank:
                 {"scenario_id": "S02", COL_MEAN_CYCLE_H_MEAN: 90.0},
             ]
         )
-        ranked = rank(agg, [_sib_goal(COL_MEAN_CYCLE_H_MEAN, 100.0)])
+        ranked = rank(agg, [_mg(COL_MEAN_CYCLE_H_MEAN, 100.0)])
         assert ranked.iloc[0]["scenario_id"] == "S02"
 
-    def test_two_factor_goal_weighted_score(self):
-        # Distinct scales + weight 0.75 make this discriminate both a weight-swap
-        # and an argument-swap. Primary (mean) 90 = target → 100; secondary
-        # (median) 220 = worst of 180/200/220 → 0. 0.75·100 + 0.25·0 = 75.
-        #   weight-swap (0.25·100 + 0.75·0) → 25;
-        #   arg-swap (primary.score(220)=0, secondary.score(90)=100) → 25.
+    def test_multi_indicator_goal_weighted_score(self):
+        # Distinct scales + integer weights 3:1 discriminate both a weight-swap
+        # and an argument-swap. Default (mean) 90 = target → 100; extra (median)
+        # 220 = worst of 180/200/220 → 0. (3·100 + 1·0)/4 = 75.
+        #   weight-swap (1·100 + 3·0)/4 → 25;
+        #   arg-swap (mean.score(220)=0, median.score(90)=100) → 25.
         agg = pd.DataFrame(
             [
                 {
@@ -569,20 +591,19 @@ class TestRank:
                 }
             ]
         )
-        goal = Goal(
-            metric=COL_MEAN_CYCLE_H_MEAN,
-            target=90.0,
-            baseline_ref=100.0,
-            worst=110.0,
-            secondary=_sib_goal(COL_MEDIAN_CYCLE_H_MEAN, 200.0),
-            weight=0.75,
+        goal = MetricGoal(
+            indicator_goals=(
+                _sib_goal(COL_MEAN_CYCLE_H_MEAN, 100.0),
+                _sib_goal(COL_MEDIAN_CYCLE_H_MEAN, 200.0),
+            ),
+            weights=(3, 1),
         )
         ranked = rank(agg, [goal])
         assert ranked.iloc[0][f"{COL_MEAN_CYCLE_H_MEAN}_score"] == pytest.approx(75.0)
 
-    def test_two_factor_goal_participates_in_weakest_link(self):
-        # Time goal (two-factor) scores 50; cost goal scores 100. Aggregate stays
-        # the weakest-link min = 50 — weighting is intra-goal, never cross-goal.
+    def test_multi_indicator_goal_participates_in_weakest_link(self):
+        # Time goal (two indicators) scores 50; cost goal scores 100. Aggregate
+        # stays the weakest-link min = 50 — weighting is intra-metric, never cross.
         agg = pd.DataFrame(
             [
                 {
@@ -593,15 +614,14 @@ class TestRank:
                 }
             ]
         )
-        time_goal = Goal(
-            metric=COL_MEAN_CYCLE_H_MEAN,
-            target=90.0,
-            baseline_ref=100.0,
-            worst=110.0,
-            secondary=_sib_goal(COL_MEDIAN_CYCLE_H_MEAN, 100.0),
-            weight=0.5,
+        time_goal = MetricGoal(
+            indicator_goals=(
+                _sib_goal(COL_MEAN_CYCLE_H_MEAN, 100.0),  # 90 → target → 100
+                _sib_goal(COL_MEDIAN_CYCLE_H_MEAN, 100.0),  # 110 → worst → 0
+            ),
+            weights=(1, 1),  # mean (100 + 0)/2 = 50
         )
-        cost_goal = _sib_goal(COL_MEAN_COST_MEAN, 100.0)  # value 90 → score 100
+        cost_goal = _mg(COL_MEAN_COST_MEAN, 100.0)  # value 90 → score 100
         ranked = rank(agg, [time_goal, cost_goal])
         assert ranked.iloc[0]["score"] == pytest.approx(50.0)
 

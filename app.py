@@ -28,7 +28,11 @@ from ui.discovery_manager import (
 )
 from ui.interactive.resource_selector import select_resource
 from ui.interactive.factor_levels import configure_factor_levels
-from ui.interactive.goal_config import configure_goals, reset_goal_thresholds
+from ui.interactive.goal_config import (
+    configure_goals,
+    reset_goal_selection,
+    reset_goal_thresholds,
+)
 from ui.interactive.discovery_panel import render_discovery_progress
 from ui.interactive.main_effects import render_main_effects
 from ui.interactive.ranked_scenarios import render_ranked_scenarios
@@ -59,12 +63,15 @@ ss.setdefault("array_name", None)
 ss.setdefault("scenarios", [])
 ss.setdefault("baseline_agg", None)
 ss.setdefault("failed_replications", [])
-# metric-column -> {"target"/"worst": edited value}, plus the generation counter
-# embedded in the threshold widget keys. Log-level state (absolute thresholds are
-# meaningless against a different process): reset via _clear_process_state()
-# when the log changes, never by clear_results(), which runs at every run start.
+# indicator-column -> {"target"/"worst"/"weight": edited value}, plus the
+# generation counter embedded in the goal widget keys. goal_indicator_selection:
+# default-indicator column -> chosen extra-indicator columns. Both are log-level
+# state (absolute thresholds and indicator choices are meaningless against a
+# different process): reset via _clear_process_state() when the log changes,
+# never by clear_results(), which runs at every run start.
 ss.setdefault("goal_threshold_overrides", {})
 ss.setdefault("goal_threshold_reset_generation", 0)
+ss.setdefault("goal_indicator_selection", {})
 
 
 def _clear_process_state() -> None:
@@ -72,7 +79,8 @@ def _clear_process_state() -> None:
 
     Cancels any in-flight run (its commit would land in the wrong session),
     abandons any in-flight discovery, drops its results, the baseline
-    (log-scoped — clear_results deliberately keeps it), and the goal thresholds.
+    (log-scoped — clear_results deliberately keeps it), the goal thresholds, and
+    the indicator selection.
     Called when the log is reset or replaced — the two events after which this
     state would describe a different process.
     """
@@ -81,6 +89,7 @@ def _clear_process_state() -> None:
     clear_results(ss)
     ss.baseline_agg = None
     reset_goal_thresholds()
+    reset_goal_selection()
 
 
 def _clear_log() -> None:
@@ -306,15 +315,6 @@ with col1:
         transformation = next(iter(REGISTRY.values()))
         st.caption(f"Substitution pattern: {transformation.label}")
 
-    # Goals sit below Activity in the left column (not stacked with the factor
-    # grid) to even out the two columns' heights: the tall factor grid fills the
-    # right column, Activity + Goals the left. Panel-numbered by workflow order
-    # (design → score), so 3 · Goals reads after 2 · Factor levels despite being
-    # to its left.
-    with st.container(border=True):
-        st.markdown("##### 3 · Goals")
-        goal_config = configure_goals(per_case_baseline)
-
 with col2:
     with st.container(border=True):
         st.markdown("##### 2 · Factor levels")
@@ -326,6 +326,16 @@ with col2:
             selected_pool_size,
             frozen_pool_size,
         )
+
+# Goals span full width below Activity + Factor levels. Panel 3's height swings
+# from a few pickers (pre-run) to per-indicator threshold rows (post-run); giving
+# it the whole width lets that swing grow the page vertically instead of
+# unbalancing the two columns, and lets the goals lay out side by side so more
+# goals widen rather than lengthen the panel. Panel-numbered by workflow order
+# (design → score), so 3 · Goals reads after 2 · Factor levels.
+with st.container(border=True):
+    st.markdown("##### 3 · Goals")
+    goal_config = configure_goals(per_case_baseline)
 
 # --- Design + execution panel ------------------------------------------------
 array_name, scenarios = build_scenarios(parameters, transformation.id, target)
@@ -398,7 +408,11 @@ if ss.results is not None:
 
         with result_tabs[0]:
             ranked = render_ranked_scenarios(
-                agg, goal_config.metrics, goal_config.scorable_goals, parameters
+                agg,
+                goal_config.metrics,
+                goal_config.scorable_goals,
+                goal_config.selected_extras,
+                parameters,
             )
         with result_tabs[1]:
             render_main_effects(ss.results, parameters)

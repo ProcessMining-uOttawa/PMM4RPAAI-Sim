@@ -21,16 +21,22 @@ from .constants import (
 from .constants import (
     COL_MEAN_CYCLE_H,
     COL_MEDIAN_CYCLE_H,
+    COL_MIN_CYCLE_H,
+    COL_MAX_CYCLE_H,
     COL_MEAN_COST,
     COL_TOTAL_CYCLE_S,
     COL_TOTAL_COST,
     COL_TOTAL_REWORK_COUNT,
     COL_REWORK_RATE,
+    COL_MEAN_REWORK_COUNT,
     COL_TOTAL_BOT_FAILURE_COUNT,
     COL_MEAN_CYCLE_H_MEAN,
     COL_MEDIAN_CYCLE_H_MEAN,
+    COL_MIN_CYCLE_H_MEAN,
+    COL_MAX_CYCLE_H_MEAN,
     COL_MEAN_COST_MEAN,
     COL_REWORK_RATE_MEAN,
+    COL_MEAN_REWORK_COUNT_MEAN,
 )
 from .orchestrator import ExperimentCancelledError, ExperimentResult
 
@@ -43,9 +49,11 @@ DEMO_BPMN = _DEMO_DIR / "model.bpmn"
 DEMO_JSON = _DEMO_DIR / "params.json"
 
 BASELINE_CYCLE_H = 31.2
-# Below the mean — cycle-time distributions are right-skewed (a few long cases
-# pull the mean up), so the synthetic median sits below the mean.
+# Cycle-time distributions are right-skewed (a few long cases pull the mean up),
+# so the synthetic order statistics straddle the mean: min < median < mean < max.
 BASELINE_MEDIAN_CYCLE_H = 28.0
+BASELINE_MIN_CYCLE_H = 12.0
+BASELINE_MAX_CYCLE_H = 70.0
 BASELINE_COST = 48.0
 BASELINE_REWORK_RATE = 5.0  # percentage (0–100), matches COL_REWORK_RATE storage unit
 
@@ -54,25 +62,35 @@ BASELINE_REWORK_RATE = 5.0  # percentage (0–100), matches COL_REWORK_RATE stor
 class _SimResult:
     mean_cycle_h: float
     median_cycle_h: float
+    min_cycle_h: float
+    max_cycle_h: float
     mean_cost: float
     total_cycle_s: float
     total_cost: float
     total_rework_count: float
     rework_rate: float
+    mean_rework_count: float
     total_bot_failure_count: float
 
 
 def demo_baseline_agg() -> dict[str, float]:
     """Synthetic baseline_agg for goal target computation in demo mode.
 
-    A flat record carrying the per-case keys baseline_per_case() picks, so
-    app.py can always call it regardless of mode.
+    A flat record carrying every per-case indicator key baseline_per_case()
+    picks, so app.py can always call it regardless of mode. Kept an explicit
+    literal (not a registry comprehension) so the named-constant mapping stays
+    readable; baseline_per_case KeyErrors loudly if it ever drifts.
     """
     return {
         COL_MEAN_CYCLE_H_MEAN: BASELINE_CYCLE_H,
         COL_MEDIAN_CYCLE_H_MEAN: BASELINE_MEDIAN_CYCLE_H,
+        COL_MIN_CYCLE_H_MEAN: BASELINE_MIN_CYCLE_H,
+        COL_MAX_CYCLE_H_MEAN: BASELINE_MAX_CYCLE_H,
         COL_MEAN_COST_MEAN: BASELINE_COST,
         COL_REWORK_RATE_MEAN: BASELINE_REWORK_RATE,
+        # Mean rework count per case = rate/100 in the demo's simple rework model
+        # (matches _fake_simulate's derived value and the total = mean × n identity).
+        COL_MEAN_REWORK_COUNT_MEAN: BASELINE_REWORK_RATE / 100,
     }
 
 
@@ -119,20 +137,28 @@ def _fake_simulate(
         100.0,
     )
     bot_failure_count = bot_failure_fraction * n_cases * rng.uniform(0.9, 1.1)
-    # Median tracks the mean's scenario dependence but sits ~10 % below it
-    # (right-skew), with its own jitter. Drawn LAST so it does not shift the rng
-    # sequence of the metrics above. Scoring-only second factor.
+    # The cycle-time order statistics are scoring-only indicators. Median tracks
+    # the mean's scenario dependence but sits ~10 % below it (right-skew); min and
+    # max straddle it so min < median < mean < max holds for every draw. Drawn
+    # AFTER the metrics above so appending them never shifts their rng sequence.
     median_ratio = BASELINE_MEDIAN_CYCLE_H / BASELINE_CYCLE_H
     median_cycle = cycle * median_ratio * rng.uniform(0.95, 1.05)
+    min_cycle = median_cycle * rng.uniform(0.35, 0.5)
+    max_cycle = cycle * rng.uniform(1.8, 2.6)
 
     return _SimResult(
         mean_cycle_h=round(cycle, 2),
         median_cycle_h=round(median_cycle, 2),
+        min_cycle_h=round(min_cycle, 2),
+        max_cycle_h=round(max_cycle, 2),
         mean_cost=round(cost, 2),
         total_cycle_s=round(cycle * 3600 * n_cases, 2),
         total_cost=round(cost * n_cases, 2),
         total_rework_count=round(rework_rate / 100 * n_cases, 2),
         rework_rate=round(rework_rate, 2),
+        # Derived (not drawn): the per-case average of excess occurrences equals
+        # total_rework_count / n_cases = rework_rate/100 in this rate-only model.
+        mean_rework_count=round(rework_rate / 100, 4),
         total_bot_failure_count=round(bot_failure_count, 2),
     )
 
@@ -161,11 +187,14 @@ def run_experiment(
                     "replication": rep,
                     COL_MEAN_CYCLE_H: r.mean_cycle_h,
                     COL_MEDIAN_CYCLE_H: r.median_cycle_h,
+                    COL_MIN_CYCLE_H: r.min_cycle_h,
+                    COL_MAX_CYCLE_H: r.max_cycle_h,
                     COL_MEAN_COST: r.mean_cost,
                     COL_TOTAL_CYCLE_S: r.total_cycle_s,
                     COL_TOTAL_COST: r.total_cost,
                     COL_TOTAL_REWORK_COUNT: r.total_rework_count,
                     COL_REWORK_RATE: r.rework_rate,
+                    COL_MEAN_REWORK_COUNT: r.mean_rework_count,
                     COL_TOTAL_BOT_FAILURE_COUNT: r.total_bot_failure_count,
                     **s.values,
                 }

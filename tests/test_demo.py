@@ -15,17 +15,20 @@ from core.simulation.prosimos.query import task_mean_duration_s
 from core.constants import (
     COL_MEAN_CYCLE_H,
     COL_MEDIAN_CYCLE_H,
+    COL_MIN_CYCLE_H,
+    COL_MAX_CYCLE_H,
     COL_MEAN_COST,
     COL_TOTAL_CYCLE_S,
     COL_TOTAL_COST,
     COL_TOTAL_REWORK_COUNT,
     COL_REWORK_RATE,
+    COL_MEAN_REWORK_COUNT,
     COL_TOTAL_BOT_FAILURE_COUNT,
     COL_MEAN_CYCLE_H_MEAN,
-    COL_MEDIAN_CYCLE_H_MEAN,
     COL_MEAN_COST_MEAN,
     COL_REWORK_RATE_MEAN,
 )
+from core.metrics import MetricRegistry
 from core.taguchi import build_scenarios
 from core.orchestrator import ExperimentCancelledError, ExperimentResult
 from core.transformations import XORSplitAutomation
@@ -60,11 +63,14 @@ class TestDemoRunExperiment:
             "replication",
             COL_MEAN_CYCLE_H,
             COL_MEDIAN_CYCLE_H,
+            COL_MIN_CYCLE_H,
+            COL_MAX_CYCLE_H,
             COL_MEAN_COST,
             COL_TOTAL_CYCLE_S,
             COL_TOTAL_COST,
             COL_TOTAL_REWORK_COUNT,
             COL_REWORK_RATE,
+            COL_MEAN_REWORK_COUNT,
             COL_TOTAL_BOT_FAILURE_COUNT,
         }
         assert required <= set(result.results.columns)
@@ -104,11 +110,24 @@ class TestDemoRunExperiment:
         assert (df[COL_REWORK_RATE] <= 100.0).all()
         assert (df[COL_TOTAL_BOT_FAILURE_COUNT] >= 0).all()
 
-    def test_median_cycle_below_mean(self):
-        # The demo assumes right-skewed cycle times, so the synthetic median
-        # (a scoring-only second factor) sits below the mean in every row.
+    def test_cycle_order_statistics_straddle_the_mean(self):
+        # The demo assumes right-skewed cycle times, so the synthetic order
+        # statistics (scoring-only indicators) satisfy min < median < mean < max
+        # in every row.
         df = demo.run_experiment(_scenarios(), n_reps=1, n_cases=_N_CASES).results
+        assert (df[COL_MIN_CYCLE_H] < df[COL_MEDIAN_CYCLE_H]).all()
         assert (df[COL_MEDIAN_CYCLE_H] < df[COL_MEAN_CYCLE_H]).all()
+        assert (df[COL_MEAN_CYCLE_H] < df[COL_MAX_CYCLE_H]).all()
+
+    def test_mean_rework_count_matches_rework_rate_identity(self):
+        # In the demo's rate-only rework model, mean rework count per case equals
+        # rework_rate / 100 (and total_rework_count / n_cases). Pins the derived,
+        # not-drawn value so it never falls out of sync with the rate.
+        df = demo.run_experiment(_scenarios(), n_reps=2, n_cases=_N_CASES).results
+        for _, row in df.iterrows():
+            assert row[COL_MEAN_REWORK_COUNT] == pytest.approx(
+                row[COL_REWORK_RATE] / 100, abs=1e-3
+            )
 
     def test_nonzero_bot_cost_increases_cost(self):
         scenarios = _scenarios()
@@ -142,16 +161,14 @@ class TestDemoRunExperiment:
 
 
 class TestDemoBaselineAgg:
-    def test_contains_per_case_keys(self):
-        # The flat record must carry every key baseline_per_case() picks.
+    def test_contains_every_indicator_key(self):
+        # The flat record must carry every per-case indicator key
+        # baseline_per_case() picks — registry-driven so a new indicator that the
+        # demo forgets to seed fails here (and would KeyError baseline_per_case).
         agg = demo.demo_baseline_agg()
-        required = {
-            COL_MEAN_CYCLE_H_MEAN,
-            COL_MEDIAN_CYCLE_H_MEAN,
-            COL_MEAN_COST_MEAN,
-            COL_REWORK_RATE_MEAN,
-        }
-        assert required <= set(agg.keys())
+        for metric in MetricRegistry.all():
+            for indicator in metric.indicators:
+                assert indicator.mean.column in agg
 
     def test_survives_baseline_per_case(self):
         from core.goals import baseline_per_case
