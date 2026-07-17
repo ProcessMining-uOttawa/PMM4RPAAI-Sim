@@ -70,7 +70,8 @@ def reset_goal_thresholds() -> None:
     """Reset every threshold and weight input to its computed default.
 
     Clears the overrides (thresholds and weights) and bumps the generation
-    embedded in every goal widget key. The re-keying is the load-bearing part:
+    embedded in the threshold and weight widget keys. The re-keying is the
+    load-bearing part:
     the browser keeps a mounted widget's user-set value keyed by the widget's
     identity and re-sends it with the next rerun (value= is only the *initial*
     value on the client side too), so any server-side reset that leaves the
@@ -360,8 +361,8 @@ def configure_goals(per_case_baseline: dict[str, float] | None) -> GoalConfig:
 
     per_case_baseline is the resolved per-case baseline (real or demo
     constants), or None in real mode before the first run / when every
-    baseline replication failed — then only the metric pickers and indicator
-    selectors render and no goals are scorable. Panel 3's "3 · Goals" header is
+    baseline replication failed — then the tabs hold only the metric pickers
+    and indicator selectors, and no goals are scorable. Panel 3's "3 · Goals" header is
     rendered by app.py, like every sibling component's header.
     """
     if per_case_baseline is None:
