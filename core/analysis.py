@@ -57,8 +57,6 @@ def aggregate(results: pd.DataFrame) -> pd.DataFrame:
     for metric in MetricRegistry.all():
         for indicator in metric.indicators:
             agg_spec[indicator.mean.column] = (indicator.results_column, "mean")
-            if indicator.std is not None:
-                agg_spec[indicator.std.column] = (indicator.results_column, "std")
     for out_col, raw_col in _TOTAL_RESULT_COLS:
         agg_spec[out_col] = (raw_col, "mean")
     return results.groupby(["scenario_id", *factor_cols], as_index=False).agg(
