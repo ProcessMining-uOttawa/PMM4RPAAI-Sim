@@ -26,6 +26,8 @@ from core.constants import (
     COL_MEAN_COST,
     COL_MEAN_CYCLE_H_MEAN,
     COL_MEDIAN_CYCLE_H_MEAN,
+    COL_MIN_CYCLE_H_MEAN,
+    COL_MAX_CYCLE_H_MEAN,
     COL_MEAN_COST_MEAN,
     COL_TOTAL_CYCLE_S,
     COL_TOTAL_COST,
@@ -36,6 +38,7 @@ from core.constants import (
     COL_MEAN_REWORK_COUNT,
     COL_TOTAL_REWORK_COUNT_MEAN,
     COL_REWORK_RATE_MEAN,
+    COL_MEAN_REWORK_COUNT_MEAN,
     COL_TOTAL_BOT_FAILURE_COUNT,
     COL_TOTAL_BOT_FAILURE_COUNT_MEAN,
 )
@@ -185,11 +188,21 @@ class TestAggregate:
         # of 11.0 (confirms median is aggregated as its own column).
         assert row[COL_MEDIAN_CYCLE_H_MEAN] == pytest.approx(10.0)
 
+    def test_order_stat_means_correct(self):
+        agg = aggregate(_results_df())
+        row = agg[agg["scenario_id"] == "S01"].iloc[0]
+        # S01 mins 5.0, 6.0 → 5.5; maxes 20.0, 24.0 → 22.0. Both distinct from the
+        # mean-cycle mean (11.0), confirming min/max each aggregate from their own
+        # source column, not the mean.
+        assert row[COL_MIN_CYCLE_H_MEAN] == pytest.approx(5.5)
+        assert row[COL_MAX_CYCLE_H_MEAN] == pytest.approx(22.0)
+
     def test_rework_means_correct(self):
         agg = aggregate(_results_df())
         row = agg[agg["scenario_id"] == "S01"].iloc[0]
         assert row[COL_TOTAL_REWORK_COUNT_MEAN] == pytest.approx(3.0)  # (2 + 4) / 2
         assert row[COL_REWORK_RATE_MEAN] == pytest.approx(15.0)  # (10.0 + 20.0) / 2
+        assert row[COL_MEAN_REWORK_COUNT_MEAN] == pytest.approx(0.3)  # (0.2 + 0.4) / 2
 
     def test_bot_failure_mean_correct(self):
         agg = aggregate(_results_df())
