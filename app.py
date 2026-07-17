@@ -327,12 +327,12 @@ with col2:
             frozen_pool_size,
         )
 
-# Goals span full width below Activity + Factor levels. Panel 3's height swings
-# from a few pickers (pre-run) to per-indicator threshold rows (post-run); giving
-# it the whole width lets that swing grow the page vertically instead of
-# unbalancing the two columns, and lets the goals lay out side by side so more
-# goals widen rather than lengthen the panel. Panel-numbered by workflow order
-# (design → score), so 3 · Goals reads after 2 · Factor levels.
+# Goals span full width below Activity + Factor levels: each goal renders in
+# its own tab, so the active goal's threshold grid gets the whole page width,
+# and Panel 3's height swing (a few pickers pre-run → the active tab's grid
+# post-run) grows the page vertically instead of unbalancing the top two
+# columns. Panel-numbered by workflow order (design → score), so 3 · Goals
+# reads after 2 · Factor levels.
 with st.container(border=True):
     st.markdown("##### 3 · Goals")
     goal_config = configure_goals(per_case_baseline)
