@@ -14,7 +14,7 @@ from pathlib import Path
 
 import pytest
 
-from core.simulation.validate import Severity, check_replication
+from core.simulation.validate import Severity, check_experiment, check_replication
 
 FIXTURES = Path(__file__).parent / "fixtures"
 _ALLDAY = [
@@ -159,6 +159,14 @@ class TestMutations:
         cost = _by_label(checks, "total cost")
         assert not cost.ok and cost.severity is Severity.ERROR
 
+    def test_wrong_processing_fails(self, tmp_path):
+        # Processing seconds is a distinct ERROR oracle (stats Total Processing
+        # Time), not the cost column -- flip it, keep cost right, so the cost
+        # check stays ok and only the processing check catches the mismatch.
+        checks = check_replication(*_triple(tmp_path, tasks=[("A", 30.0, 99999.0)]))
+        proc = _by_label(checks, "total processing seconds")
+        assert not proc.ok and proc.severity is Severity.ERROR
+
     def test_cost_within_tolerance_passes(self, tmp_path):
         # 30.0 → 30.1: inside max(1.0, 0.5%·30) = 1.0 floor.
         assert _by_label(
@@ -201,3 +209,22 @@ def test_golden_reconciles(golden):
     assert not failed, failed
     # Real flag-on arrivals all land in the arrival window (distribution-independent).
     assert _by_label(checks, "arrivals inside arrival window").ours == 0.0
+
+
+# ── Experiment-dir walk ────────────────────────────────────────────────────────
+
+
+def test_check_experiment_reconciles(tmp_path):
+    # check_experiment walks store's runs/<exp>/ layout (scenarios + baseline) and
+    # wraps each replication in a ReplicationReport. Reconciling triples in both a
+    # scenario and the baseline -> every report ok, both names present.
+    exp = tmp_path / "exp"
+    for base in (exp / "scenarios" / "s1", exp / "baseline"):
+        base.mkdir(parents=True)
+        _write_log(base / "rep_001_log.csv", _RECON_LOG)
+        _write_params(base / "params.json")
+        _write_stats(base / "rep_001_stats.csv", _RECON_TASKS, _RECON_KPIS)
+
+    reports = check_experiment(exp)
+    assert {r.name for r in reports} == {"s1/rep_001_log", "baseline/rep_001_log"}
+    assert all(r.ok for r in reports), [r.name for r in reports if not r.ok]
