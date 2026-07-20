@@ -12,6 +12,23 @@ import pytest
 from core.simulation import runner
 
 
+class TestSimulateCommand:
+    def test_passes_event_log_flag(self, tmp_path, monkeypatch):
+        # replication_metrics.py sources the case arrival from the intermediate-event rows that
+        # this flag emits, so simulate() must always request them. Value "true":
+        # Prosimos parses the flag truthily (even "false" would enable it).
+        captured: dict = {}
+        monkeypatch.setattr(
+            runner, "_run_logged", lambda cmd, *a, **k: captured.setdefault("cmd", cmd)
+        )
+        runner.simulate(
+            tmp_path / "m.bpmn", tmp_path / "p.json", 10, tmp_path / "out.csv"
+        )
+        cmd = captured["cmd"]
+        flag_index = cmd.index("--is_event_added_to_log")
+        assert cmd[flag_index + 1] == "true"
+
+
 class TestRunLogged:
     def test_success_captures_output(self, tmp_path):
         log = tmp_path / "log.txt"

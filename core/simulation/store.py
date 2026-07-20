@@ -7,6 +7,7 @@ import json
 import time
 import uuid
 import zipfile
+from collections.abc import Iterator
 from pathlib import Path
 from typing import Callable
 
@@ -77,6 +78,30 @@ def baseline_stats(exp: Path, replication: int) -> Path:
 
 def baseline_subprocess_log(exp: Path, replication: int) -> Path:
     return _rep_path(baseline_dir(exp), replication, "prosimos.log")
+
+
+def iter_replication_triples(exp: Path) -> Iterator[tuple[str, Path, Path, Path]]:
+    """Yield (name, log, params, stats) for every replication under an experiment dir.
+
+    The layout owner enumerates its own folder structure so off-app consumers
+    (the trust checker) don't re-encode it. Params live once per scenario /
+    once for the baseline; logs and stats are per replication.
+    """
+
+    def walk(
+        base: Path, params: Path, label: str
+    ) -> Iterator[tuple[str, Path, Path, Path]]:
+        for log in sorted(base.glob("rep_*_log.csv")):
+            stats = log.with_name(log.name.replace("_log.csv", "_stats.csv"))
+            if params.exists() and stats.exists():
+                yield f"{label}/{log.stem}", log, params, stats
+
+    scenarios = exp / "scenarios"
+    if scenarios.is_dir():
+        for scenario in sorted(p for p in scenarios.iterdir() if p.is_dir()):
+            yield from walk(scenario, scenario / "params.json", scenario.name)
+    if (exp / "baseline").is_dir():
+        yield from walk(baseline_dir(exp), baseline_params_path(exp), "baseline")
 
 
 # ── Export packaging ──────────────────────────────────────────────────────────
