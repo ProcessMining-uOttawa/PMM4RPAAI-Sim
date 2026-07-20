@@ -1,4 +1,8 @@
-"""Metric definitions — single source of truth for display names, units, and ranking config."""
+"""Metric definitions — single source of truth for display names, units, and ranking config.
+
+What each metric *means* — its clock, what it includes and excludes, and how far
+it is validated against Prosimos — is documented in docs/metrics.md.
+"""
 
 from __future__ import annotations
 
