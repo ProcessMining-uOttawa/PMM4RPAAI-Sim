@@ -54,6 +54,9 @@ COL_TOTAL_BOT_FAILURE_COUNT_MEAN = "total_bot_failure_count_mean"
 # ── Prosimos JSON schema: top-level section keys ──────────────────────────────
 KEY_RESOURCE_PROFILES = "resource_profiles"
 KEY_TASK_RESOURCE_DISTRIBUTION = "task_resource_distribution"
+# Consumed by both prosimos/editor.py (writes calendars) and prosimos/calendars.py
+# (reads them to derive working time) — the two-module rule puts it here.
+KEY_RESOURCE_CALENDARS = "resource_calendars"
 
 # ── Taguchi factor IDs (bare column names used in Scenario.values dicts) ──────
 F_PCT_AUTO = "pct_auto"

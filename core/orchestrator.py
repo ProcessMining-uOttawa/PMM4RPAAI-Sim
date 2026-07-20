@@ -10,7 +10,7 @@ from typing import Callable
 import pandas as pd
 
 from .simulation import store
-from .simulation.prosimos.reader import replication_metrics
+from .simulation.prosimos.replication_metrics import replication_metrics
 from .simulation.executor import SimulationTask, run_all
 from .constants import (
     COL_TOTAL_CYCLE_S,
@@ -186,13 +186,17 @@ def run_experiment(
 
     def _on_complete(task: SimulationTask) -> None:
         meta = task.metadata
-        assert task.out_stat is not None
+        # Metrics come from the event log + params JSON; the stats CSV is written
+        # by Prosimos and cross-checked out-of-band. Asserting its existence is a
+        # cheap "the run finished" guard — a Prosimos run that died between the log
+        # and the stats must fail loudly, not parse a truncated log.
+        assert task.out_stat is not None and task.out_stat.exists()
         if isinstance(meta, BaselineMeta):
             baseline_reps.append(
                 dataclasses.asdict(
                     replication_metrics(
                         task.out_log,
-                        task.out_stat,
+                        task.json_path,
                         bot_task_name=_bot_task_name,
                         original_task_name=_original_task_name,
                     )
@@ -204,7 +208,7 @@ def run_experiment(
             m = dataclasses.asdict(
                 replication_metrics(
                     task.out_log,
-                    task.out_stat,
+                    task.json_path,
                     bot_task_name=_bot_task_name,
                     original_task_name=_original_task_name,
                 )

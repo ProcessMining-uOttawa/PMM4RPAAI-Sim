@@ -7,7 +7,7 @@ import dataclasses
 import pytest
 
 from core.metrics import IndicatorSpec, Metric, MetricSpec, MetricRegistry
-from core.simulation.prosimos.reader import ReplicationMetrics
+from core.simulation.prosimos.replication_metrics import ReplicationMetrics
 from core.constants import (
     COL_MEAN_CYCLE_H_MEAN,
     COL_MEDIAN_CYCLE_H_MEAN,
