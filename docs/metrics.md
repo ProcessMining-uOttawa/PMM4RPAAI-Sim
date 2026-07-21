@@ -21,32 +21,36 @@ gets checked against the code for drift.
 
 The single most confusing point is that **"Cycle Time" and "Total Cycle Time"
 are not the same measurement aggregated two ways — they are two different
-clocks.** They differ by the **head wait**.
+clocks.** They differ at **both ends**.
 
 - **Head wait** = the time from a case's **arrival** to the **start of its first
   activity**. It is made of Simod's extraneous-delay timer plus any queueing
   before the first task grabs a resource. Automating the target activity does not
   change it (a case still waits the same amount before its *first* activity).
 
-- **Cycle Time (per case)** = **first task start → case completion**. The head
-  wait is **excluded**. This is the clock the tool **ranks scenarios on** (and
+- **Tail wait** = the time from the **end of a case's last activity** to the
+  case's **completion**. It exists when the case ends on a non-activity event —
+  a trailing delay timer — and is zero in models without one.
+
+- **Cycle Time (per case)** = **first activity start → last activity end**. Both
+  waits are **excluded**. This is the clock the tool **ranks scenarios on** (and
   feeds the Taguchi signal-to-noise analysis).
 
-- **Total Cycle Time** = **arrival → case completion**. The head wait is
+- **Total Cycle Time** = **arrival → case completion**. Both waits are
   **included**. This is the process-mining-standard case duration. It is a
   **display / comparison** number (Baseline tab) — it does **not** rank
   scenarios.
 
 Two consequences worth internalising:
 
-1. **Cycle Time (per case) < Total Cycle Time**, and the gap *is* the head wait:
-   `Total Cycle Time (per case) = head wait + Cycle Time (per case)`.
+1. **Cycle Time (per case) < Total Cycle Time**, and the gap is the two waits:
+   `Total Cycle Time (per case) = head wait + Cycle Time (per case) + tail wait`.
 2. Because they are different clocks, **`Total Cycle Time ≠ Cycle Time × number
    of cases`** in a real run. (That identity holds only in demo mode, whose
    synthetic formula uses a single clock.)
 
-Why exclude the head wait from ranking: it is insensitive to the intervention
-under study (automating the target), so folding it into the ranked metric would
+Why exclude the waits from ranking: they are insensitive to the intervention
+under study (automating the target), so folding them into the ranked metric would
 add variation that dilutes the automation signal the experiment exists to detect.
 
 ---
@@ -58,22 +62,23 @@ trust** note for maintainers.
 
 ### Cycle Time — *ranked*
 
-Per-case wall-clock time from the **start of the first activity** to **case
-completion**. Head wait excluded (see above). Scenarios are ranked on the
-**mean** across cases; **median**, **min**, and **max** case time are also
-available as selectable goal indicators (the ranked/default one is the mean).
+Per-case wall-clock time from the **start of the first activity** to the **end of
+the last activity**. Head and tail waits excluded (see above). Scenarios are
+ranked on the **mean** across cases; **median**, **min**, and **max** case time
+are also available as selectable goal indicators (the ranked/default one is the
+mean).
 
-**Total Cycle Time** (arrival → completion, head wait included) is reported
+**Total Cycle Time** (arrival → case completion, both waits included) is reported
 separately as a display-only comparison figure, not a ranking input.
 
 > **Implementation & trust.** Both clocks are derived per replication in
 > [`core/simulation/prosimos/replication_metrics.py`](../core/simulation/prosimos/replication_metrics.py)
 > straight from the event log's timestamps. **Total Cycle Time is
-> oracle-checked**: it reconciles *exactly* against Prosimos's own
-> `idle_cycle_time` in the trust checker. The **ranked per-case Cycle Time has no
-> Prosimos oracle** — Prosimos reports only an arrival-based cycle, never a
-> first-start one — so its correctness rests on the shared extraction machinery
-> (whose arrival-based twin *is* reconciled) plus unit tests. See "How metrics
+> oracle-checked** against Prosimos's own `idle_cycle_time` in the trust checker.
+> The **ranked per-case Cycle Time has no Prosimos oracle** — Prosimos reports
+> only arrival-anchored cycles, never a first-activity one — so its correctness
+> rests on the shared extraction machinery (it reads the same task-row timestamps
+> the oracle-checked Cost reconciles against) plus unit tests. See "How metrics
 > are trusted" below.
 
 ### Cost — *ranked*
@@ -87,8 +92,9 @@ the **mean** cost per case; **Total Cost** is the display-only sum.
 > **Implementation & trust.** Cost is computed in
 > [`core/simulation/prosimos/calendars.py`](../core/simulation/prosimos/calendars.py),
 > which intersects each activity's span with its resource's weekly working
-> calendar. It is **oracle-checked to the cent** against Prosimos's own cost
-> accounting (and its rate-free twin, total working seconds) in the trust checker.
+> calendar. It is **oracle-checked** against Prosimos's own cost accounting (and
+> its rate-free twin, total working seconds) in the trust checker; on real runs
+> the two agree to the cent, though the checker allows a small float-slack band.
 
 ### Rework — *rate ranked; count display-only*
 
@@ -173,13 +179,13 @@ which splits the metrics into two tiers:
 
 | Trust tier | Metrics | How |
 |---|---|---|
-| **Oracle-checked** (reconciled against Prosimos) | Total Cycle Time · Cost · working seconds · case count | exact / to-the-cent reconciliation |
+| **Oracle-checked** (reconciled against Prosimos) | Total Cycle Time · Cost · working seconds · case count | agreement within a float-slack band (0.5%, or a small floor); case count exact |
 | **Unit-tested only** (no Prosimos oracle exists) | Cycle Time per case (first-start) · Rework · Bot Failures | hand-derived test fixtures |
 
 The important nuance: the **ranked** Cycle Time is in the *unit-tested* tier,
-because Prosimos never emits a first-start cycle to check it against. Its
-correctness is anchored indirectly — the raw timestamps it reads (arrival,
-completion, task-row membership) are the *same* inputs the oracle-checked Total
-Cycle Time and Cost reconcile against, so a drift in those surfaces as a checker
+because Prosimos never emits a first-activity cycle to check it against. Its
+correctness is anchored indirectly — it reads `start_time`/`end_time` on task
+rows, the *same* inputs the oracle-checked Cost reconciles against (cost bills
+each activity's `[start, end)` span), so a drift in those surfaces as a checker
 failure; only the final per-case aggregation arithmetic is checker-blind, and
 that is pinned by unit tests.
