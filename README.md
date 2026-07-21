@@ -66,6 +66,11 @@ memory: architecture seams, the substitution-pattern interface, hard-won
 Windows setup caveats, and the Streamlit rerun trap (it has bitten us
 twice).
 
+**[docs/metrics.md](docs/metrics.md)** defines the reported KPIs — the clock
+each one uses, what it includes and excludes, whether it ranks scenarios, and
+how far it is validated against Prosimos. Start there if a number in the
+results table is surprising.
+
 ## License
 
 MIT — see [LICENSE](LICENSE).
