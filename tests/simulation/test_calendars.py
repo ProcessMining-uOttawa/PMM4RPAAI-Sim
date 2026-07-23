@@ -5,7 +5,6 @@ from __future__ import annotations
 import pandas as pd
 import pytest
 
-from core.simulation.prosimos import calendars
 from core.simulation.prosimos.calendars import WeeklyCalendar, event_costs
 
 # A 9-to-5, Monday-to-Friday calendar (exercises from->to day-range expansion).
@@ -30,7 +29,6 @@ def _params(
     return {
         "resource_calendars": [{"id": "cal", "time_periods": calendar_periods}],
         "resource_profiles": [{"resource_list": resources}],
-        "arrival_time_calendar": NINE_TO_FIVE,
     }
 
 
@@ -56,17 +54,6 @@ def _work(rows: list[tuple[str, str, str]], params: dict | None = None) -> list[
 
 
 class TestWeeklyCalendar:
-    def test_is_working_time_inside_and_outside(self):
-        cal = WeeklyCalendar(NINE_TO_FIVE)
-        assert cal.is_working_time(_ts("2025-01-06 10:00:00"))  # Monday 10:00
-        assert not cal.is_working_time(_ts("2025-01-06 08:00:00"))  # Monday 08:00
-        assert not cal.is_working_time(_ts("2025-01-04 10:00:00"))  # Saturday
-
-    def test_is_working_time_half_open_interval(self):
-        cal = WeeklyCalendar(NINE_TO_FIVE)
-        assert cal.is_working_time(_ts("2025-01-06 09:00:00"))  # begin included
-        assert not cal.is_working_time(_ts("2025-01-06 17:00:00"))  # end excluded
-
     def test_day_range_expands(self):
         cal = WeeklyCalendar(NINE_TO_FIVE)
         assert set(cal.by_day) == {0, 1, 2, 3, 4}  # Mon..Fri, not Sat/Sun
@@ -277,10 +264,3 @@ class TestCost:
         result = event_costs(_log([]), _params())
         assert result.empty
         assert list(result.columns) == ["work_s", "cost"]
-
-
-class TestArrivalCalendar:
-    def test_arrival_calendar_parsed(self):
-        cal = calendars.arrival_calendar(_params())
-        assert cal.is_working_time(_ts("2025-01-06 10:00:00"))
-        assert not cal.is_working_time(_ts("2025-01-06 18:00:00"))

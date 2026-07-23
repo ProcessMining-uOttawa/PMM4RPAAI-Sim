@@ -8,13 +8,12 @@ the params JSON (see calendars.py). The stats CSV is not a product source —
 its parsers here exist so the checker can cross-check our numbers against
 Prosimos's own accounting.
 
-Event-vs-task rows: with ``--is_event_added_to_log`` (which the runner passes),
-Prosimos writes a row for each intermediate event (e.g. Simod's extraneous-delay
-timers) carrying ``resource == "No assigned resource"``. Those rows are NOT activities, so ``task_rows`` splits them out of the
-per-case task metrics (the first-start cycle indicators, rework, bot-failure,
-cost). They still bound the case's arrival→completion span: ``total_cycle_s``
-runs from the earliest ``enable_time`` to the latest ``end_time`` over ALL rows,
-so both the raw arrival and any trailing timer's completion come from event rows.
+Every log row is an activity: the runner simulates without
+``--is_event_added_to_log``, so Prosimos writes no intermediate-event rows
+(which would carry ``resource == "No assigned resource"`` and represent e.g.
+Simod's extraneous-delay timer firings, not work). ``replication_metrics``
+rejects a log that does contain them — such a log came from a flag-on run and
+must be re-simulated — rather than silently counting looped timers as rework.
 """
 
 from __future__ import annotations
@@ -34,7 +33,8 @@ from ...constants import (
 from . import calendars
 
 # Prosimos writes this in the resource column of intermediate-event rows (events
-# have no resource) — the marker that splits event rows from activity rows.
+# have no resource). No such row belongs in a log this module reads — its
+# presence marks a --is_event_added_to_log run, which the guard rejects.
 NO_RESOURCE = "No assigned resource"
 
 
@@ -73,17 +73,6 @@ PROSIMOS_COL_AVERAGE = "Average"  # column in SECTION_OVERALL
 PROSIMOS_COL_TRACE_COUNT = (
     "Trace Ocurrences"  # column in SECTION_OVERALL (Prosimos's spelling)
 )
-PROSIMOS_KPI_IDLE_CYCLE_TIME = "idle_cycle_time"  # KPI row key: arrival→end wall cycle
-
-
-def task_rows(event_log: pd.DataFrame) -> pd.DataFrame:
-    """Activity rows only — the single home for the event-vs-task split rule.
-
-    Drops the intermediate-event rows Prosimos writes under
-    ``--is_event_added_to_log`` (marked by ``resource == NO_RESOURCE``); they
-    carry the arrival but are not activities.
-    """
-    return event_log[event_log["resource"] != NO_RESOURCE]
 
 
 def _parse_section(rows: list, header: str) -> tuple[list[str], list[list[str]]]:
@@ -215,8 +204,9 @@ def task_totals(stats_csv: Path) -> dict[str, dict[str, float]]:
 def overall_kpis(stats_csv: Path) -> dict[str, dict[str, float]]:
     """Per-KPI {min, max, average, accumulated, count} from the Overall section.
 
-    Strict, like task_totals. The checker reads idle_cycle_time and the trace
-    count from here.
+    Strict, like task_totals. Parses the full section for shape-fidelity (a
+    missing column is format drift worth failing on); the checker currently
+    reads only the trace count.
     """
     rows = _read_rows(stats_csv)
     headers, data = _require_section(rows, PROSIMOS_SECTION_OVERALL, stats_csv)
@@ -244,53 +234,44 @@ def replication_metrics(
 ) -> ReplicationMetrics:
     """All per-replication metrics from the event log + params, in a single pass.
 
-    Cycle-time indicators (mean/median/min/max) are per-case wall spans from the
-    first task start to completion (the ranked, S/N clock). total_cycle_s is the
-    arrival→completion case duration (arrival from the event rows; the
-    process-mining-standard cycle, oracle-checkable against Prosimos's
-    idle_cycle_time). Cost is calendar-aware working time × rate, per case.
+    All clocks share one anchor pair: the case's first task start → last task
+    end (the log-based case duration — what Celonis/Apromore report). The
+    cycle-time indicators (mean/median/min/max) are the per-case spans; the
+    total is their sum, so ``total_cycle_s = mean_cycle_h × n_cases × 3600`` by
+    construction. Cost is calendar-aware working time × rate, per case.
 
-    Raises ValueError if the params JSON is malformed or a log resource is absent
-    from it; FileNotFoundError if a path does not exist.
+    Raises ValueError if the log contains intermediate-event rows (a
+    ``--is_event_added_to_log`` run — re-simulate without the flag), if the
+    params JSON is malformed, or if a log resource that did work is absent
+    from it;
+    FileNotFoundError if a path does not exist.
     """
-    event_log = pd.read_csv(
-        log_csv, parse_dates=["enable_time", "start_time", "end_time"]
-    )
+    event_log = pd.read_csv(log_csv, parse_dates=["start_time", "end_time"])
+    if (event_log["resource"] == NO_RESOURCE).any():
+        raise ValueError(
+            f"{log_csv} contains intermediate-event rows "
+            f"(resource == {NO_RESOURCE!r}), which Prosimos emits under "
+            "--is_event_added_to_log; this pipeline reads activity-only logs — "
+            "re-simulate without the flag."
+        )
     params = json.loads(Path(params_json).read_text())
 
-    task_log = task_rows(event_log)
-
-    # Case temporal extent from ALL rows: arrival = earliest enable (the timer row
-    # carries the raw arrival when present; else the first task's enable), and
-    # completion = latest end (the last event of any kind — a trailing delay timer,
-    # if any, is what actually completes the case). Both endpoints over all rows
-    # keep total_cycle_s equal to the standard arrival→completion case duration
-    # (Prosimos's idle_cycle_time).
-    by_case = event_log.groupby("case_id")
-    arrival = by_case["enable_time"].min()
-    completion = by_case["end_time"].max()
-
-    # First-start cycle per case over TASK rows only — the ranked/S-N indicator
-    # strips the automation-insensitive head/tail waits (first task start → last
-    # task end); an event row's start_time is the arrival and would pull it earlier.
-    per_case = task_log.groupby("case_id").agg(
+    # Per-case span: first task start → last task end.
+    per_case = event_log.groupby("case_id").agg(
         start=("start_time", "min"), end=("end_time", "max")
     )
     cycle_h = (per_case["end"] - per_case["start"]).dt.total_seconds().div(3600)
+    total_cycle_s = float(cycle_h.sum()) * 3600
 
-    # Arrival→completion case duration, summed across cases (the standard cycle).
-    total_cycle_s = float((completion - arrival).dt.total_seconds().sum())
-
-    # Per-case cost from calendar-aware working time (task rows only — event rows
-    # have no resource). mean_cost is stored at source as the mean of the series,
-    # not total/n (the "stored at source" rule).
+    # Per-case cost from calendar-aware working time. mean_cost is stored at
+    # source as the mean of the series, not total/n (the "stored at source" rule).
     case_cost = (
-        calendars.event_costs(task_log, params)["cost"]
-        .groupby(task_log["case_id"])
+        calendars.event_costs(event_log, params)["cost"]
+        .groupby(event_log["case_id"])
         .sum()
     )
 
-    rework = _rework_metrics(task_log)
+    rework = _rework_metrics(event_log)
     return ReplicationMetrics(
         mean_cycle_h=float(cycle_h.mean()),
         median_cycle_h=float(cycle_h.median()),
@@ -303,6 +284,6 @@ def replication_metrics(
         rework_rate=rework[COL_REWORK_RATE],
         mean_rework_count=rework[COL_MEAN_REWORK_COUNT],
         total_bot_failure_count=_bot_failure_count(
-            task_log, bot_task_name, original_task_name
+            event_log, bot_task_name, original_task_name
         ),
     )

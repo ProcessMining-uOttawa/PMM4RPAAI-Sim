@@ -22,17 +22,15 @@ def _capture_run_logged(monkeypatch) -> dict:
 
 
 class TestSimulateCommand:
-    def test_passes_event_log_flag(self, tmp_path, monkeypatch):
-        # replication_metrics.py sources the case arrival from the intermediate-event rows that
-        # this flag emits, so simulate() must always request them. Value "true":
-        # Prosimos parses the flag truthily (even "false" would enable it).
+    def test_omits_event_log_flag(self, tmp_path, monkeypatch):
+        # Absence is the ONLY safe encoding: Prosimos parses the flag's value
+        # truthily, so even "--is_event_added_to_log false" would enable the
+        # intermediate-event rows that replication_metrics rejects.
         captured = _capture_run_logged(monkeypatch)
         runner.simulate(
             tmp_path / "m.bpmn", tmp_path / "p.json", 10, tmp_path / "out.csv"
         )
-        cmd = captured["cmd"]
-        flag_index = cmd.index("--is_event_added_to_log")
-        assert cmd[flag_index + 1] == "true"
+        assert "--is_event_added_to_log" not in captured["cmd"]
 
 
 class TestRunLogged:

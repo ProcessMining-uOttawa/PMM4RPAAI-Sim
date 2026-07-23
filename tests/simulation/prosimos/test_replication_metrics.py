@@ -23,7 +23,6 @@ from core.simulation.prosimos.replication_metrics import (
     PROSIMOS_SECTION_OVERALL,
     PROSIMOS_COL_ACCUMULATED,
     PROSIMOS_COL_TRACE_COUNT,
-    PROSIMOS_KPI_IDLE_CYCLE_TIME,
 )
 from core.constants import (
     COL_TOTAL_REWORK_COUNT,
@@ -73,7 +72,6 @@ def _write_params(path: Path, calendar=_ALLDAY, rate: float = 10.0) -> Path:
                 ]
             }
         ],
-        "arrival_time_calendar": _ALLDAY,
     }
     path.write_text(json.dumps(params))
     return path
@@ -210,9 +208,9 @@ class TestOverallKpis:
     def test_returns_kpis(self, tmp_path):
         stats = _write_overall(
             tmp_path / "s.csv",
-            [(PROSIMOS_KPI_IDLE_CYCLE_TIME, 1.0, 9.0, 5.0, 500.0, 100)],
+            [("cycle_time", 1.0, 9.0, 5.0, 500.0, 100)],
         )
-        result = overall_kpis(stats)[PROSIMOS_KPI_IDLE_CYCLE_TIME]
+        result = overall_kpis(stats)["cycle_time"]
         assert result == {
             "min": 1.0,
             "max": 9.0,
@@ -323,9 +321,9 @@ class TestReplicationMetrics:
         )
         assert m.total_cost == pytest.approx(20.0)
 
-    def test_total_cycle_s_is_arrival_based(self, tmp_path):
-        # enable (arrival) 07:00, first start 08:00, end 10:00. total_cycle_s counts
-        # from arrival (3 h) while mean_cycle_h counts from first start (2 h).
+    def test_total_cycle_s_ignores_enable_time(self, tmp_path):
+        # enable_time 07:00 is present in the log but no clock reads it: both
+        # total_cycle_s and mean_cycle_h anchor on the first task START (08:00).
         m = _metrics(
             tmp_path,
             [
@@ -337,74 +335,41 @@ class TestReplicationMetrics:
                 )
             ],
         )
-        assert m.total_cycle_s == pytest.approx(3 * 3600.0)
+        assert m.total_cycle_s == pytest.approx(2 * 3600.0)
         assert m.mean_cycle_h == pytest.approx(2.0)
 
-    def test_total_cycle_s_completion_is_last_event(self, tmp_path):
-        # A trailing timer (event row) ends AFTER the last task. total_cycle_s runs
-        # to that completion — the last event of any kind, matching Prosimos's
-        # idle_cycle_time — while mean_cycle_h stops at the last TASK end.
+    def test_total_cycle_s_equals_mean_times_n(self, tmp_path):
+        # total and mean share one anchor pair, so total = mean × n × 3600 holds
+        # by construction (the identity demo mode also relies on).
         m = _metrics(
             tmp_path,
             [
-                _row(
-                    "c1",
-                    "2025-01-06T08:00:00",
-                    "2025-01-06T10:00:00",
-                    activity="Fix Bug",
-                ),
-                (
-                    "c1",
-                    "Event_x",
-                    "2025-01-06T10:00:00",
-                    "2025-01-06T10:00:00",
-                    "2025-01-06T11:00:00",
-                    NO_RESOURCE,
-                ),
+                _row("c1", "2025-01-06T08:00:00", "2025-01-06T10:00:00"),  # 2 h
+                _row("c2", "2025-01-06T08:00:00", "2025-01-06T12:00:00"),  # 4 h
             ],
         )
-        assert m.total_cycle_s == pytest.approx(
-            3 * 3600.0
-        )  # 08:00 → 11:00 (trailing event)
-        assert m.mean_cycle_h == pytest.approx(2.0)  # 08:00 → 10:00 (last task only)
+        assert m.total_cycle_s == pytest.approx(m.mean_cycle_h * 2 * 3600.0)
+        assert m.total_cycle_s == pytest.approx(6 * 3600.0)
 
-    def test_event_rows_excluded_but_source_arrival(self, tmp_path):
-        # A looped intermediate-event row (resource "No assigned resource") carries
-        # the raw arrival at 07:00. It must be excluded from cost/cycle/rework but
-        # supply the arrival.
-        m = _metrics(
-            tmp_path,
-            [
-                (
-                    "c1",
-                    "Event_x",
-                    "2025-01-06T07:00:00",
-                    "2025-01-06T07:00:00",
-                    "2025-01-06T07:30:00",
-                    NO_RESOURCE,
-                ),
-                (
-                    "c1",
-                    "Event_x",
-                    "2025-01-06T07:30:00",
-                    "2025-01-06T07:30:00",
-                    "2025-01-06T08:00:00",
-                    NO_RESOURCE,
-                ),
-                _row(
-                    "c1",
-                    "2025-01-06T08:00:00",
-                    "2025-01-06T10:00:00",
-                    activity="Fix Bug",
-                ),
-            ],
-        )
-        assert m.total_cycle_s == pytest.approx(3 * 3600.0)  # arrival 07:00 → end 10:00
-        assert m.mean_cycle_h == pytest.approx(2.0)  # first task start 08:00 → 10:00
-        assert m.total_cost == pytest.approx(20.0)  # only the 2 h task row
-        assert (
-            m.total_rework_count == 0.0
-        )  # the repeated Event_x is excluded, not rework
+    def test_flag_on_log_raises(self, tmp_path):
+        # An intermediate-event row marks a --is_event_added_to_log run; parsing
+        # it would corrupt rework/cycle, so the reader rejects the log, naming
+        # the flag.
+        with pytest.raises(ValueError, match="is_event_added_to_log"):
+            _metrics(
+                tmp_path,
+                [
+                    (
+                        "c1",
+                        "Event_x",
+                        "2025-01-06T07:00:00",
+                        "2025-01-06T07:00:00",
+                        "2025-01-06T08:00:00",
+                        NO_RESOURCE,
+                    ),
+                    _row("c1", "2025-01-06T08:00:00", "2025-01-06T10:00:00"),
+                ],
+            )
 
     def test_bot_failure_count_field(self, tmp_path):
         m = _metrics(

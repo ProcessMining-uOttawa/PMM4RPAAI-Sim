@@ -20,9 +20,6 @@ FIXTURES = Path(__file__).parent / "fixtures"
 _ALLDAY = [
     {"from": "MONDAY", "to": "SUNDAY", "beginTime": "00:00:00", "endTime": "24:00:00"}
 ]
-_NINE_TO_FIVE = [
-    {"from": "MONDAY", "to": "FRIDAY", "beginTime": "09:00:00", "endTime": "17:00:00"}
-]
 
 _LOG_COLUMNS = [
     "case_id",
@@ -42,9 +39,7 @@ def _write_log(path: Path, rows: list[tuple]) -> Path:
     return path
 
 
-def _write_params(
-    path: Path, calendar=_ALLDAY, rate: float = 10.0, arrival_calendar=None
-) -> Path:
+def _write_params(path: Path, calendar=_ALLDAY, rate: float = 10.0) -> Path:
     path.write_text(
         json.dumps(
             {
@@ -61,7 +56,6 @@ def _write_params(
                         ]
                     }
                 ],
-                "arrival_time_calendar": arrival_calendar or calendar,
             }
         )
     )
@@ -87,8 +81,8 @@ def _write_stats(path: Path, tasks: list[tuple], kpis: list[tuple]) -> Path:
     return path
 
 
-# A reconciling triple: two 24/7 tasks (1 h + 2 h) at $10/hr, arrival == start.
-#   cost 30, processing 10800 s, arrival cycle [3600, 7200] (total 10800), 2 cases.
+# A reconciling triple: two 24/7 tasks (1 h + 2 h) at $10/hr.
+#   cost 30, processing 10800 s, 2 cases.
 _RECON_LOG = [
     (
         "c1",
@@ -108,20 +102,14 @@ _RECON_LOG = [
     ),
 ]
 _RECON_TASKS = [("A", 30.0, 10800.0)]
+# Only the count cell (2) is an oracle (case-count check); the other cells are
+# section-shape filler — overall_kpis requires every column present.
 _RECON_KPIS = [("idle_cycle_time", 3600.0, 7200.0, 5400.0, 10800.0, 2)]
 
 
-def _triple(
-    tmp_path,
-    tasks=_RECON_TASKS,
-    kpis=_RECON_KPIS,
-    calendar=_ALLDAY,
-    arrival_calendar=None,
-):
+def _triple(tmp_path, tasks=_RECON_TASKS, kpis=_RECON_KPIS, calendar=_ALLDAY):
     log = _write_log(tmp_path / "log.csv", _RECON_LOG)
-    params = _write_params(
-        tmp_path / "params.json", calendar, arrival_calendar=arrival_calendar
-    )
+    params = _write_params(tmp_path / "params.json", calendar)
     stats = _write_stats(tmp_path / "stats.csv", tasks, kpis)
     return log, params, stats
 
@@ -152,6 +140,18 @@ class TestReconcilingTriple:
             is Severity.WARNING
         )
 
+    def test_check_labels_pinned(self, tmp_path):
+        # The complete check set. An arrival/cycle check reappearing here must be
+        # a deliberate change: Prosimos reports only arrival-anchored cycle KPIs,
+        # so the first-start clock has no oracle (see the module docstring).
+        labels = {c.label for c in check_replication(*_triple(tmp_path))}
+        assert labels == {
+            "total cost",
+            "total processing seconds",
+            "processing seconds [A]",
+            "case count",
+        }
+
 
 class TestMutations:
     def test_wrong_cost_fails(self, tmp_path):
@@ -181,21 +181,24 @@ class TestMutations:
         )
         assert not count.ok and count.severity is Severity.ERROR
 
-    def test_arrival_total_mismatch_fails(self, tmp_path):
-        kpis = [("idle_cycle_time", 3600.0, 7200.0, 5400.0, 99999.0, 2)]
-        assert not _by_label(
-            check_replication(*_triple(tmp_path, kpis=kpis)), "arrival cycle total"
-        ).ok
-
-    def test_arrival_outside_window_warns_not_errors(self, tmp_path):
-        # Resources stay 24/7 (cost reconciles) but the arrival calendar is 9-5, so
-        # the 08:00 arrivals fall outside it → WARNING only, no ERROR.
-        checks = check_replication(*_triple(tmp_path, arrival_calendar=_NINE_TO_FIVE))
-        window = _by_label(checks, "arrivals inside arrival window")
-        assert not window.ok and window.severity is Severity.WARNING
-        assert window.ours == 2.0  # both case arrivals outside a window
-        # The report still passes — no ERROR check failed.
-        assert all(c.ok for c in checks if c.severity is Severity.ERROR)
+    def test_flag_on_log_rejected_by_name(self, tmp_path):
+        # A flag-on triple (e.g. a pre-existing runs/ dir) must surface the
+        # engine's actionable "re-simulate without the flag" error. The event
+        # row is zero-duration, so event_costs alone would NOT raise on it —
+        # only the named guard can fail this triple, which pins the guard
+        # running before event_costs sees the unfiltered frame.
+        log, params, stats = _triple(tmp_path)
+        event_row = (
+            "c1",
+            "Event_x",
+            "2025-01-06T07:00:00",
+            "2025-01-06T07:00:00",
+            "2025-01-06T07:00:00",
+            "No assigned resource",
+        )
+        _write_log(log, _RECON_LOG + [event_row])
+        with pytest.raises(ValueError, match="is_event_added_to_log"):
+            check_replication(log, params, stats)
 
 
 # ── Layer 2: real-Prosimos goldens ─────────────────────────────────────────────
@@ -207,8 +210,6 @@ def test_golden_reconciles(golden):
     checks = check_replication(d / "log.csv", d / "params.json", d / "stats.csv")
     failed = [c.label for c in checks if not c.ok and c.severity is Severity.ERROR]
     assert not failed, failed
-    # Real flag-on arrivals all land in the arrival window (distribution-independent).
-    assert _by_label(checks, "arrivals inside arrival window").ours == 0.0
 
 
 # ── Experiment-dir walk ────────────────────────────────────────────────────────
