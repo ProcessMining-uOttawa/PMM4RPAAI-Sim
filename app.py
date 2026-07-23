@@ -7,6 +7,7 @@ import xml.etree.ElementTree as ET
 import streamlit as st
 
 from pathlib import Path
+from subprocess import CalledProcessError
 
 from core import analysis, demo
 from core.bpmn.query import find_task_by_name, list_activities
@@ -159,8 +160,21 @@ with st.sidebar:
         if phase is DiscoveryPhase.FAILED:
             error = discovery_error(ss)
             assert error is not None  # phase FAILED ⇒ outcome.error set
-            st.error("Simod discovery failed.")
-            st.exception(error)
+            if isinstance(error, ValueError):
+                # Input rejected before Simod launched — the CSV pre-flight, or
+                # the XES converter (no events / missing timestamps; an XML
+                # syntax error raises ParseError and takes the branch below).
+                # The message IS the content; a traceback would bury it.
+                st.error(f"Event log rejected.\n\n{error}")
+            else:
+                st.error("Simod discovery failed.")
+                st.exception(error)
+                # CalledProcessError.__str__ omits .output — the runner attaches
+                # the captured subprocess-log tail there, so it must be rendered
+                # explicitly or the real error never reaches the user.
+                if isinstance(error, CalledProcessError) and error.output:
+                    with st.expander("Simod output (log tail)"):
+                        st.code(error.output)
         else:
             st.info("Discovery cancelled.")
         if st.button("Retry discovery"):
