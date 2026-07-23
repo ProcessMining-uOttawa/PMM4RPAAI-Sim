@@ -1,6 +1,8 @@
-"""Subprocess wrappers around Simod and Prosimos."""
+"""Subprocess wrappers around Simod and Prosimos, plus Simod's event-log input
+contract (CSV schema pre-flight, XES conversion)."""
 
 from __future__ import annotations
+import csv
 import os
 import signal
 import subprocess
@@ -17,6 +19,11 @@ _KILL_GRACE_SECONDS = 2.0
 _VENV_BIN, _EXE_SUFFIX = ("Scripts", ".exe") if os.name == "nt" else ("bin", "")
 SIMOD_EXE = Path("tools/simod-venv") / _VENV_BIN / f"simod{_EXE_SUFFIX}"
 PROSIMOS_EXE = Path("tools/prosimos-venv") / _VENV_BIN / f"prosimos{_EXE_SUFFIX}"
+
+# The CSV column schema Simod's reader requires, in the order the converter
+# emits them. Column names are matched exactly (lowercase) — Simod reads by
+# name, not position.
+SIMOD_LOG_COLUMNS = ("case_id", "activity", "start_time", "end_time", "resource")
 
 
 def _tail_lines(path: Path, n: int) -> str:
@@ -44,7 +51,8 @@ def _run_logged(
     **kwargs,
 ) -> None:
     """Run a subprocess, optionally capturing stdout+stderr to proc_log.
-    Raises CalledProcessError with the last 20 log lines on failure.
+    Raises CalledProcessError on failure — with the last 20 log lines attached
+    as ``.output`` when proc_log is given (the bare branch attaches nothing).
 
     `on_spawn`, when given, is called with the live Popen right after launch so
     the executor can register it for cancellation; such a process is spawned in
@@ -117,7 +125,7 @@ def terminate_process(proc: subprocess.Popen) -> None:
 def xes_to_simod_csv(xes_path: Path, csv_path: Path) -> Path:
     """Convert an XES log to the CSV schema Simod expects.
 
-    Simod requires columns: case_id, activity, start_time, end_time, resource.
+    Simod requires the SIMOD_LOG_COLUMNS schema.
     XES typically carries only `complete` events with a single timestamp;
     we derive `start_time` as the previous event's end_time per case (0
     duration for the first event in each case).
@@ -168,12 +176,68 @@ def xes_to_simod_csv(xes_path: Path, csv_path: Path) -> Path:
     df = df.sort_values(["case_id", "end_time"]).reset_index(drop=True)
     df["start_time"] = df.groupby("case_id")["end_time"].shift(1)
     df["start_time"] = df["start_time"].fillna(df["end_time"])
-    df = df[["case_id", "activity", "start_time", "end_time", "resource"]]
+    df = df[list(SIMOD_LOG_COLUMNS)]
     df.to_csv(csv_path, index=False)
     return csv_path
 
 
 # --- Simod -------------------------------------------------------------------
+
+
+def validate_simod_csv(csv_path: Path) -> None:
+    """Pre-flight-check a CSV log against the column schema Simod's reader
+    requires, so a malformed upload fails with an actionable message here
+    instead of an opaque subprocess crash inside Simod.
+
+    Checks: the file decodes as UTF-8; it has at least one non-blank row; that
+    row's header contains every name in SIMOD_LOG_COLUMNS — matched as a set
+    (order, duplicates, and extra columns are all fine) but cell-exactly, with
+    no case or whitespace normalisation, because Simod's reader does none
+    either; and at least one event row follows the header. Raises ValueError
+    describing the problem; hints are informational only — columns are never
+    renamed or remapped.
+    """
+    try:
+        with open(csv_path, encoding="utf-8-sig", newline="") as f:
+            reader = csv.reader(f)
+            # First non-blank row is the header; stop at the first event row —
+            # the file may be huge and the rest of it is Simod's to read.
+            header = next((row for row in reader if row), None)
+            has_events = any(row for row in reader)
+    except UnicodeDecodeError as e:
+        raise ValueError(
+            f"{csv_path.name} is not UTF-8-encoded CSV ({e}). Re-export it as "
+            "UTF-8 CSV — Excel's 'Unicode text' export is UTF-16 and will not "
+            "parse."
+        ) from e
+
+    if header is None:
+        raise ValueError(f"{csv_path.name} is empty — no header row found.")
+
+    missing = sorted(set(SIMOD_LOG_COLUMNS) - set(header))
+    if missing:
+        parts = [
+            f"{csv_path.name} is missing required column(s): {', '.join(missing)}.",
+            f"Found columns: {', '.join(header)}.",
+            "Simod requires exactly these lowercase column names: "
+            f"{', '.join(SIMOD_LOG_COLUMNS)}.",
+        ]
+        # Hint map is normalised; the membership check above deliberately is
+        # not — repr makes a whitespace culprit visible in the hint.
+        variants = {cell.strip().lower(): cell for cell in header}
+        for col in missing:
+            variant = variants.get(col)
+            if variant is not None:
+                parts.append(f"Found {variant!r} — Simod requires exactly {col!r}.")
+        if len(header) == 1 and ";" in header[0]:
+            parts.append(
+                "The header parsed as a single column — the file looks "
+                "semicolon-delimited; Simod requires comma-separated CSV."
+            )
+        raise ValueError("\n\n".join(parts))
+
+    if not has_events:
+        raise ValueError(f"{csv_path.name} has a header but no event rows.")
 
 
 def _subproc_env(java_home_override: str | None) -> dict:
@@ -224,7 +288,8 @@ def discover(
 
     `--one-shot` skips Simod's hyperparameter optimization and runs a single
     discovery pass with defaults — fast enough for an interactive UI.
-    Log columns required (CSV): case_id, activity, start_time, end_time, resource.
+    Log columns required (CSV): SIMOD_LOG_COLUMNS — a direct CSV upload is
+    pre-flighted by validate_simod_csv before the subprocess spawns.
     """
     run_dir.mkdir(parents=True, exist_ok=True)
     out_dir = run_dir / "outputs"
@@ -233,6 +298,7 @@ def discover(
         xes_to_simod_csv(log_path, csv_path)
         log_for_simod = csv_path
     else:
+        validate_simod_csv(log_path)
         log_for_simod = log_path
     _run_logged(
         [
