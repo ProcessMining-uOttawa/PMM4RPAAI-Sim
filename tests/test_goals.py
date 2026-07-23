@@ -239,10 +239,29 @@ class TestMetricGoal:
         with pytest.raises(ValueError, match="must match"):
             MetricGoal(indicator_goals=(g,), weights=(1, 1))
 
-    def test_weight_below_one_raises(self):
+    def test_zero_weight_raises(self):
+        # 0 would be a second way to express "don't score this" (deselecting
+        # the extra indicator already does that) and all-zeros divides by zero.
         g = self._goal(COL_MEAN_CYCLE_H_MEAN, 100.0)
-        with pytest.raises(ValueError, match=">= 1"):
-            MetricGoal(indicator_goals=(g,), weights=(0,))
+        with pytest.raises(ValueError, match="> 0"):
+            MetricGoal(indicator_goals=(g,), weights=(0.0,))
+
+    def test_negative_weight_raises(self):
+        g = self._goal(COL_MEAN_CYCLE_H_MEAN, 100.0)
+        with pytest.raises(ValueError, match="> 0"):
+            MetricGoal(indicator_goals=(g,), weights=(-1.0,))
+
+    def test_fractional_weights_equal_integer_ratio(self):
+        # Sum-normalisation makes 0.75:0.25 identical to 3:1 — floats add
+        # input convenience, not expressive power.
+        primary = self._goal(COL_MEAN_CYCLE_H_MEAN, 100.0)
+        secondary = self._goal(COL_MEDIAN_CYCLE_H_MEAN, 200.0)
+        values = {COL_MEAN_CYCLE_H_MEAN: 100.0, COL_MEDIAN_CYCLE_H_MEAN: 200.0}
+        fractional = MetricGoal(
+            indicator_goals=(primary, secondary), weights=(0.75, 0.25)
+        )
+        integer = MetricGoal(indicator_goals=(primary, secondary), weights=(3, 1))
+        assert fractional.score(values) == pytest.approx(integer.score(values))
 
 
 # ── baseline_per_case ─────────────────────────────────────────────────────────

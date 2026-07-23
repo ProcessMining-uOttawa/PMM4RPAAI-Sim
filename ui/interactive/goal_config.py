@@ -4,7 +4,7 @@ Part of ui/interactive/, so this module renders st.* widgets directly. It owns
 the goal-count radio, the per-slot metric pickers, the per-metric indicator
 selector (which optional indicators contribute to a metric's score), the
 editable absolute Target/Worst thresholds per selected indicator, and the
-integer weight inputs that split a metric's score across its indicators —
+float weight inputs that split a metric's score across its indicators —
 returning a typed GoalConfig. Has no pure surface, so it is exercised manually
 like app.py rather than unit-tested.
 
@@ -23,7 +23,7 @@ different process — reset only when the log changes (via
 app._clear_process_state()), never by clear_results().
 
 Weights and indicator selection ride alongside the thresholds: a per-indicator
-integer weight lives in the same overrides dict under the indicator column's
+weight lives in the same overrides dict under the indicator column's
 "weight" key (a stable key + generation, since its default never drifts with the
 baseline); the chosen extra indicators live in the durable
 ss.goal_indicator_selection dict (default-indicator column → extra columns), so a
@@ -48,6 +48,17 @@ from core.metrics import IndicatorSpec, Metric, MetricRegistry
 # need not align with the factor grid.
 THRESHOLD_ROW = [3, 1, 1, 1]
 THRESHOLD_ROW_WEIGHTED = [*THRESHOLD_ROW, 1]
+
+# Fixed pixel width for the grid's number inputs: below Streamlit's
+# stepper-hide threshold, so they render as type-only boxes (the steppers are
+# useless at these steps — one click moves a threshold by 10^-decimals), yet
+# wide enough for per-case threshold values (~8 characters).
+_INPUT_WIDTH_PX = 100
+
+# Weight floor: weights are positive floats normalised by sum, so only ratios
+# matter; 0 is rejected (deselecting the indicator already expresses
+# "unscored", and an all-zero row would divide by zero — see MetricGoal).
+_WEIGHT_MIN = 0.01
 
 
 @dataclass
@@ -196,6 +207,7 @@ def _threshold_input(
             key=f"goal_{threshold_name}_{indicator_column}_{seed}"
             f"_gen{st.session_state.goal_threshold_reset_generation}",
             label_visibility="collapsed",
+            width=_INPUT_WIDTH_PX,
         )
     )
     if value != seed:
@@ -218,22 +230,23 @@ def _baseline_display(column, indicator: IndicatorSpec, baseline_value: float) -
         key=f"goal_baseline_{indicator.mean.column}_{baseline_value}",
         label_visibility="collapsed",
         disabled=True,
+        width=_INPUT_WIDTH_PX,
     )
 
 
-def _coerce_weight(saved: float) -> int:
-    """Read a stored weight as a valid int ≥ 1.
+def _coerce_weight(saved: float) -> float:
+    """Read a stored weight as a valid positive float.
 
-    session_state outlives the widget that wrote it, so a persisted weight is not
-    guaranteed to be a positive int — a fractional value can survive, and
-    int(round(0.5)) is 0, which MetricGoal.__post_init__ rejects. Clamp to ≥ 1 so
-    a stale value can never crash Panel 3.
+    session_state outlives the widget that wrote it, so a persisted weight is
+    not guaranteed positive (and pre-float sessions stored ints — valid floats
+    already). Clamp to the widget floor so a stale value can never crash
+    Panel 3 (MetricGoal rejects weights <= 0).
     """
-    return max(1, int(round(saved)))
+    return max(_WEIGHT_MIN, float(saved))
 
 
-def _weight_input(container, indicator: IndicatorSpec) -> int:
-    """Render one indicator's integer weight (≥ 1) and return it, persisting edits.
+def _weight_input(container, indicator: IndicatorSpec) -> float:
+    """Render one indicator's positive float weight and return it, persisting edits.
 
     Renders label-collapsed like the threshold cells — the grid's "Weight"
     header caption labels the column. The weight rides in
@@ -246,16 +259,18 @@ def _weight_input(container, indicator: IndicatorSpec) -> int:
     overrides: dict[str, dict[str, float]] = st.session_state.goal_threshold_overrides
     indicator_column = indicator.mean.column
     saved = overrides.get(indicator_column, {}).get("weight")
-    seed = _coerce_weight(saved) if saved is not None else 1
-    value = int(
+    seed = _coerce_weight(saved) if saved is not None else 1.0
+    value = float(
         container.number_input(
             f"{indicator.compact_label} weight",
-            min_value=1,
+            min_value=_WEIGHT_MIN,
             value=seed,
-            step=1,
+            step=0.05,
+            format="%.2f",
             key=f"goal_weight_{indicator_column}"
             f"_gen{st.session_state.goal_threshold_reset_generation}",
             label_visibility="collapsed",
+            width=_INPUT_WIDTH_PX,
         )
     )
     if value != seed:
@@ -310,8 +325,8 @@ def _configure_metric_goal(
     indicators[0] is the locked default; the rest are the user's chosen extras.
     Each indicator is one grid row; when more than one is selected, the row
     gains a Weight cell so the user splits the metric's score across them
-    (integer weights, normalised by sum). The whole slot is dropped (None) if
-    any indicator's thresholds cannot score coherently.
+    (positive float weights, normalised by sum). The whole slot is dropped
+    (None) if any indicator's thresholds cannot score coherently.
     """
     show_weights = len(indicators) > 1
     layout = THRESHOLD_ROW_WEIGHTED if show_weights else THRESHOLD_ROW
@@ -325,7 +340,7 @@ def _configure_metric_goal(
         header[4].caption("Weight")
 
     goals: list[Goal | None] = []
-    weights: list[int] = []
+    weights: list[float] = []
     for indicator in indicators:
         label_cell, target_cell, baseline_cell, worst_cell, *weight_cells = st.columns(
             layout
@@ -336,7 +351,9 @@ def _configure_metric_goal(
                 target_cell, baseline_cell, worst_cell, indicator, per_case_baseline
             )
         )
-        weights.append(_weight_input(weight_cells[0], indicator) if show_weights else 1)
+        weights.append(
+            _weight_input(weight_cells[0], indicator) if show_weights else 1.0
+        )
 
     if show_weights:
         total = sum(weights)
