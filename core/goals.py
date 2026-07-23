@@ -118,15 +118,17 @@ class MetricGoal:
     """One metric's goal: a weighted set of per-indicator Goals scored together.
 
     indicator_goals[0] is the metric's locked default indicator's Goal; the rest
-    are the user's added extras. weights are parallel integers (each ≥ 1),
-    normalised by their sum at scoring — so a weight of 3 counts 3× a weight of 1.
-    The metric's score is Σ wᵢ·score(vᵢ) / Σ wᵢ. The cross-metric aggregate
-    (analysis.rank) stays a weakest-link min across MetricGoals — these weights
-    are strictly intra-metric.
+    are the user's added extras. weights are parallel positive floats,
+    normalised by their sum at scoring — so 3 vs 1 and 0.75 vs 0.25 both split
+    75/25; only ratios matter. Zero is rejected, not treated as "unscored":
+    deselecting the indicator already expresses that, and an all-zero row
+    would divide by zero. The metric's score is Σ wᵢ·score(vᵢ) / Σ wᵢ. The
+    cross-metric aggregate (analysis.rank) stays a weakest-link min across
+    MetricGoals — these weights are strictly intra-metric.
     """
 
     indicator_goals: tuple[Goal, ...]
-    weights: tuple[int, ...]
+    weights: tuple[float, ...]
 
     def __post_init__(self) -> None:
         if not self.indicator_goals:
@@ -136,8 +138,8 @@ class MetricGoal:
                 f"weights ({len(self.weights)}) must match indicators "
                 f"({len(self.indicator_goals)})"
             )
-        if any(weight < 1 for weight in self.weights):
-            raise ValueError(f"indicator weights must be >= 1; got {self.weights}")
+        if any(weight <= 0 for weight in self.weights):
+            raise ValueError(f"indicator weights must be > 0; got {self.weights}")
 
     @property
     def score_column(self) -> str:
