@@ -64,6 +64,7 @@ ss.setdefault("array_name", None)
 ss.setdefault("scenarios", [])
 ss.setdefault("baseline_agg", None)
 ss.setdefault("failed_replications", [])
+ss.setdefault("run_error", None)  # a hard run failure (owns the results slot when set)
 # indicator-column -> {"target"/"worst"/"weight": edited value}, plus the
 # generation counter embedded in the goal widget keys. goal_indicator_selection:
 # default-indicator column -> chosen extra-indicator columns. Both are log-level
@@ -528,3 +529,20 @@ if ss.results is not None:
             use_container_width=True,
             disabled=not (bpmn_file and json_paths),
         )
+
+
+# --- Run-failure surface -----------------------------------------------------
+# Owns the results slot when a hard run failure left no results. Mutually
+# exclusive with the results panel above: clear_results() nulls run_error at run
+# start, and a finished run either commits results or sets run_error, never both.
+# The str() carries the useful message for a setup error (ValueError /
+# NotImplementedError); the expander shows the Prosimos log tail when the error
+# carries one (SimulationError.log_tail — and, later, TransformValidationError).
+if ss.run_error is not None:
+    _run_error = ss.run_error
+    st.markdown("##### 5 · Results")
+    st.error(f"Run failed.\n\n{_run_error}", icon="❌")
+    _run_log_tail = getattr(_run_error, "log_tail", None)
+    if _run_log_tail:
+        with st.expander("Run output (log tail)"):
+            st.code(_run_log_tail)

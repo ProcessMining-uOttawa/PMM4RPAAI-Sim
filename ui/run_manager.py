@@ -117,6 +117,9 @@ def clear_results(ss: Any) -> None:
     ss.scenario_log_paths = {}
     ss.baseline_log_paths = []
     ss.failed_replications = []
+    # Not an ExperimentResult field, but run-scoped display state occupying the
+    # results slot: a prior hard failure clears when the next run starts.
+    ss.run_error = None
 
 
 def commit_result(ss: Any, result: ExperimentResult) -> None:

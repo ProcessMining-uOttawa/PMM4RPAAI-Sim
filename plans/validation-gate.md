@@ -205,6 +205,22 @@ is behaviour-preserving and independently testable.
    speculative. Decide: either (a) log warnings to `validation.log` without raising and stop
    there, or (b) leave warnings entirely unhandled until one actually fires. Recommend (a) —
    one `store` write, no UI, and the file is already being written on error anyway.
+9. **Extract the shared error-surface component (the third consumer justifies it).** Phase A
+   left the run-failure render **inline** in app.py's results slot — deliberately, matching
+   the inline #105 discovery surface; a lone ~9-line block was below the extraction bar and
+   extracting it alone while discovery stayed inline would be an inconsistency. `TransformValidationError`
+   is now the *third* instance of one shape — *"message + optional log-tail expander"* —
+   after discovery (`.output` tail) and run failure (`SimulationError.log_tail`). That is the
+   rule-of-three trigger: extract a `ui/interactive/` error-surface component and retrofit all
+   three call sites (discovery inline, run-error inline, the new gate error). Reconcile the
+   real differences first (discovery adds `st.exception` + `isinstance` on
+   `ValueError`/`CalledProcessError`; run-error uses `getattr(log_tail)`). Placement rule that
+   holds regardless: the run/validation surface is called from app.py's **results slot** (like
+   `render_ranked_scenarios`), never from `execution_panel` — it owns Panel 5, and a Panel-5
+   render inside the Panel-4 component is an altitude mismatch. `execution_panel` keeps only
+   the persist (`ss.run_error = …`), not the render. (Rejected: extracting run-error alone in
+   Phase A — premature at 9 lines and inconsistent with #105; a run_manager split — barred by
+   the Streamlit-free invariant, and the error→(message, tail) derivation is two trivial lines.)
 
 ## Blast radius
 - **Phase A core (corrected — not UI-only):** `orchestrator.py` (`FailedReplication` +
