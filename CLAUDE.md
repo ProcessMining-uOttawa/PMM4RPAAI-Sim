@@ -164,10 +164,17 @@ For a target activity *Act*, the pattern produces this fragment:
   gateway has an explicit probability entry and will reject the params JSON
   if any are missing, even for single-path merges.
 
-**Known limitation:** only tasks with exactly one incoming + one outgoing
-sequenceFlow are supported. Tasks fed directly by gateways need a more
-careful wiring strategy — `apply_pattern()` raises `NotImplementedError` so this
-fails loudly rather than producing a broken model.
+**Known limitation:** only single-entry/single-exit tasks (exactly one incoming +
+one outgoing sequenceFlow) are supported. A task with multiple incoming or outgoing
+flows is a spec-legal *uncontrolled* merge/split — **not** a malformed model, and
+**not** the same as a gateway-fed task (a task fed by a gateway has arity 1 and
+transforms fine); its canonical form routes the branching through an explicit
+gateway, leaving the task 1-in/1-out. `apply_pattern()` raises `NotImplementedError`
+on the uncontrolled shape rather than producing a broken model. It does not arise in
+practice: the pipeline input is always an event *log* and SplitMiner emits the
+explicit-gateway (canonical) form, so a discovered task is 1-in/1-out. The guard is a
+defensive backstop for input that isn't — an assumption about the miner we do not
+fully verify — failing loud rather than corrupt.
 
 **Multi-resource design decision:** a target activity may have multiple resources
 assigned, but they are always of the same type (all human OR all bot — never mixed).

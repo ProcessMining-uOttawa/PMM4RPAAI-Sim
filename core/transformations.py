@@ -482,7 +482,8 @@ class XORSplitAutomation(Transformation):
             raise NotImplementedError(
                 f"{target_activity}: expected 1 incoming + 1 outgoing flow, "
                 f"got {len(incoming)} + {len(outgoing)}. "
-                "Pattern doesn't yet handle tasks fed by gateways directly."
+                "Pattern only handles single-entry/single-exit tasks "
+                "(this one is an uncontrolled merge/split)."
             )
 
         # The pattern reuses the target's exit arc, so that arc must name where it
