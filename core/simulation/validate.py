@@ -14,11 +14,15 @@ Maintainer tool — run it, don't wire it into the app:
     python -m core.simulation.validate <experiment-dir>
     python -m core.simulation.validate --log L.csv --params P.json --stats S.csv
 
-Checks per replication (ERROR = a real disagreement; WARNING = a diagnostic or a
-not-checkable case): total cost, total working seconds (+ per task), the
-arrival→completion cycle total (+ its per-case min/max), every arrival lands in
-an arrival-calendar window, and the case count. Rework / bot-failure / the
-first-start order statistics have no stats-CSV oracle and are noted, not checked.
+Checks per replication (ERROR = a real disagreement; WARNING = a diagnostic):
+total cost, total working seconds (+ per task), and the case count. The cycle-time dimension is UNCHECKED: Prosimos reports only
+arrival-anchored cycle KPIs (cycle_time / idle_cycle_time), and our clock is the
+first-task-start → last-task-end case duration, which matches neither — no
+oracle exists. The cost and working-seconds reconciliations anchor the same
+start/end columns the cycle reads, and the exact case count doubles as a
+vanished-case detector (a case completing with zero task rows would disappear
+from the log entirely). Rework / bot-failure likewise have no stats-CSV oracle
+and are noted, not checked.
 """
 
 from __future__ import annotations
@@ -34,10 +38,8 @@ import pandas as pd
 from . import store
 from .prosimos import calendars
 from .prosimos.replication_metrics import (
-    PROSIMOS_KPI_IDLE_CYCLE_TIME,
     overall_kpis,
     replication_metrics,
-    task_rows,
     task_totals,
 )
 
@@ -92,14 +94,14 @@ def _tolerance(oracle: float, floor: float) -> float:
 
 def check_replication(log_csv: Path, params_json: Path, stats_csv: Path) -> list[Check]:
     """Compare the metrics we derive from (log, params) against the stats CSV."""
-    event_log = pd.read_csv(
-        log_csv, parse_dates=["enable_time", "start_time", "end_time"]
-    )
+    event_log = pd.read_csv(log_csv, parse_dates=["start_time", "end_time"])
     params = json.loads(Path(params_json).read_text())
-    task_log = task_rows(event_log)
 
+    # replication_metrics also rejects a flag-on log with its named error —
+    # keep it before event_costs sees the unfiltered frame, whose unknown-
+    # resource raise would be misleading for that case.
     metrics = replication_metrics(log_csv, params_json)
-    costs = calendars.event_costs(task_log, params)
+    costs = calendars.event_costs(event_log, params)
     tasks = task_totals(stats_csv)
     kpis = overall_kpis(stats_csv)
 
@@ -131,7 +133,7 @@ def check_replication(log_csv: Path, params_json: Path, stats_csv: Path) -> list
             _tolerance(oracle_processing, floor=300.0),
         )
     )
-    ours_by_activity = costs["work_s"].groupby(task_log["activity"]).sum()
+    ours_by_activity = costs["work_s"].groupby(event_log["activity"]).sum()
     for activity, oracle_task in tasks.items():
         checks.append(
             Check(
@@ -143,58 +145,7 @@ def check_replication(log_csv: Path, params_json: Path, stats_csv: Path) -> list
             )
         )
 
-    # 3 — arrival→completion cycle: the product total (ERROR), then per-case
-    #     min/max against the idle_cycle_time distribution columns (WARNING).
-    idle = kpis.get(PROSIMOS_KPI_IDLE_CYCLE_TIME)
-    if idle is not None:
-        checks.append(
-            Check(
-                "arrival cycle total",
-                Severity.ERROR,
-                metrics.total_cycle_s,
-                idle["accumulated"],
-                _tolerance(idle["accumulated"], floor=300.0),
-            )
-        )
-        # End over ALL rows (not task rows) so a trailing timer completes the
-        # case -- the same arrival->completion clock as the ERROR total above
-        # and Prosimos's idle_cycle_time min/max oracle.
-        arrival = event_log.groupby("case_id")["enable_time"].min()
-        end = event_log.groupby("case_id")["end_time"].max()
-        spans = (end - arrival.reindex(end.index)).dt.total_seconds()
-        checks.append(
-            Check(
-                "arrival cycle min",
-                Severity.WARNING,
-                float(spans.min()),
-                idle["min"],
-                _tolerance(idle["min"], floor=300.0),
-            )
-        )
-        checks.append(
-            Check(
-                "arrival cycle max",
-                Severity.WARNING,
-                float(spans.max()),
-                idle["max"],
-                _tolerance(idle["max"], floor=300.0),
-            )
-        )
-
-    # 4 — every case's arrival must land inside an arrival-calendar window (the
-    #     value is the count that don't). Fails (WARNING) when the log predates
-    #     --is_event_added_to_log and no timer row carries the true arrival, so it
-    #     doubles as a "was the flag on" detector without needing the topology.
-    arrival_cal = calendars.arrival_calendar(params)
-    arrivals = event_log.groupby("case_id")["enable_time"].min()
-    outside = int((~arrivals.apply(arrival_cal.is_working_time)).sum())
-    checks.append(
-        Check(
-            "arrivals inside arrival window", Severity.WARNING, float(outside), 0.0, 0.0
-        )
-    )
-
-    # 5 — case count (exact).
+    # 3 — case count (exact).
     oracle_count = next(iter(kpis.values()))["count"] if kpis else None
     checks.append(
         Check(

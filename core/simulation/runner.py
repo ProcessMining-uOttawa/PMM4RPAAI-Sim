@@ -344,13 +344,12 @@ def simulate(
         str(out_log.resolve()),
         "--starting_at",
         starting_at,
-        # Emit a row per intermediate event so the log carries the raw case
-        # arrival (an event's enable_time) — replication_metrics.py sources the arrival→end
-        # cycle from it. Pass the string "true": Prosimos parses this flag
-        # truthily, so "--is_event_added_to_log false" would still ENABLE it;
-        # the flag is disabled only by omission.
-        "--is_event_added_to_log",
-        "true",
+        # No --is_event_added_to_log: intermediate-event rows (e.g. Simod's
+        # extraneous-delay timer firings) would pollute the exported logs with
+        # phantom activities, and replication_metrics rejects logs containing
+        # them. Prosimos parses the flag's value truthily — even
+        # "--is_event_added_to_log false" would ENABLE it — so omission is the
+        # only way to keep it off.
     ]
     if stat_out is not None:
         cmd += ["--stat_out_path", str(stat_out.resolve())]

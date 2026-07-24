@@ -46,9 +46,6 @@ _WEEKDAYS = {
     "SUNDAY": 6,
 }
 _EPOCH = pd.Timestamp("1970-01-01", tz="UTC")
-_ARRIVAL_CALENDAR_KEY = (
-    "arrival_time_calendar"  # top-level params section (this module only)
-)
 
 
 def _epoch_seconds(column: pd.Series) -> np.ndarray:
@@ -106,13 +103,6 @@ class WeeklyCalendar:
         # non-overlapping intervals — discovered calendars can carry overlapping
         # periods on one weekday.
         self.by_day = {day: _merge_intervals(periods) for day, periods in raw.items()}
-
-    def is_working_time(self, ts: pd.Timestamp) -> bool:
-        """True when ``ts`` falls inside an open interval (``[begin, end)``)."""
-        sod = ts.hour * 3600 + ts.minute * 60 + ts.second + ts.microsecond / 1e6
-        return any(
-            begin <= sod < end for begin, end in self.by_day.get(ts.weekday(), [])
-        )
 
 
 class _WorkClock:
@@ -211,28 +201,27 @@ def _lookup(
     return (rate_by_res[key], calendar) if calendar is not None else None
 
 
-def event_costs(task_log: pd.DataFrame, params: dict) -> pd.DataFrame:
-    """Per-event working seconds and cost, row-aligned to ``task_log``.
+def event_costs(event_log: pd.DataFrame, params: dict) -> pd.DataFrame:
+    """Per-event working seconds and cost, row-aligned to ``event_log``.
 
-    ``task_log`` is the event log with the non-task (event) rows already removed
-    (they carry no resource). Columns ``start_time``/``end_time`` must be parsed
-    datetimes and ``resource`` the resource name. Returns a DataFrame indexed like
-    ``task_log`` with ``work_s`` (calendar-intersected seconds) and ``cost``
+    Columns ``start_time``/``end_time`` must be parsed datetimes and
+    ``resource`` the resource name. Returns a DataFrame indexed like
+    ``event_log`` with ``work_s`` (calendar-intersected seconds) and ``cost``
     (``work_s / 3600 × cost_per_hour``).
 
     Raises ``ValueError`` for a nonzero-duration event whose resource is absent
     from the params (a silent zero-cost fallback is exactly the class of error a
     trust pipeline must not have); a zero-duration unknown-resource row costs 0.
     """
-    work = np.zeros(len(task_log), dtype=float)
-    cost = np.zeros(len(task_log), dtype=float)
-    if len(task_log) == 0:
-        return pd.DataFrame({"work_s": work, "cost": cost}, index=task_log.index)
+    work = np.zeros(len(event_log), dtype=float)
+    cost = np.zeros(len(event_log), dtype=float)
+    if len(event_log) == 0:
+        return pd.DataFrame({"work_s": work, "cost": cost}, index=event_log.index)
 
     rate_by_res, cal_by_res = _resource_maps(params)
-    starts = _epoch_seconds(task_log["start_time"])
-    ends = _epoch_seconds(task_log["end_time"])
-    resources = task_log["resource"].to_numpy()
+    starts = _epoch_seconds(event_log["start_time"])
+    ends = _epoch_seconds(event_log["end_time"])
+    resources = event_log["resource"].to_numpy()
     t0, t1 = float(starts.min()), float(ends.max())
 
     for resource_name, positions in (
@@ -254,9 +243,4 @@ def event_costs(task_log: pd.DataFrame, params: dict) -> pd.DataFrame:
         )
         work[positions] = seconds
         cost[positions] = seconds / 3600.0 * rate
-    return pd.DataFrame({"work_s": work, "cost": cost}, index=task_log.index)
-
-
-def arrival_calendar(params: dict) -> WeeklyCalendar:
-    """The process arrival calendar (windows in which cases may arrive)."""
-    return WeeklyCalendar(params.get(_ARRIVAL_CALENDAR_KEY, []))
+    return pd.DataFrame({"work_s": work, "cost": cost}, index=event_log.index)
