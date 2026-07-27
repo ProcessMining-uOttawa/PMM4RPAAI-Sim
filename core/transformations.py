@@ -36,6 +36,7 @@ from .bpmn.query import (
     diagram_extents,
     get_plane,
 )
+from .bpmn.validate import VerificationResult, verify_fragment
 from .bpmn.edit import (
     FlowSpec,
     GW_H,
@@ -209,6 +210,23 @@ class BpmnTransformResult:
     selected_resource_id: str | None = None  # carried through for params_from_values
 
 
+class TransformValidationError(RuntimeError):
+    """Raised when a transformed BPMN fails structural verification.
+
+    Carries the on-disk validation report's path plus its content as
+    ``log_tail`` — the attribute the run-failure surface renders (the same
+    contract as SimulationError.log_tail), so the broken model and the verdict
+    explaining it are both inspectable.
+    """
+
+    def __init__(
+        self, message: str, report_path: Path, log_tail: str | None = None
+    ) -> None:
+        super().__init__(message)
+        self.report_path = report_path
+        self.log_tail = log_tail
+
+
 class Transformation(ABC):
     id: str
     label: str
@@ -235,7 +253,7 @@ class Transformation(ABC):
         bot_cost_per_hour: float = 0.0,
         selected_resource_id: str | None = None,
     ) -> BpmnTransformResult:
-        """Coordinate the two-step experiment setup. Called once per experiment."""
+        """Coordinate the experiment setup. Called once per experiment."""
         bpmn_out, ids = self.apply_pattern(bpmn_in, target_activity, out_dir)
         scenario_template = self.build_scenario_template(
             json_in, ids, bot_cost_per_hour
@@ -262,6 +280,17 @@ class Transformation(ABC):
         self, bpmn_in: Path, target_activity: str, out_dir: Path
     ) -> tuple[Path, TransformIds]:
         """Add pattern elements to the BPMN and write to out_dir."""
+
+    @abstractmethod
+    def verify_transformed(
+        self, bpmn_path: Path, target_activity: str
+    ) -> VerificationResult:
+        """Structurally verify the pattern's fragment in a transformed BPMN.
+
+        Abstract so the pattern-agnostic ABC never names a concrete verifier
+        (the params_from_values precedent): each pattern knows what its own
+        transformed model must look like.
+        """
 
     @abstractmethod
     def build_scenario_template(
@@ -603,6 +632,12 @@ class XORSplitAutomation(Transformation):
 
         tree.write(str(bpmn_out), xml_declaration=True, encoding="utf-8")
         return bpmn_out, ids
+
+    # --- verify_transformed ---------------------------------------------------
+    def verify_transformed(
+        self, bpmn_path: Path, target_activity: str
+    ) -> VerificationResult:
+        return verify_fragment(bpmn_path, target_activity)
 
     # --- build_scenario_template ---------------------------------------------
     def build_scenario_template(

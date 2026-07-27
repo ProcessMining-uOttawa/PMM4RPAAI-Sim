@@ -1,4 +1,5 @@
-"""Regression tests for XORSplitAutomation — no external tools required."""
+"""Regression tests for core/transformations.py — XORSplitAutomation and the
+transform-validation error contract; no external tools required."""
 
 from __future__ import annotations
 import json
@@ -12,6 +13,7 @@ from core.transformations import (
     BOT_PROFILE_ID,
     AutomationParams,
     BpmnTransformResult,
+    TransformValidationError,
     XORSplitAutomation,
 )
 from core.simulation.prosimos.editor import (
@@ -20,6 +22,7 @@ from core.simulation.prosimos.editor import (
 )
 from core.simulation.prosimos.query import resource_pool_size
 from core.bpmn import BPMN_NS
+from core.bpmn.validate import verify_fragment
 from core.constants import (
     KEY_RESOURCE_PROFILES,
     KEY_TASK_RESOURCE_DISTRIBUTION,
@@ -35,7 +38,7 @@ from core.constants import (
 # ── Shared fixtures ───────────────────────────────────────────────────────────
 #
 # These live here, not in a root conftest.py, because this module is their only
-# consumer — a shared conftest promises cross-module reuse that no longer holds.
+# consumer.
 #
 # MINIMAL_PARAMS hardcodes the Prosimos JSON schema keys as string literals
 # rather than importing the KEY_* constants from production. The fixture mocks an
@@ -911,3 +914,32 @@ def test_no_process_raises(pattern, tmp_path):
     path.write_text(bpmn, encoding="utf-8")
     with pytest.raises(ValueError, match="No <bpmn:process>"):
         pattern.apply_pattern(path, "Test Task", tmp_path / "out")
+
+
+# ── TestVerifyTransformed ─────────────────────────────────────────────────────
+
+
+class TestVerifyTransformed:
+    def test_delegates_to_verify_fragment(self, pattern, applied):
+        # Thin by design — pins the ABC wiring: the pattern's verifier is the
+        # XOR structural oracle, its result passed through unchanged.
+        bpmn_out, _ = applied
+        result = pattern.verify_transformed(bpmn_out, "Test Task")
+        assert result == verify_fragment(bpmn_out, "Test Task")
+
+
+# ── TestTransformValidationError ──────────────────────────────────────────────
+
+
+class TestTransformValidationError:
+    def test_carries_report_path_and_log_tail(self, tmp_path):
+        # log_tail is the run-failure surface's contract (read via getattr) —
+        # renaming the attribute would silently drop the report expander.
+        report = tmp_path / "validation.log"
+        err = TransformValidationError(
+            "2 structural error(s)", report, log_tail="ERROR X: y"
+        )
+        assert str(err) == "2 structural error(s)"
+        assert err.report_path == report
+        assert err.log_tail == "ERROR X: y"
+        assert isinstance(err, RuntimeError)
