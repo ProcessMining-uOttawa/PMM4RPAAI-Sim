@@ -7,7 +7,6 @@ import xml.etree.ElementTree as ET
 import streamlit as st
 
 from pathlib import Path
-from subprocess import CalledProcessError
 
 from core import analysis, demo
 from core.bpmn.query import find_task_by_name, list_activities
@@ -35,6 +34,7 @@ from ui.interactive.goal_config import (
     reset_goal_thresholds,
 )
 from ui.interactive.discovery_panel import render_discovery_progress
+from ui.interactive.error_surface import render_failure
 from ui.interactive.main_effects import render_main_effects
 from ui.interactive.ranked_scenarios import render_ranked_scenarios
 from ui.interactive.simod_preflight import render_simod_preflight
@@ -166,16 +166,14 @@ with st.sidebar:
                 # the XES converter (no events / missing timestamps; an XML
                 # syntax error raises ParseError and takes the branch below).
                 # The message IS the content; a traceback would bury it.
-                st.error(f"Event log rejected.\n\n{error}")
+                render_failure(f"Event log rejected.\n\n{error}")
             else:
-                st.error("Simod discovery failed.")
-                st.exception(error)
-                # CalledProcessError.__str__ omits .output — the runner attaches
-                # the captured subprocess-log tail there, so it must be rendered
-                # explicitly or the real error never reaches the user.
-                if isinstance(error, CalledProcessError) and error.output:
-                    with st.expander("Simod output (log tail)"):
-                        st.code(error.output)
+                render_failure(
+                    "Simod discovery failed.",
+                    error,
+                    expander_label="Simod output (log tail)",
+                    show_traceback=True,
+                )
         else:
             st.info("Discovery cancelled.")
         if st.button("Retry discovery"):
@@ -536,13 +534,14 @@ if ss.results is not None:
 # exclusive with the results panel above: clear_results() nulls run_error at run
 # start, and a finished run either commits results or sets run_error, never both.
 # The str() carries the useful message for a setup error (ValueError /
-# NotImplementedError); the expander shows the Prosimos log tail when the error
-# carries one (SimulationError.log_tail — and, later, TransformValidationError).
+# NotImplementedError); the expander shows the captured log tail when the error
+# carries one (SimulationError / TransformValidationError).
 if ss.run_error is not None:
     _run_error = ss.run_error
     st.markdown("##### 5 · Results")
-    st.error(f"Run failed.\n\n{_run_error}", icon="❌")
-    _run_log_tail = getattr(_run_error, "log_tail", None)
-    if _run_log_tail:
-        with st.expander("Run output (log tail)"):
-            st.code(_run_log_tail)
+    render_failure(
+        f"Run failed.\n\n{_run_error}",
+        _run_error,
+        expander_label="Run output (log tail)",
+        icon="❌",
+    )

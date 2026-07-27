@@ -1,10 +1,13 @@
 """Independent structural + topology verifier for the XORSplitAutomation fragment.
 
-Maintainer-facing *trust* sub-tool: given a **transformed** BPMN and the target
-activity name, confirm the XORSplitAutomation fragment (4 exclusive gateways + a
-bot task + the branch wiring) is actually present and correctly wired at the
-executable (sequenceFlow sourceRef/targetRef) level — not merely
-connected-*looking* in the diagram. Run it, don't wire it into the app:
+Given a **transformed** BPMN and the target activity name, confirm the
+XORSplitAutomation fragment (4 exclusive gateways + a bot task + the branch
+wiring) is actually present and correctly wired at the executable
+(sequenceFlow sourceRef/targetRef) level — not merely connected-*looking* in
+the diagram. Two consumers: `Transformation.prepare_experiment` runs
+`verify_fragment` once per experiment as the transform-validation gate
+(ERROR-tier violations abort the run), and the maintainer CLI runs it
+standalone:
 
     python -m core.bpmn.validate <transformed.bpmn> --target "Fix Bug"
     python -m core.bpmn.validate <transformed.bpmn> --target "Fix Bug" \\
@@ -12,7 +15,8 @@ connected-*looking* in the diagram. Run it, don't wire it into the app:
 
 Structural mode is pure-stdlib and needs no venv. `--behavioral` runs a small
 Prosimos simulation and checks that observed routing proportions match the
-configured branch probabilities; it imports pandas + the Prosimos runner lazily.
+configured branch probabilities; it imports pandas + the Prosimos runner
+lazily — CLI-only, never in the app path.
 
 INDEPENDENCE CONTRACT (load-bearing — this is a *verifier*):
     This module MUST NOT import core.bpmn.query's flow helpers
@@ -501,8 +505,9 @@ def _check_di(root: ET.Element, graph: _Graph) -> list[Violation]:
 def verify_fragment(bpmn_path: Path | str, target_activity: str) -> VerificationResult:
     """Verify the XORSplitAutomation fragment for `target_activity` in a BPMN.
 
-    Runs every check in one pass, so a maintainer sees every dangling ref,
-    list-drift, and diagram issue at once. The fragment-topology walk is the one
+    Runs every check in one pass, so the report — CLI output or the gate's
+    validation.log — shows every dangling ref, list-drift, and diagram issue
+    at once. The fragment-topology walk is the one
     exception: it anchors on the target and stops at the first fatal structural
     break (it cannot meaningfully continue past a broken anchor), reporting that
     break plus any non-fatal naming issue found before it. See the module
