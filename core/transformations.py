@@ -27,6 +27,7 @@ from .simulation.prosimos.editor import (
     append_task_distribution,
     add_gateway_probs,
 )
+from .simulation import store
 from .simulation.prosimos.query import task_mean_duration_s
 from .bpmn.query import (
     find_process,
@@ -253,8 +254,26 @@ class Transformation(ABC):
         bot_cost_per_hour: float = 0.0,
         selected_resource_id: str | None = None,
     ) -> BpmnTransformResult:
-        """Coordinate the experiment setup. Called once per experiment."""
+        """Coordinate the experiment setup. Called once per experiment.
+
+        Raises TransformValidationError when the transformed model fails
+        structural verification — the report lands in out_dir/validation.log
+        and the model stays on disk beside it for inspection.
+        """
         bpmn_out, ids = self.apply_pattern(bpmn_in, target_activity, out_dir)
+        verification = self.verify_transformed(bpmn_out, target_activity)
+        if verification.violations:
+            # WARNINGs log without raising (the transform emits none today);
+            # ERRORs abort with the report's content as the surface's log tail.
+            report_path = store.validation_report(out_dir, verification)
+            if verification.errors:
+                raise TransformValidationError(
+                    f"Transformed model failed structural verification for "
+                    f"{target_activity!r}: {len(verification.errors)} error(s). "
+                    f"Report: {report_path}",
+                    report_path,
+                    log_tail=report_path.read_text(encoding="utf-8"),
+                )
         scenario_template = self.build_scenario_template(
             json_in, ids, bot_cost_per_hour
         )

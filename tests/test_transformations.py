@@ -1,4 +1,4 @@
-"""Regression tests for core/transformations.py — XORSplitAutomation and the
+"""Regression tests for core/transformations.py â€” XORSplitAutomation and the
 transform-validation error contract; no external tools required."""
 
 from __future__ import annotations
@@ -22,7 +22,12 @@ from core.simulation.prosimos.editor import (
 )
 from core.simulation.prosimos.query import resource_pool_size
 from core.bpmn import BPMN_NS
-from core.bpmn.validate import verify_fragment
+from core.bpmn.validate import (
+    Severity,
+    VerificationResult,
+    Violation,
+    verify_fragment,
+)
 from core.constants import (
     KEY_RESOURCE_PROFILES,
     KEY_TASK_RESOURCE_DISTRIBUTION,
@@ -35,7 +40,7 @@ from core.constants import (
 )
 
 
-# ── Shared fixtures ───────────────────────────────────────────────────────────
+# â”€â”€ Shared fixtures â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 #
 # These live here, not in a root conftest.py, because this module is their only
 # consumer.
@@ -44,11 +49,11 @@ from core.constants import (
 # rather than importing the KEY_* constants from production. The fixture mocks an
 # *external* system's document format, so it should be an independent oracle of
 # that contract: if a KEY_* constant were ever mistyped, production would look
-# for the wrong key in this correctly-spelled document and fail — exactly the
+# for the wrong key in this correctly-spelled document and fail â€” exactly the
 # regression a constant-mirrored fixture would silently hide. (Assertions below
 # navigate production's *own* output and legitimately use the KEY_* constants.)
 #
-#  start_1 ──flow_in──► task_1 ("Test Task") ──flow_out──► end_1
+#  start_1 â”€â”€flow_inâ”€â”€â–º task_1 ("Test Task") â”€â”€flow_outâ”€â”€â–º end_1
 
 MINIMAL_BPMN = """\
 <?xml version="1.0" encoding="utf-8"?>
@@ -165,7 +170,7 @@ def applied(pattern, bpmn_file, tmp_path):
     return bpmn_out, ids
 
 
-# ── TestParameters ────────────────────────────────────────────────────────────
+# â”€â”€ TestParameters â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
 
 class TestParameters:
@@ -182,12 +187,12 @@ class TestParameters:
         assert self._levels(params, F_NUM_MANUAL_RESOURCES) == [4, 5, 6]
 
     def test_manual_pool_floor_at_one(self, pattern):
-        # discovered pool of 1 → shift up to [1, 2, 3], never [0, 1, 2]
+        # discovered pool of 1 â†’ shift up to [1, 2, 3], never [0, 1, 2]
         params = pattern.parameters("T", selected_pool_size=1)
         assert self._levels(params, F_NUM_MANUAL_RESOURCES) == [1, 2, 3]
 
     def test_manual_pool_default_when_size_unknown(self, pattern):
-        # no pool info (e.g. demo) → default size 1 hits the floor → [1, 2, 3]
+        # no pool info (e.g. demo) â†’ default size 1 hits the floor â†’ [1, 2, 3]
         params = pattern.parameters("T")
         assert self._levels(params, F_NUM_MANUAL_RESOURCES) == [1, 2, 3]
 
@@ -206,7 +211,7 @@ class TestParameters:
         assert self._levels(params, F_NUM_MANUAL_RESOURCES) == [3, 3, 3]
 
     def test_bot_pool_levels_unchanged(self, pattern):
-        # num_bots is a NEW pool — stays 1/2/3 regardless of the discovered human pool
+        # num_bots is a NEW pool â€” stays 1/2/3 regardless of the discovered human pool
         params = pattern.parameters("T", selected_pool_size=8)
         assert self._levels(params, F_NUM_BOTS) == [1, 2, 3]
 
@@ -244,7 +249,7 @@ class TestManualPoolLevels:
             assert all(v >= 1 for v in levels)
 
 
-# ── Multi-flow BPMN fixtures (no DI section needed — error raised before DI work) ─
+# â”€â”€ Multi-flow BPMN fixtures (no DI section needed â€” error raised before DI work) â”€
 
 MULTI_INCOMING_BPMN = """\
 <?xml version="1.0" encoding="utf-8"?>
@@ -277,7 +282,7 @@ MULTI_OUTGOING_BPMN = """\
 """
 
 
-# Same single-in/single-out shape as MINIMAL_BPMN, but carrying no BPMNDiagram —
+# Same single-in/single-out shape as MINIMAL_BPMN, but carrying no BPMNDiagram â€”
 # schema-legal (DI is minOccurs="0"), and the one input apply_pattern rejects
 # outright rather than transforming.
 NO_DI_BPMN = """\
@@ -295,7 +300,7 @@ NO_DI_BPMN = """\
 
 
 # Carries a <BPMNDiagram> but no <BPMNPlane> inside it. The plane is what holds
-# the shapes, so this is rejected too — but the message must name the plane, not
+# the shapes, so this is rejected too â€” but the message must name the plane, not
 # claim the diagram is missing from a model that has one.
 DIAGRAM_WITHOUT_PLANE_BPMN = """\
 <?xml version="1.0" encoding="utf-8"?>
@@ -317,7 +322,7 @@ DIAGRAM_WITHOUT_PLANE_BPMN = """\
 
 # The target's outgoing flow names no targetRef, so the pattern has nowhere to
 # re-attach the exit arc. Malformed input (targetRef is required on
-# tSequenceFlow) — rejected at the boundary rather than wired into a dangling ref.
+# tSequenceFlow) â€” rejected at the boundary rather than wired into a dangling ref.
 NO_TARGET_REF_BPMN = """\
 <?xml version="1.0" encoding="utf-8"?>
 <bpmn:definitions
@@ -342,7 +347,7 @@ NO_TARGET_REF_BPMN = """\
 """
 
 
-# ── TestMultiFlowNotImplemented ───────────────────────────────────────────────
+# â”€â”€ TestMultiFlowNotImplemented â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
 
 class TestMultiFlowNotImplemented:
@@ -359,7 +364,7 @@ class TestMultiFlowNotImplemented:
             pattern.apply_pattern(bpmn, "Test Task", tmp_path / "out")
 
 
-# ── TestApplyPattern ──────────────────────────────────────────────────────────
+# â”€â”€ TestApplyPattern â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
 
 class TestApplyPattern:
@@ -435,7 +440,7 @@ class TestApplyPattern:
     def test_di_less_model_raises(self, pattern, tmp_path):
         # A DI-less model is schema-legal and Prosimos-executable, but the BPMN
         # ships as an externally-inspected export and the pattern is laid out
-        # against the existing diagram — so it is rejected, not half-applied.
+        # against the existing diagram â€” so it is rejected, not half-applied.
         bpmn = tmp_path / "no_di.bpmn"
         bpmn.write_text(NO_DI_BPMN, encoding="utf-8")
         with pytest.raises(ValueError, match="No <bpmndi:BPMNPlane> found"):
@@ -443,7 +448,7 @@ class TestApplyPattern:
 
     def test_diagram_without_a_plane_names_the_plane(self, pattern, tmp_path):
         # The guard resolves the plane, so it must not claim the *diagram* is
-        # missing from a model that plainly has one — the error would send the
+        # missing from a model that plainly has one â€” the error would send the
         # reader looking for an element sitting right there in their file.
         bpmn = tmp_path / "no_plane.bpmn"
         bpmn.write_text(DIAGRAM_WITHOUT_PLANE_BPMN, encoding="utf-8")
@@ -460,7 +465,7 @@ class TestApplyPattern:
             pattern.apply_pattern(bpmn, "Test Task", tmp_path / "out")
 
     def test_di_less_model_writes_no_output(self, pattern, tmp_path):
-        # A rejected DI-less transform must write no output — a partial apply
+        # A rejected DI-less transform must write no output â€” a partial apply
         # would leave real flows pointing at gateways that were never created.
         bpmn = tmp_path / "no_di.bpmn"
         bpmn.write_text(NO_DI_BPMN, encoding="utf-8")
@@ -470,7 +475,7 @@ class TestApplyPattern:
         assert not (out_dir / "model.bpmn").exists()
 
 
-# ── TestBuildBaseJson ─────────────────────────────────────────────────────────
+# â”€â”€ TestBuildBaseJson â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
 
 class TestBuildBaseJson:
@@ -547,7 +552,7 @@ class TestBuildBaseJson:
             pattern.build_scenario_template(params_empty, ids)
 
 
-# ── TestApplyParams ───────────────────────────────────────────────────────────
+# â”€â”€ TestApplyParams â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
 _SCENARIO = AutomationParams(
     automation_rate=0.75,
@@ -647,7 +652,7 @@ class TestApplyParams:
         assert resource_pool_size(data, "res_human_1") == 1
 
 
-# ── AutomationParams validation ────────────────────────────────────────────
+# â”€â”€ AutomationParams validation â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
 
 class TestAutomationParamsValidation:
@@ -691,7 +696,7 @@ class TestAutomationParamsValidation:
             self._make(num_manual_resources=0)
 
 
-# ── TestParamsFromValues ──────────────────────────────────────────────────────
+# â”€â”€ TestParamsFromValues â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
 _VALUES = {
     F_PCT_AUTO: 50,
@@ -765,7 +770,7 @@ class TestBaselineParams:
         assert params.manual_branch_rate == 1.0  # 100% human path
 
     def test_manual_duration_is_discovered_mean(self, pattern, bpmn_result):
-        # MINIMAL_PARAMS task_1 is fix 3600.0 → that is the baseline human duration
+        # MINIMAL_PARAMS task_1 is fix 3600.0 â†’ that is the baseline human duration
         params = pattern.baseline_params(bpmn_result)
         assert params.manual_execution_time == pytest.approx(3600.0)
 
@@ -791,7 +796,7 @@ class TestBaselineParams:
         assert probs[bpmn_result.ids.manual_branch] == 1.0
 
 
-# ── Helpers used by multiple test classes ─────────────────────────────────────
+# â”€â”€ Helpers used by multiple test classes â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
 
 def _gbp_probs(data: dict, gateway_id: str) -> dict:
@@ -811,7 +816,7 @@ def _task_dist_bounds(data: dict, task_id: str) -> tuple[float, float]:
     return params[0]["value"], params[1]["value"]
 
 
-# ── AutomationParams.from_taguchi_values ──────────────────────────────────────
+# â”€â”€ AutomationParams.from_taguchi_values â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
 
 class TestFromTaguchiValues:
@@ -852,7 +857,7 @@ class TestFromTaguchiValues:
         assert s.selected_resource_id == "res_42"
 
 
-# ── TransformIds properties ───────────────────────────────────────────────────
+# â”€â”€ TransformIds properties â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
 
 def test_bot_task_name():
@@ -860,7 +865,7 @@ def test_bot_task_name():
     assert ids.bot_task_name == "Auto Test Task"
 
 
-# ── prepare_experiment ────────────────────────────────────────────────────────
+# â”€â”€ prepare_experiment â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
 
 class TestPrepareExperiment:
@@ -899,7 +904,7 @@ class TestPrepareExperiment:
         assert result.selected_resource_id is None
 
 
-# ── apply_pattern — no-process error ─────────────────────────────────────────
+# â”€â”€ apply_pattern â€” no-process error â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
 
 def test_no_process_raises(pattern, tmp_path):
@@ -916,24 +921,89 @@ def test_no_process_raises(pattern, tmp_path):
         pattern.apply_pattern(path, "Test Task", tmp_path / "out")
 
 
-# ── TestVerifyTransformed ─────────────────────────────────────────────────────
+# â”€â”€ TestVerifyTransformed â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
 
 class TestVerifyTransformed:
     def test_delegates_to_verify_fragment(self, pattern, applied):
-        # Thin by design — pins the ABC wiring: the pattern's verifier is the
+        # Thin by design â€” pins the ABC wiring: the pattern's verifier is the
         # XOR structural oracle, its result passed through unchanged.
         bpmn_out, _ = applied
         result = pattern.verify_transformed(bpmn_out, "Test Task")
         assert result == verify_fragment(bpmn_out, "Test Task")
 
 
-# ── TestTransformValidationError ──────────────────────────────────────────────
+# â”€â”€ TestPrepareExperimentGate â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+
+_ERROR_VIOLATION = Violation(
+    "MISSING_GATEWAY", Severity.ERROR, "no split gateway", element_id="gw1"
+)
+_WARNING_VIOLATION = Violation("IO_LIST_DRIFT", Severity.WARNING, "list drift")
+
+
+class TestPrepareExperimentGate:
+    """The verify â†’ report â†’ raise wiring in prepare_experiment.
+
+    The oracle is canned by patching verify_fragment (its own correctness is
+    pinned in tests/bpmn/test_validate.py); the real verify_transformed and the
+    real gate branch run.
+    """
+
+    def _prepare(self, pattern, bpmn_file, params_file, tmp_path):
+        return pattern.prepare_experiment(
+            bpmn_file, params_file, "Test Task", tmp_path / "out"
+        )
+
+    def _stub_oracle(self, monkeypatch, violations):
+        canned = VerificationResult(target_activity="Test Task", violations=violations)
+        monkeypatch.setattr("core.transformations.verify_fragment", lambda *_: canned)
+
+    def test_error_raises_and_writes_report(
+        self, pattern, bpmn_file, params_file, tmp_path, monkeypatch
+    ):
+        self._stub_oracle(monkeypatch, (_ERROR_VIOLATION, _WARNING_VIOLATION))
+        with pytest.raises(TransformValidationError) as exc:
+            self._prepare(pattern, bpmn_file, params_file, tmp_path)
+        report = tmp_path / "out" / "validation.log"
+        text = report.read_text(encoding="utf-8")
+        assert exc.value.report_path == report
+        assert exc.value.log_tail == text
+        assert "ERROR MISSING_GATEWAY" in text and "WARNING IO_LIST_DRIFT" in text
+
+    def test_error_keeps_model_on_disk(
+        self, pattern, bpmn_file, params_file, tmp_path, monkeypatch
+    ):
+        # Regression guard: the mis-wired model is deliberately kept beside the
+        # report so both artifacts are inspectable.
+        self._stub_oracle(monkeypatch, (_ERROR_VIOLATION,))
+        with pytest.raises(TransformValidationError):
+            self._prepare(pattern, bpmn_file, params_file, tmp_path)
+        assert (tmp_path / "out" / "model.bpmn").exists()
+
+    def test_warnings_only_log_without_raising(
+        self, pattern, bpmn_file, params_file, tmp_path, monkeypatch
+    ):
+        self._stub_oracle(monkeypatch, (_WARNING_VIOLATION,))
+        result = self._prepare(pattern, bpmn_file, params_file, tmp_path)
+        assert isinstance(result, BpmnTransformResult)
+        report = tmp_path / "out" / "validation.log"
+        assert "WARNING IO_LIST_DRIFT" in report.read_text(encoding="utf-8")
+
+    def test_clean_model_writes_no_report(
+        self, pattern, bpmn_file, params_file, tmp_path
+    ):
+        # Real oracle, no patch: the minimal fixture transforms clean, so the
+        # gate must neither raise nor leave a validation.log behind.
+        self._prepare(pattern, bpmn_file, params_file, tmp_path)
+        assert not (tmp_path / "out" / "validation.log").exists()
+
+
+# â”€â”€ TestTransformValidationError â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
 
 class TestTransformValidationError:
     def test_carries_report_path_and_log_tail(self, tmp_path):
-        # log_tail is the run-failure surface's contract (read via getattr) —
+        # log_tail is the run-failure surface's contract (read via getattr) â€”
         # renaming the attribute would silently drop the report expander.
         report = tmp_path / "validation.log"
         err = TransformValidationError(
