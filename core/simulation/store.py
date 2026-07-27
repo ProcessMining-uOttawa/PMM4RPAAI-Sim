@@ -1,5 +1,5 @@
-"""On-disk experiment store: per-experiment folder layout under runs/ and the
-export ZIP packagers."""
+"""On-disk experiment store: per-experiment folder layout under runs/, the
+transform-validation report writer, and the export ZIP packagers."""
 
 from __future__ import annotations
 import io
@@ -10,6 +10,8 @@ import zipfile
 from collections.abc import Iterator
 from pathlib import Path
 from typing import Callable
+
+from ..bpmn.validate import VerificationResult
 
 ROOT = Path("runs")
 
@@ -102,6 +104,27 @@ def iter_replication_triples(exp: Path) -> Iterator[tuple[str, Path, Path, Path]
             yield from walk(scenario, scenario / "params.json", scenario.name)
     if (exp / "baseline").is_dir():
         yield from walk(baseline_dir(exp), baseline_params_path(exp), "baseline")
+
+
+# ── Validation report ─────────────────────────────────────────────────────────
+
+
+def validation_report(exp: Path, result: VerificationResult) -> Path:
+    """Write a transform-verification result to exp/validation.log; returns the path.
+
+    One line per violation — "SEVERITY CODE: message [element: id]". Pure
+    serialization: what to do about the violations (raise, warn, ignore) stays
+    with the caller.
+    """
+    lines = [
+        f"{violation.severity.name} {violation.code}: {violation.message}"
+        + (f" [element: {violation.element_id}]" if violation.element_id else "")
+        for violation in result.violations
+    ]
+    exp.mkdir(parents=True, exist_ok=True)
+    path = exp / "validation.log"
+    path.write_text("".join(f"{line}\n" for line in lines), encoding="utf-8")
+    return path
 
 
 # ── Export packaging ──────────────────────────────────────────────────────────

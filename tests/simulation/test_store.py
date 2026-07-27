@@ -1,13 +1,15 @@
 """Tests for the on-disk experiment store layout (core/simulation/store.py).
 
 Covers iter_replication_triples -- the folder walk the trust checker relies on
-to enumerate every replication without re-encoding the runs/<exp>/ layout.
+to enumerate every replication without re-encoding the runs/<exp>/ layout --
+and validation_report, the transform-verification serializer.
 """
 
 from __future__ import annotations
 
 from pathlib import Path
 
+from core.bpmn.validate import Severity, VerificationResult, Violation
 from core.simulation import store
 
 
@@ -69,3 +71,31 @@ class TestIterReplicationTriples:
 
     def test_empty_experiment_yields_nothing(self, tmp_path):
         assert list(store.iter_replication_triples(tmp_path / "exp")) == []
+
+
+class TestValidationReport:
+    def test_writes_one_line_per_violation(self, tmp_path):
+        result = VerificationResult(
+            target_activity="Fix Bug",
+            violations=(
+                Violation(
+                    "MISSING_GATEWAY",
+                    Severity.ERROR,
+                    "no split gateway before task",
+                    element_id="gw1",
+                ),
+                Violation("IO_LIST_DRIFT", Severity.WARNING, "incoming list drift"),
+            ),
+        )
+        path = store.validation_report(tmp_path / "exp", result)
+
+        assert path == tmp_path / "exp" / "validation.log"
+        assert path.read_text(encoding="utf-8").splitlines() == [
+            "ERROR MISSING_GATEWAY: no split gateway before task [element: gw1]",
+            "WARNING IO_LIST_DRIFT: incoming list drift",
+        ]
+
+    def test_empty_result_writes_empty_file(self, tmp_path):
+        result = VerificationResult(target_activity="Fix Bug", violations=())
+        path = store.validation_report(tmp_path / "exp", result)
+        assert path.read_text(encoding="utf-8") == ""
