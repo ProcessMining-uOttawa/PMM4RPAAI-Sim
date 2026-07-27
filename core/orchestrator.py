@@ -5,6 +5,7 @@ import dataclasses
 import threading
 from dataclasses import dataclass, field
 from pathlib import Path
+from subprocess import CalledProcessError
 from typing import Callable
 
 import pandas as pd
@@ -32,7 +33,16 @@ class ExperimentCancelledError(RuntimeError):
 
 
 class SimulationError(RuntimeError):
-    """Raised when every scenario replication fails with no results to return."""
+    """Raised when every scenario replication fails with no results to return.
+
+    Carries the first failure's `log_tail` (the Prosimos subprocess-log tail from
+    a CalledProcessError) so the caller can surface real diagnostic detail —
+    `str(CalledProcessError)` is only the exit-status line, not the captured log.
+    """
+
+    def __init__(self, message: str, log_tail: str | None = None) -> None:
+        super().__init__(message)
+        self.log_tail = log_tail
 
 
 @dataclass(frozen=True)
@@ -51,7 +61,8 @@ class ScenarioMeta:
 class FailedReplication:
     scenario_id: str  # scenario id, or "baseline" for baseline tasks
     rep: int
-    error: str  # str(exception)
+    error: str  # str(exception) — the short message
+    log_tail: str | None = None  # CalledProcessError.output (Prosimos log tail), if any
 
 
 def _unpack_meta(meta: object) -> tuple[str, int]:
@@ -226,7 +237,12 @@ def run_experiment(
 
     def _on_error(task: SimulationTask, exc: BaseException) -> None:
         label, rep = _unpack_meta(task.metadata)
-        failures.append(FailedReplication(scenario_id=label, rep=rep, error=str(exc)))
+        # runner.simulate attaches the subprocess-log tail as CalledProcessError.output;
+        # str(exc) drops it, so read it off the live exception here.
+        tail = exc.output if isinstance(exc, CalledProcessError) else None
+        failures.append(
+            FailedReplication(scenario_id=label, rep=rep, error=str(exc), log_tail=tail)
+        )
         _tick(label, rep)
 
     stop_check = stop_event.is_set if stop_event is not None else None
@@ -241,9 +257,11 @@ def run_experiment(
         raise ExperimentCancelledError()
 
     if not rows and failures:
+        first = failures[0]
         raise SimulationError(
             f"All {len(failures)} simulation replications failed. "
-            f"First error: {failures[0].error}"
+            f"First error: {first.error}",
+            log_tail=first.log_tail,
         )
 
     # One flat record: every registered indicator's per-case mean stored at

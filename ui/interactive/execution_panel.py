@@ -67,7 +67,11 @@ def _render_run_progress(ss: Any, n_reps: int) -> None:
     if run_state.outcome.cancelled:
         st.toast("Run cancelled.", icon="⚠️")
     elif run_state.outcome.error is not None:
-        st.toast(f"Simulation failed: {run_state.outcome.error}", icon="❌")
+        # Persist to a durable key (main thread — the worker must never touch ss);
+        # app.py renders it in the results slot. A toast would vanish before the
+        # user could read a multi-line failure. clear_run below does NOT clear
+        # run_error — clear_results (next run start) does.
+        ss.run_error = run_state.outcome.error
     else:
         # Not cancelled and no error → result is set (RunOutcome invariant).
         assert run_state.outcome.result is not None
