@@ -271,7 +271,15 @@ def overall_kpis(stats_csv: Path) -> dict[str, dict[str, float]]:
 
 def _read_activity_log(log_csv: Path) -> pd.DataFrame:
     """Read an event-log CSV, raising a ValueError that names the flag on a flag-on log."""
-    event_log = pd.read_csv(log_csv, parse_dates=["start_time", "end_time"])
+    event_log = pd.read_csv(log_csv)
+    # Explicit utc=True, not read_csv's parse_dates: an uploaded log spanning a
+    # daylight-saving switch carries mixed UTC offsets, which parse_dates
+    # silently leaves as strings (and cycle_stats would then subtract strings).
+    # UTC normalization parses both offsets and cannot move any span — an
+    # offset is position, not duration. Prosimos's own logs are fixed-offset
+    # and parse to identical values either way.
+    for column in ("start_time", "end_time"):
+        event_log[column] = pd.to_datetime(event_log[column], utc=True)
     if (event_log["resource"] == NO_RESOURCE).any():
         raise ValueError(
             f"{log_csv} contains intermediate-event rows "

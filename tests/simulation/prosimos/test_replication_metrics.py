@@ -511,6 +511,38 @@ class TestObservedLogStats:
         with pytest.raises(ValueError, match="is_event_added_to_log"):
             observed_log_stats(log)
 
+    def test_mixed_utc_offsets_parse_offset_aware(self, tmp_path):
+        # A real uploaded log spanning a daylight-saving switch carries two UTC
+        # offsets in one column — which pandas' parse_dates silently leaves as
+        # strings, so the reader must normalize to UTC itself. The span is
+        # offset-aware by construction: first start 01:00+01:00 (= 00:00Z) to
+        # last end 04:00+02:00 (= 02:00Z) is 2 h — an offset-stripping parse
+        # would read 3 h.
+        log = _write_log(
+            tmp_path / "log.csv",
+            [
+                (
+                    "c1",
+                    "A",
+                    "2025-03-30T01:00:00+01:00",
+                    "2025-03-30T01:00:00+01:00",
+                    "2025-03-30T01:30:00+01:00",
+                    "R",
+                ),
+                (
+                    "c1",
+                    "B",
+                    "2025-03-30T03:00:00+02:00",
+                    "2025-03-30T03:00:00+02:00",
+                    "2025-03-30T04:00:00+02:00",
+                    "R",
+                ),
+            ],
+        )
+        observed = observed_log_stats(log)
+        assert observed.n_cases == 1
+        assert observed.mean_cycle_h == pytest.approx(2.0)
+
     def test_asdict_keys_cover_the_comparison_columns(self):
         # fidelity_table reads the asdict record by COL_* key, and derives its
         # cycle rows from the registry — so derive the expected set from the
