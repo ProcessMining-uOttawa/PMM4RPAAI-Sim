@@ -228,6 +228,68 @@ class TestXesConversionSchema:
         assert header == ",".join(runner.SIMOD_LOG_COLUMNS)
 
 
+class TestSimodCsvCaseCount:
+    def test_counts_distinct_cases_not_rows(self, tmp_path):
+        csv_path = _csv_file(
+            tmp_path,
+            f"{_VALID_HEADER}\n"
+            "c1,A,2025-01-01T08:00:00,2025-01-01T09:00:00,R1\n"
+            "c1,B,2025-01-01T09:00:00,2025-01-01T10:00:00,R1\n"
+            "c2,A,2025-01-01T08:00:00,2025-01-01T09:00:00,R1\n",
+        )
+        assert runner.simod_csv_case_count(csv_path) == 2
+
+    def test_bom_header_tolerated(self, tmp_path):
+        # The converted/validated CSV may carry a BOM (validate_simod_csv
+        # accepts one); the counter must read the same encoding.
+        path = _csv_file(
+            tmp_path, f"{_VALID_HEADER}\n{_DATA_ROW}\n", encoding="utf-8-sig"
+        )
+        assert runner.simod_csv_case_count(path) == 1
+
+    def test_leading_blank_lines_tolerated(self, tmp_path):
+        # validate_simod_csv accepts leading blank lines (its header scan takes
+        # the first non-blank row), so every file the pre-flight passes must
+        # count cleanly here — the validator's acceptance set is the counter's
+        # contract.
+        path = _csv_file(tmp_path, f"\n\n{_VALID_HEADER}\n{_DATA_ROW}\n")
+        assert runner.simod_csv_case_count(path) == 1
+
+
+class TestDiscoverReturnsSimodCsv:
+    """The triple's third element is the Simod-ready CSV — the file the model
+    fidelity check computes its observed statistics from."""
+
+    def _stub_outputs(self, tmp_path, monkeypatch):
+        monkeypatch.setattr(
+            runner,
+            "_locate_simod_outputs",
+            lambda out_dir: (tmp_path / "m.bpmn", tmp_path / "p.json"),
+        )
+
+    def test_csv_branch_returns_the_upload_itself(self, tmp_path, monkeypatch):
+        _capture_run_logged(monkeypatch)
+        self._stub_outputs(tmp_path, monkeypatch)
+        good = _csv_file(tmp_path, f"{_VALID_HEADER}\n{_DATA_ROW}\n")
+        # Full triple asserted: (bpmn, params, simod_csv) — the first two come
+        # from the stub, so this pins the return ORDER app.py unpacks by.
+        assert runner.discover(good, tmp_path / "run") == (
+            tmp_path / "m.bpmn",
+            tmp_path / "p.json",
+            good,
+        )
+
+    def test_xes_branch_returns_the_converted_csv(self, tmp_path, monkeypatch):
+        _capture_run_logged(monkeypatch)
+        self._stub_outputs(tmp_path, monkeypatch)
+        xes = tmp_path / "log.xes"
+        xes.write_text(_XES_TWO_EVENTS)
+        run_dir = tmp_path / "run"
+        _, _, simod_csv = runner.discover(xes, run_dir)
+        assert simod_csv == run_dir / "log.csv"
+        runner.validate_simod_csv(simod_csv)  # written to disk, Simod-schema
+
+
 @pytest.fixture
 def sleeping_proc():
     """Spawn managed subprocesses (default cmd: sleep 30s) that are force-killed

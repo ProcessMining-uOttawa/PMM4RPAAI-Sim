@@ -278,18 +278,40 @@ def _locate_simod_outputs(out_dir: Path) -> tuple[Path, Path]:
     return bpmn, params_path
 
 
+def simod_csv_case_count(csv_path: Path) -> int:
+    """Number of distinct cases in a Simod-schema CSV log.
+
+    The model fidelity check pins its n_cases to this — extreme-value cycle
+    statistics (min/max) are sample-size-dependent, so the comparison is only
+    valid at equal case counts. Expects the SIMOD_LOG_COLUMNS schema (the
+    converted / pre-flighted log discover() feeds Simod).
+    """
+    with open(csv_path, encoding="utf-8-sig", newline="") as f:
+        rows = csv.reader(f)
+        # First non-blank row is the header — the same skip validate_simod_csv
+        # applies, so every file the pre-flight accepts counts cleanly.
+        header = next((row for row in rows if row), None)
+        if header is None:
+            return 0
+        case_column = header.index("case_id")
+        return len({row[case_column] for row in rows if row})
+
+
 def discover(
     log_path: Path,
     run_dir: Path,
     java_home: str | None = None,
     proc_log: Path | None = None,
-) -> tuple[Path, Path]:
-    """Run Simod one-shot on `log_path`; return (bpmn, prosimos_json).
+) -> tuple[Path, Path, Path]:
+    """Run Simod one-shot on `log_path`; return (bpmn, prosimos_json, simod_csv).
 
     `--one-shot` skips Simod's hyperparameter optimization and runs a single
     discovery pass with defaults — fast enough for an interactive UI.
     Log columns required (CSV): SIMOD_LOG_COLUMNS — a direct CSV upload is
     pre-flighted by validate_simod_csv before the subprocess spawns.
+    simod_csv is the Simod-ready log the subprocess actually read: the
+    converted CSV for an XES upload, the upload itself for CSV — the file the
+    model fidelity check computes its observed statistics from.
     """
     run_dir.mkdir(parents=True, exist_ok=True)
     out_dir = run_dir / "outputs"
@@ -313,7 +335,8 @@ def discover(
         cwd=str(run_dir),
         env=_subproc_env(java_home),
     )
-    return _locate_simod_outputs(out_dir)
+    bpmn, params_json = _locate_simod_outputs(out_dir)
+    return bpmn, params_json, log_for_simod
 
 
 # --- Prosimos ---------------------------------------------------------------

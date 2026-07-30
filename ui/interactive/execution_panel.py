@@ -27,6 +27,7 @@ from typing import Any
 import streamlit as st
 
 from core import demo, orchestrator
+from core.orchestrator import ExperimentResult
 from core.parameters import Scenario
 from core.simulation import store
 from core.transformations import Transformation
@@ -54,8 +55,8 @@ def _render_run_progress(ss: Any, n_reps: int) -> None:
     is in flight, so the timer never ticks when idle. Mirrors discovery_panel.
     """
     run_state = current_run(ss)
-    if run_state is None:  # defensive — the panel only calls this while a run exists
-        return
+    if run_state is None or run_state.kind != "experiment":
+        return  # defensive — the panel only calls this for its own kind
     progress = run_state.done / run_state.total if run_state.total > 0 else 0.0
     if is_cancelling(ss):
         text = "Cancelling — stopping running simulations…"
@@ -73,8 +74,9 @@ def _render_run_progress(ss: Any, n_reps: int) -> None:
         # run_error — clear_results (next run start) does.
         ss.run_error = run_state.outcome.error
     else:
-        # Not cancelled and no error → result is set (RunOutcome invariant).
-        assert run_state.outcome.result is not None
+        # Not cancelled and no error → result is set (RunOutcome invariant), and
+        # the kind guard above makes it this panel's species.
+        assert isinstance(run_state.outcome.result, ExperimentResult)
         commit_result(ss, run_state.outcome.result)
         st.toast(f"Completed {run_state.total} simulations.", icon="✅")
     clear_run(ss)
@@ -121,7 +123,20 @@ def render_execution_panel(
             )
 
         run_state = current_run(ss)
-        if run_state is not None:
+        if run_state is not None and run_state.kind != "experiment":
+            # Mutually exclusive runs — see RunState.kind's docstring; this
+            # panel only waits.
+            right.button(
+                "▶ Run all scenarios",
+                type="primary",
+                use_container_width=True,
+                disabled=True,
+            )
+            st.caption(
+                "⏳ An as-discovered simulation is running — wait for it to "
+                "finish (or cancel it in the Model fidelity tab)."
+            )
+        elif run_state is not None:
             if is_cancelling(ss):
                 # Disabled + instant: rendered on the rerun the Cancel click triggers
                 # below (not the fragment's 0.5s poll), so feedback is immediate and a
