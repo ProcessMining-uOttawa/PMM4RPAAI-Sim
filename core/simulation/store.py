@@ -82,6 +82,35 @@ def baseline_subprocess_log(exp: Path, replication: int) -> Path:
     return _rep_path(baseline_dir(exp), replication, "prosimos.log")
 
 
+# ── As-discovered replication paths ───────────────────────────────────────────
+# The model exactly as Simod discovered it, simulated untransformed (the model
+# fidelity check / free exploration runs). NOT the baseline — that is the
+# transformed model at 0% automation and lives under baseline/.
+
+
+def as_discovered_dir(exp: Path) -> Path:
+    path = exp / "as_discovered"
+    path.mkdir(parents=True, exist_ok=True)
+    return path
+
+
+def as_discovered_params_path(exp: Path) -> Path:
+    """The as-discovered params.json — one copy shared by every replication."""
+    return as_discovered_dir(exp) / "params.json"
+
+
+def as_discovered_log(exp: Path, replication: int) -> Path:
+    return _rep_path(as_discovered_dir(exp), replication, "log.csv")
+
+
+def as_discovered_stats(exp: Path, replication: int) -> Path:
+    return _rep_path(as_discovered_dir(exp), replication, "stats.csv")
+
+
+def as_discovered_subprocess_log(exp: Path, replication: int) -> Path:
+    return _rep_path(as_discovered_dir(exp), replication, "prosimos.log")
+
+
 def iter_replication_triples(exp: Path) -> Iterator[tuple[str, Path, Path, Path]]:
     """Yield (name, log, params, stats) for every replication under an experiment dir.
 
@@ -104,6 +133,10 @@ def iter_replication_triples(exp: Path) -> Iterator[tuple[str, Path, Path, Path]
             yield from walk(scenario, scenario / "params.json", scenario.name)
     if (exp / "baseline").is_dir():
         yield from walk(baseline_dir(exp), baseline_params_path(exp), "baseline")
+    if (exp / "as_discovered").is_dir():
+        yield from walk(
+            as_discovered_dir(exp), as_discovered_params_path(exp), "as_discovered"
+        )
 
 
 # ── Validation report ─────────────────────────────────────────────────────────
@@ -151,6 +184,19 @@ def json_zip(json_paths: dict[str, Path]) -> bytes:
 
     def _populate(archive: zipfile.ZipFile) -> None:
         _write_scenario_params(archive, json_paths)
+
+    return _build_zip(_populate)
+
+
+def as_discovered_logs_zip(log_paths: list[Path]) -> bytes:
+    """Pack as-discovered replication event logs into a ZIP. Returns b"" if empty."""
+    if not log_paths:
+        return b""
+
+    def _populate(archive: zipfile.ZipFile) -> None:
+        for log_path in log_paths:
+            if log_path.exists():
+                archive.write(log_path, arcname=f"as_discovered/{log_path.name}")
 
     return _build_zip(_populate)
 

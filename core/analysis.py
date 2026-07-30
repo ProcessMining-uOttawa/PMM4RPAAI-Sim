@@ -111,6 +111,51 @@ def compare_to_baseline(
     return pd.DataFrame(rows)
 
 
+def fidelity_table(
+    observed: dict[str, float], sim_results: pd.DataFrame
+) -> pd.DataFrame:
+    """Build the model-fidelity display frame: uploaded log vs as-discovered runs.
+
+    observed is the flat {column: value} record of ObservedStats (the
+    baseline_agg seam precedent); sim_results is the per-replication frame from
+    an as-discovered run, so "Model (mean)"/"Model (std)" summarise across
+    replications (std is NaN at one replication — the caller renders that).
+    Columns are numeric; formatting is the panel's job.
+
+    The row set is an explicit inclusion list — the four cycle indicators, the
+    cycle total, and the rework rate. Cost has no observed ground truth and
+    arrival-anchored spans are absent from logs entirely (left truncation), so
+    neither can appear. Under the fidelity check's pinned case count the total
+    row's Δ% equals the mean row's by construction (total = mean × n × 3600 on
+    both sides); it is kept for familiarity, not independent signal.
+    """
+    cycle = MetricRegistry.CYCLE_TIME
+    assert cycle.aggregate is not None  # CYCLE_TIME always defines its total spec
+    rework = MetricRegistry.REWORK_RATE.default_indicator
+    specs = [(ind.results_column, ind.mean) for ind in cycle.indicators] + [
+        (COL_TOTAL_CYCLE_S, cycle.aggregate),
+        (rework.results_column, rework.mean),
+    ]
+    rows: list[dict] = []
+    for column, spec in specs:
+        observed_value = spec.display_fn(observed[column])
+        sim = sim_results[column]
+        sim_mean = spec.display_fn(float(sim.mean()))
+        sim_std = spec.display_fn(float(sim.std()))
+        delta = sim_mean - observed_value
+        rows.append(
+            {
+                "Metric": spec.display_name,
+                "Log (observed)": round(observed_value, spec.decimal_places),
+                "Model (mean)": round(sim_mean, spec.decimal_places),
+                "Model (std)": round(sim_std, spec.decimal_places),
+                "Δ": round(delta, spec.decimal_places),
+                "Δ %": _pct_delta(delta, observed_value),
+            }
+        )
+    return pd.DataFrame(rows)
+
+
 def signal_to_noise(
     values,
     direction: MetricDirection = MetricDirection.SMALLER_IS_BETTER,

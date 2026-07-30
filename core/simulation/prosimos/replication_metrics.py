@@ -11,9 +11,15 @@ Prosimos's own accounting.
 Every log row is an activity: the runner simulates without
 ``--is_event_added_to_log``, so Prosimos writes no intermediate-event rows
 (which would carry ``resource == "No assigned resource"`` and represent e.g.
-Simod's extraneous-delay timer firings, not work). ``replication_metrics``
-rejects a log that does contain them — such a log came from a flag-on run and
-must be re-simulated — rather than silently counting looped timers as rework.
+Simod's extraneous-delay timer firings, not work). Readers here reject a log
+that does contain them — such a log came from a flag-on run and must be
+re-simulated — rather than silently counting looped timers as rework.
+
+The per-case cycle computation lives in one kernel, ``cycle_stats``, with two
+callers: ``replication_metrics`` (simulated logs) and ``observed_log_stats``
+(the uploaded log, for the model fidelity check). The fidelity comparison is
+valid only because both sides share that computation — a re-implementation
+drifting on either side would masquerade as model infidelity.
 """
 
 from __future__ import annotations
@@ -57,6 +63,43 @@ class ReplicationMetrics:
     rework_rate: float
     mean_rework_count: float
     total_bot_failure_count: float
+
+
+@dataclass(frozen=True)
+class CycleStats:
+    """Per-case cycle statistics of one activity-only event log.
+
+    The indicators are per-case first-task-start → last-task-end wall spans;
+    total_cycle_s is their sum, so ``total = mean × n_cases × 3600`` holds by
+    construction.
+    """
+
+    mean_cycle_h: float
+    median_cycle_h: float
+    min_cycle_h: float
+    max_cycle_h: float
+    total_cycle_s: float
+    n_cases: int
+
+
+@dataclass(frozen=True)
+class ObservedStats:
+    """Fidelity-side statistics of an uploaded (observed) event log.
+
+    Field names mirror the COL_* constant string values so dataclasses.asdict()
+    yields the flat {column: value} record analysis.fidelity_table consumes —
+    the baseline_agg seam precedent. n_cases pins the as-discovered run's case
+    count: extreme-value statistics (min/max) are sample-size-dependent, so the
+    comparison is only valid at equal n.
+    """
+
+    mean_cycle_h: float
+    median_cycle_h: float
+    min_cycle_h: float
+    max_cycle_h: float
+    total_cycle_s: float
+    rework_rate: float
+    n_cases: int
 
 
 # ── Prosimos stats CSV: section header names ───────────────────────────────────
@@ -226,6 +269,56 @@ def overall_kpis(stats_csv: Path) -> dict[str, dict[str, float]]:
     }
 
 
+def _read_activity_log(log_csv: Path) -> pd.DataFrame:
+    """Read an event-log CSV, raising a ValueError that names the flag on a flag-on log."""
+    event_log = pd.read_csv(log_csv, parse_dates=["start_time", "end_time"])
+    if (event_log["resource"] == NO_RESOURCE).any():
+        raise ValueError(
+            f"{log_csv} contains intermediate-event rows "
+            f"(resource == {NO_RESOURCE!r}), which Prosimos emits under "
+            "--is_event_added_to_log; this pipeline reads activity-only logs — "
+            "re-simulate without the flag."
+        )
+    return event_log
+
+
+def cycle_stats(event_log: pd.DataFrame) -> CycleStats:
+    """Per-case cycle statistics on the one clock: first task start → last task end."""
+    per_case = event_log.groupby("case_id").agg(
+        start=("start_time", "min"), end=("end_time", "max")
+    )
+    cycle_h = (per_case["end"] - per_case["start"]).dt.total_seconds().div(3600)
+    return CycleStats(
+        mean_cycle_h=float(cycle_h.mean()),
+        median_cycle_h=float(cycle_h.median()),
+        min_cycle_h=float(cycle_h.min()),
+        max_cycle_h=float(cycle_h.max()),
+        total_cycle_s=float(cycle_h.sum()) * 3600,
+        n_cases=int(len(per_case)),
+    )
+
+
+def observed_log_stats(log_csv: Path) -> ObservedStats:
+    """Statistics of an uploaded Simod-ready log — the fidelity check's observed side.
+
+    Runs the same kernels as replication_metrics (cycle_stats + _rework_metrics)
+    so the two sides of the comparison cannot drift. Raises the same named
+    ValueError on a flag-on log.
+    """
+    event_log = _read_activity_log(log_csv)
+    cycle = cycle_stats(event_log)
+    rework = _rework_metrics(event_log)
+    return ObservedStats(
+        mean_cycle_h=cycle.mean_cycle_h,
+        median_cycle_h=cycle.median_cycle_h,
+        min_cycle_h=cycle.min_cycle_h,
+        max_cycle_h=cycle.max_cycle_h,
+        total_cycle_s=cycle.total_cycle_s,
+        rework_rate=rework[COL_REWORK_RATE],
+        n_cases=cycle.n_cases,
+    )
+
+
 def replication_metrics(
     log_csv: Path,
     params_json: Path,
@@ -246,22 +339,10 @@ def replication_metrics(
     from it;
     FileNotFoundError if a path does not exist.
     """
-    event_log = pd.read_csv(log_csv, parse_dates=["start_time", "end_time"])
-    if (event_log["resource"] == NO_RESOURCE).any():
-        raise ValueError(
-            f"{log_csv} contains intermediate-event rows "
-            f"(resource == {NO_RESOURCE!r}), which Prosimos emits under "
-            "--is_event_added_to_log; this pipeline reads activity-only logs — "
-            "re-simulate without the flag."
-        )
+    event_log = _read_activity_log(log_csv)
     params = json.loads(Path(params_json).read_text())
 
-    # Per-case span: first task start → last task end.
-    per_case = event_log.groupby("case_id").agg(
-        start=("start_time", "min"), end=("end_time", "max")
-    )
-    cycle_h = (per_case["end"] - per_case["start"]).dt.total_seconds().div(3600)
-    total_cycle_s = float(cycle_h.sum()) * 3600
+    cycle = cycle_stats(event_log)
 
     # Per-case cost from calendar-aware working time. mean_cost is stored at
     # source as the mean of the series, not total/n (the "stored at source" rule).
@@ -273,12 +354,12 @@ def replication_metrics(
 
     rework = _rework_metrics(event_log)
     return ReplicationMetrics(
-        mean_cycle_h=float(cycle_h.mean()),
-        median_cycle_h=float(cycle_h.median()),
-        min_cycle_h=float(cycle_h.min()),
-        max_cycle_h=float(cycle_h.max()),
+        mean_cycle_h=cycle.mean_cycle_h,
+        median_cycle_h=cycle.median_cycle_h,
+        min_cycle_h=cycle.min_cycle_h,
+        max_cycle_h=cycle.max_cycle_h,
         mean_cost=float(case_cost.mean()),
-        total_cycle_s=total_cycle_s,
+        total_cycle_s=cycle.total_cycle_s,
         total_cost=float(case_cost.sum()),
         total_rework_count=rework[COL_TOTAL_REWORK_COUNT],
         rework_rate=rework[COL_REWORK_RATE],
