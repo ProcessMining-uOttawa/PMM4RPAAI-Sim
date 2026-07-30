@@ -128,7 +128,7 @@ def clear_results(ss: Any) -> None:
     commit_result() but NOT cleared here. Its validity is log-scoped, not
     run-scoped — the same discovered model means the previous run's baseline
     stays a correct reference while a re-run is in flight, and nulling it at
-    run start made Panel 3's goal-threshold rows collapse to metric pickers on
+    run start would collapse Panel 3's goal-threshold rows to metric pickers on
     any mid-run rerun. app._clear_process_state() clears it where the process
     actually changes (log reset or replacement).
     """

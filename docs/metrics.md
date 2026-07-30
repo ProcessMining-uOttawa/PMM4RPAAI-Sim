@@ -194,3 +194,47 @@ drift in those surfaces as a checker failure; only the per-case aggregation
 arithmetic is checker-blind, and that is pinned by unit tests. The exact case
 count check doubles as a vanished-case detector — a case would have to lose
 *all* its rows to change the ranked mean's denominator unnoticed.
+
+---
+
+## The model fidelity check
+
+Before trusting experiment results, the tool can measure how faithfully the
+discovered model reproduces the uploaded log. The **as-discovered simulation**
+runs Prosimos on the model exactly as Simod discovered it — no automation
+pattern, no factors — and the **model fidelity check** compares those
+replications' statistics against the same statistics computed from the log.
+(The as-discovered run is *not* the experiment baseline: the baseline is the
+*transformed* model at 0% automation.)
+
+Both sides of the comparison use the one first-task-start → last-task-end
+clock above, at the same case count — the run's cases-per-replication is
+pinned to the log's case count because min/max are sample-size-dependent
+statistics, so unequal n corrupts exactly the extreme-value rows the check
+exists to compare. Compared rows: the four per-case cycle indicators
+(mean/median/min/max), the total cycle time, and the rework rate. Deliberately
+excluded: **cost** (an uploaded log carries no resource calendars or hourly
+rates, so no observed ground truth exists) and anything **arrival-anchored**
+(left truncation — see above). The per-replication spread (std) is shown
+beside the model mean because the log is a single realization: the spread is
+the yardstick for whether a Δ is systematic misfit or run-to-run noise.
+
+One caveat for XES uploads: they reach the pipeline with no start timestamps
+(the converter reads only each event's completion `time:timestamp`), so it
+synthesizes each case's first start (= its first end). The observed clock runs
+slightly short, and a small systematic positive Δ on the cycle rows is
+expected.
+
+> **Implementation & trust.** Both sides of the comparison are computed by the
+> **same per-case cycle kernel** in
+> [`core/simulation/prosimos/replication_metrics.py`](../core/simulation/prosimos/replication_metrics.py)
+> — one function, two callers — so a drift between the two computations is
+> unconstructible and cannot masquerade as model infidelity. This check is the
+> third of three deliberately distinct trust layers: the **structural gate**
+> (`core/bpmn/validate.py`) verifies the transformed model's wiring before any
+> simulation runs; the **trust checker** (`core/simulation/validate.py`)
+> reconciles our metric derivations against Prosimos's own accounting; the
+> **model fidelity check** measures the discovered model against the uploaded
+> log. Three names, three questions — is the transform wired right, are our
+> numbers right, is the model faithful — with no shared vocabulary between
+> them.
