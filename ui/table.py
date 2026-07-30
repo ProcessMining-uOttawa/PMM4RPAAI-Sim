@@ -1,4 +1,6 @@
-"""Ranked-scenario table preparation for the Ranking tab (Panel 5)."""
+"""Display-table preparation: the Panel 5 ranked table and the fidelity panel's
+per-replication and comparison tables. No st.* calls — plain DataFrames in and
+out, testable without Streamlit."""
 
 from __future__ import annotations
 
@@ -52,3 +54,50 @@ def prepare_ranked_display(
     result = ranked[src_cols].copy()
     result.insert(0, "rank", range(1, len(result) + 1))
     return result.rename(columns=rename)
+
+
+def prepare_replication_display(results: pd.DataFrame) -> pd.DataFrame:
+    """Display-named per-replication table for the fidelity panel.
+
+    One row per as-discovered replication, one column per registered indicator
+    (registry-driven, so a new indicator appears with no edit here). Run totals
+    are deliberately absent — at a fixed case count per replication they are the
+    per-case means rescaled — and bot failures have no indicator, which rightly
+    excludes them from a patternless run.
+    """
+    out = pd.DataFrame({"Replication": results["replication"]})
+    for metric in MetricRegistry.all():
+        for indicator in metric.indicators:
+            spec = indicator.mean
+            out[spec.display_name] = (
+                results[indicator.results_column]
+                .map(spec.display_fn)
+                .round(spec.decimal_places)
+            )
+    return out
+
+
+def prepare_fidelity_display(fidelity: pd.DataFrame, n_reps: int) -> pd.DataFrame:
+    """Format analysis.fidelity_table()'s numeric frame for display.
+
+    Folds the Model (mean)/(std) columns into one "mean ± std" string column —
+    the per-replication std is the yardstick for whether Δ is systematic misfit
+    or run-to-run noise, so it renders beside the mean rather than as a separate
+    column. A single replication has no std (NaN) and renders an em dash.
+    """
+
+    def _mean_pm_std(mean: float, std: float) -> str:
+        return f"{mean} ± {'—' if pd.isna(std) else std}"
+
+    return pd.DataFrame(
+        {
+            "Metric": fidelity["Metric"],
+            "Log (observed)": fidelity["Log (observed)"],
+            f"Model (mean ± std of {n_reps} reps)": [
+                _mean_pm_std(mean, std)
+                for mean, std in zip(fidelity["Model (mean)"], fidelity["Model (std)"])
+            ],
+            "Δ": fidelity["Δ"],
+            "Δ %": fidelity["Δ %"],
+        }
+    )

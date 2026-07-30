@@ -1,4 +1,5 @@
-"""Tests for ui/table.py — prepare_ranked_display column selection and renaming."""
+"""Tests for ui/table.py — prepare_ranked_display column selection and renaming,
+plus the fidelity panel's per-replication and comparison display prep."""
 
 from __future__ import annotations
 
@@ -11,7 +12,11 @@ from core.constants import (
 )
 from core.metrics import MetricRegistry
 from core.parameters import Parameter
-from ui.table import prepare_ranked_display
+from ui.table import (
+    prepare_fidelity_display,
+    prepare_ranked_display,
+    prepare_replication_display,
+)
 
 # The median cycle-time indicator (an extra of the CYCLE_TIME metric).
 _MEDIAN_INDICATOR = next(
@@ -169,3 +174,81 @@ class TestPrepareRankedDisplay:
         assert "Cost ($/case)" in result.columns
         assert "Cost Score" not in result.columns
         assert "Cycle Time Score" in result.columns
+
+
+_ALL_INDICATORS = [
+    indicator for metric in MetricRegistry.all() for indicator in metric.indicators
+]
+
+
+def _replication_results() -> pd.DataFrame:
+    """A two-replication as-discovered results frame covering every indicator.
+
+    Values are distinct per column (offset by indicator position) so a
+    source-to-display column misrouting cannot pass unnoticed.
+    """
+    data: dict = {"replication": [0, 1]}
+    for offset, indicator in enumerate(_ALL_INDICATORS):
+        data[indicator.results_column] = [1.23456 + offset, 2.34567 + offset]
+    return pd.DataFrame(data)
+
+
+class TestPrepareReplicationDisplay:
+    def test_one_display_column_per_registered_indicator(self):
+        result = prepare_replication_display(_replication_results())
+        expected = ["Replication"] + [
+            indicator.mean.display_name for indicator in _ALL_INDICATORS
+        ]
+        assert list(result.columns) == expected
+
+    def test_values_rounded_to_spec_decimals(self):
+        result = prepare_replication_display(_replication_results())
+        for offset, indicator in enumerate(_ALL_INDICATORS):
+            spec = indicator.mean
+            expected = [
+                round(spec.display_fn(raw + offset), spec.decimal_places)
+                for raw in (1.23456, 2.34567)
+            ]
+            assert result[spec.display_name].tolist() == expected
+
+
+def _fidelity_frame() -> pd.DataFrame:
+    """A two-row analysis.fidelity_table() output: one std, one NaN (single rep)."""
+    return pd.DataFrame(
+        {
+            "Metric": ["Cycle Time (h/case)", "Total Cycle Time (h)"],
+            "Log (observed)": [24.0, 2400.0],
+            "Model (mean)": [26.0, 2600.0],
+            "Model (std)": [1.0, float("nan")],
+            "Δ": [2.0, 200.0],
+            "Δ %": [8.3, 8.3],
+        }
+    )
+
+
+class TestPrepareFidelityDisplay:
+    def test_mean_and_std_fold_into_one_column(self):
+        result = prepare_fidelity_display(_fidelity_frame(), n_reps=3)
+        model_col = "Model (mean ± std of 3 reps)"
+        assert list(result.columns) == [
+            "Metric",
+            "Log (observed)",
+            model_col,
+            "Δ",
+            "Δ %",
+        ]
+        assert result[model_col].tolist()[0] == "26.0 ± 1.0"
+
+    def test_nan_std_renders_a_dash(self):
+        result = prepare_fidelity_display(_fidelity_frame(), n_reps=3)
+        assert result["Model (mean ± std of 3 reps)"].tolist()[1] == "2600.0 ± —"
+
+    def test_observed_and_delta_columns_pass_through(self):
+        result = prepare_fidelity_display(_fidelity_frame(), n_reps=3)
+        assert result["Metric"].tolist() == [
+            "Cycle Time (h/case)",
+            "Total Cycle Time (h)",
+        ]
+        assert result["Log (observed)"].tolist() == [24.0, 2400.0]
+        assert result["Δ"].tolist() == [2.0, 200.0]
+        assert result["Δ %"].tolist() == [8.3, 8.3]

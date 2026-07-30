@@ -39,13 +39,21 @@ class DiscoveryPhase(Enum):
 
 @dataclass
 class DiscoveryResult:
-    """Everything a successful discovery contributes to session state."""
+    """Everything a successful discovery contributes to session state.
+
+    simod_csv_path / log_case_count feed the model fidelity check: the
+    Simod-ready CSV the discovery actually ran on (the observed side's source
+    file) and its distinct-case count (the pinned cases-per-replication).
+    Demo mode bypasses this module entirely — app.py owns its session keys.
+    """
 
     bpmn_path: Path
     json_path: Path
     activities: list[str]
     log_name: str
     log_path: Path
+    simod_csv_path: Path
+    log_case_count: int
 
 
 @dataclass
@@ -136,6 +144,8 @@ def commit_discovery(
     ss.activities = result.activities
     ss.log_name = result.log_name
     ss.log_path = result.log_path
+    ss.simod_csv_path = result.simod_csv_path
+    ss.log_case_count = result.log_case_count
     ss.log_fingerprint = fingerprint
 
 
