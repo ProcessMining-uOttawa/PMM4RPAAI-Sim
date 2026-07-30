@@ -9,6 +9,7 @@ import pytest
 from core.analysis import (
     aggregate,
     compare_to_baseline,
+    fidelity_table,
     main_effects,
     signal_to_noise,
     sn_ranking,
@@ -642,3 +643,82 @@ class TestRank:
         agg = pd.DataFrame([{"scenario_id": "S01", COL_MEAN_CYCLE_H_MEAN: 90.0}])
         ranked = rank(agg, [])
         assert ranked.iloc[0]["score"] == pytest.approx(0.0)
+
+
+# ── TestFidelityTable ─────────────────────────────────────────────────────────
+
+
+class TestFidelityTable:
+    """The model-fidelity display frame: uploaded log vs as-discovered reps."""
+
+    _OBSERVED = {
+        COL_MEAN_CYCLE_H: 24.0,
+        COL_MEDIAN_CYCLE_H: 20.0,
+        COL_MIN_CYCLE_H: 2.0,
+        COL_MAX_CYCLE_H: 100.0,
+        COL_TOTAL_CYCLE_S: 24.0 * 100 * 3600,
+        COL_REWORK_RATE: 5.0,
+        "n_cases": 100,  # extra asdict key — ignored by the inclusion list
+    }
+
+    def _sim(self, reps: int = 3) -> pd.DataFrame:
+        # Includes a column outside the inclusion list (mean_cost) — it must
+        # not appear as a row.
+        base = {
+            COL_MEAN_CYCLE_H: [25.0, 26.0, 27.0],
+            COL_MEDIAN_CYCLE_H: [21.0, 22.0, 23.0],
+            COL_MIN_CYCLE_H: [1.0, 2.0, 3.0],
+            COL_MAX_CYCLE_H: [90.0, 100.0, 110.0],
+            COL_TOTAL_CYCLE_S: [
+                25.0 * 100 * 3600,
+                26.0 * 100 * 3600,
+                27.0 * 100 * 3600,
+            ],
+            COL_REWORK_RATE: [4.0, 5.0, 6.0],
+            COL_MEAN_COST: [10.0, 11.0, 12.0],
+        }
+        return pd.DataFrame({col: values[:reps] for col, values in base.items()})
+
+    def test_row_set_is_the_inclusion_list(self):
+        table = fidelity_table(self._OBSERVED, self._sim())
+        # Cost is absent by design: the log carries no cost ground truth.
+        assert table["Metric"].tolist() == [
+            "Cycle Time (h/case)",
+            "Median Cycle Time (h/case)",
+            "Min Cycle Time (h/case)",
+            "Max Cycle Time (h/case)",
+            "Total Cycle Time (h)",
+            "Rework Rate (%)",
+        ]
+
+    def test_mean_and_delta_arithmetic(self):
+        table = fidelity_table(self._OBSERVED, self._sim()).set_index("Metric")
+        row = table.loc["Cycle Time (h/case)"]
+        assert row["Log (observed)"] == pytest.approx(24.0)
+        assert row["Model (mean)"] == pytest.approx(26.0)
+        assert row["Δ"] == pytest.approx(2.0)
+        assert row["Δ %"] == pytest.approx(8.3)  # round(2 / 24 * 100, 1)
+
+    def test_total_row_displayed_in_hours(self):
+        table = fidelity_table(self._OBSERVED, self._sim()).set_index("Metric")
+        row = table.loc["Total Cycle Time (h)"]
+        assert row["Log (observed)"] == pytest.approx(2400.0)
+        assert row["Model (mean)"] == pytest.approx(2600.0)
+
+    def test_total_pct_equals_mean_pct_under_pinned_n(self):
+        # total = mean × n × 3600 on both sides ⇒ the total row's Δ% agrees
+        # with the mean row's by construction, never independently.
+        table = fidelity_table(self._OBSERVED, self._sim()).set_index("Metric")
+        assert (
+            table.loc["Total Cycle Time (h)"]["Δ %"]
+            == table.loc["Cycle Time (h/case)"]["Δ %"]
+        )
+
+    def test_std_across_reps(self):
+        table = fidelity_table(self._OBSERVED, self._sim()).set_index("Metric")
+        assert table.loc["Cycle Time (h/case)"]["Model (std)"] == pytest.approx(1.0)
+
+    def test_single_rep_std_is_nan(self):
+        # One replication has no spread; the panel renders the NaN as "—".
+        table = fidelity_table(self._OBSERVED, self._sim(reps=1)).set_index("Metric")
+        assert math.isnan(table.loc["Cycle Time (h/case)"]["Model (std)"])

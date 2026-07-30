@@ -2,11 +2,14 @@
 
 Covers iter_replication_triples -- the folder walk the trust checker relies on
 to enumerate every replication without re-encoding the runs/<exp>/ layout --
-and validation_report, the transform-verification serializer.
+the as_discovered path family and logs ZIP, and validation_report, the
+transform-verification serializer.
 """
 
 from __future__ import annotations
 
+import io
+import zipfile
 from pathlib import Path
 
 from core.bpmn.validate import Severity, VerificationResult, Violation
@@ -71,6 +74,67 @@ class TestIterReplicationTriples:
 
     def test_empty_experiment_yields_nothing(self, tmp_path):
         assert list(store.iter_replication_triples(tmp_path / "exp")) == []
+
+
+class TestAsDiscoveredPaths:
+    def test_paths_under_as_discovered_dir(self, tmp_path):
+        exp = tmp_path / "exp"
+        assert (
+            store.as_discovered_log(exp, 1) == exp / "as_discovered" / "rep_001_log.csv"
+        )
+        assert store.as_discovered_stats(exp, 1).name == "rep_001_stats.csv"
+        assert store.as_discovered_subprocess_log(exp, 1).name == "rep_001_prosimos.log"
+        assert (
+            store.as_discovered_params_path(exp)
+            == exp / "as_discovered" / "params.json"
+        )
+
+    def test_walk_includes_as_discovered(self, tmp_path):
+        exp = tmp_path / "exp"
+        _touch(exp / "as_discovered" / "params.json")
+        _replication(exp / "as_discovered", 1)
+
+        names = [name for name, *_ in store.iter_replication_triples(exp)]
+        assert names == ["as_discovered/rep_001_log"]
+
+    def test_walk_orders_species(self, tmp_path):
+        exp = tmp_path / "exp"
+        _touch(exp / "scenarios" / "s1" / "params.json")
+        _replication(exp / "scenarios" / "s1", 1)
+        _touch(exp / "baseline" / "params.json")
+        _replication(exp / "baseline", 1)
+        _touch(exp / "as_discovered" / "params.json")
+        _replication(exp / "as_discovered", 1)
+
+        names = [name for name, *_ in store.iter_replication_triples(exp)]
+        assert names == [
+            "s1/rep_001_log",
+            "baseline/rep_001_log",
+            "as_discovered/rep_001_log",
+        ]
+
+
+class TestAsDiscoveredLogsZip:
+    def test_arcnames_under_as_discovered(self, tmp_path):
+        # The arcname prefix is the vocabulary: these are as-discovered runs,
+        # never baseline/.
+        first = _touch(tmp_path / "rep_000_log.csv", "a")
+        second = _touch(tmp_path / "rep_001_log.csv", "b")
+        data = store.as_discovered_logs_zip([first, second])
+        with zipfile.ZipFile(io.BytesIO(data)) as archive:
+            assert archive.namelist() == [
+                "as_discovered/rep_000_log.csv",
+                "as_discovered/rep_001_log.csv",
+            ]
+
+    def test_empty_returns_empty_bytes(self):
+        assert store.as_discovered_logs_zip([]) == b""
+
+    def test_missing_files_skipped(self, tmp_path):
+        existing = _touch(tmp_path / "rep_000_log.csv")
+        data = store.as_discovered_logs_zip([existing, tmp_path / "nope.csv"])
+        with zipfile.ZipFile(io.BytesIO(data)) as archive:
+            assert archive.namelist() == ["as_discovered/rep_000_log.csv"]
 
 
 class TestValidationReport:

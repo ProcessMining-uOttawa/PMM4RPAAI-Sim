@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 import csv
+import dataclasses
 import json
 from pathlib import Path
 
@@ -12,6 +13,8 @@ from core.simulation.prosimos.replication_metrics import (
     _parse_section,
     _rework_metrics,
     _bot_failure_count,
+    cycle_stats,
+    observed_log_stats,
     task_totals,
     overall_kpis,
     replication_metrics,
@@ -25,15 +28,18 @@ from core.simulation.prosimos.replication_metrics import (
     PROSIMOS_COL_TRACE_COUNT,
 )
 from core.constants import (
+    COL_TOTAL_CYCLE_S,
     COL_TOTAL_REWORK_COUNT,
     COL_REWORK_RATE,
     COL_MEAN_REWORK_COUNT,
 )
+from core.metrics import MetricRegistry
 
 # ── Helpers ───────────────────────────────────────────────────────────────────
 
 BOT = "Auto Fix Bug"
 ORIG = "Fix Bug"
+FIXTURES = Path(__file__).parent.parent / "fixtures"
 _ALLDAY = [
     {"from": "MONDAY", "to": "SUNDAY", "beginTime": "00:00:00", "endTime": "24:00:00"}
 ]
@@ -402,6 +408,124 @@ class TestReplicationMetrics:
         params.write_text("{ not valid json")
         with pytest.raises(ValueError):
             replication_metrics(log, params)
+
+
+# ── cycle_stats / observed_log_stats (the fidelity kernel) ────────────────────
+
+
+def _activity_df(rows: list[tuple[str, str, str]]) -> pd.DataFrame:
+    """rows: (case_id, start_iso, end_iso) — the columns cycle_stats reads."""
+    return pd.DataFrame(
+        {
+            "case_id": [case for case, _, _ in rows],
+            "activity": ["T"] * len(rows),
+            "start_time": pd.to_datetime([start for _, start, _ in rows]),
+            "end_time": pd.to_datetime([end for _, _, end in rows]),
+        }
+    )
+
+
+class TestCycleStats:
+    def test_hand_computed_spans(self):
+        # Asymmetric spans so mean (6.0) != median (4.0) — a two-case fixture
+        # would make them definitionally equal and let a mixup pass.
+        stats = cycle_stats(
+            _activity_df(
+                [
+                    ("c1", "2025-01-06T08:00:00", "2025-01-06T10:00:00"),  # 2 h
+                    ("c2", "2025-01-06T08:00:00", "2025-01-06T12:00:00"),  # 4 h
+                    ("c3", "2025-01-06T08:00:00", "2025-01-06T20:00:00"),  # 12 h
+                ]
+            )
+        )
+        assert stats.mean_cycle_h == pytest.approx(6.0)
+        assert stats.median_cycle_h == pytest.approx(4.0)
+        assert stats.min_cycle_h == pytest.approx(2.0)
+        assert stats.max_cycle_h == pytest.approx(12.0)
+        assert stats.n_cases == 3
+
+    def test_total_cycle_s_equals_mean_times_n(self):
+        stats = cycle_stats(
+            _activity_df(
+                [
+                    ("c1", "2025-01-06T08:00:00", "2025-01-06T10:00:00"),  # 2 h
+                    ("c2", "2025-01-06T08:00:00", "2025-01-06T12:00:00"),  # 4 h
+                ]
+            )
+        )
+        assert stats.total_cycle_s == pytest.approx(6 * 3600)
+        assert stats.total_cycle_s == pytest.approx(
+            stats.mean_cycle_h * stats.n_cases * 3600
+        )
+
+    def test_case_span_includes_mid_case_gaps(self):
+        # Two rows with a 30-min gap: the span is wall-clock first-start →
+        # last-end, not a sum of task durations.
+        stats = cycle_stats(
+            _activity_df(
+                [
+                    ("c1", "2025-01-06T08:00:00", "2025-01-06T09:00:00"),
+                    ("c1", "2025-01-06T09:30:00", "2025-01-06T10:00:00"),
+                ]
+            )
+        )
+        assert stats.mean_cycle_h == pytest.approx(2.0)
+        assert stats.n_cases == 1
+
+
+class TestObservedLogStats:
+    """The coherence pins: both sides of the fidelity comparison must agree on
+    identical input — the invariant the comparison rests on."""
+
+    GOLDEN = FIXTURES / "golden_fix"
+
+    def test_cycle_fields_equal_replication_metrics(self):
+        m = replication_metrics(self.GOLDEN / "log.csv", self.GOLDEN / "params.json")
+        observed = observed_log_stats(self.GOLDEN / "log.csv")
+        # Exact ==, not approx: same kernel, same code path.
+        assert observed.mean_cycle_h == m.mean_cycle_h
+        assert observed.median_cycle_h == m.median_cycle_h
+        assert observed.min_cycle_h == m.min_cycle_h
+        assert observed.max_cycle_h == m.max_cycle_h
+        assert observed.total_cycle_s == m.total_cycle_s
+        assert observed.rework_rate == m.rework_rate
+
+    def test_n_cases_counts_the_golden_run(self):
+        assert observed_log_stats(self.GOLDEN / "log.csv").n_cases == 60
+
+    def test_flag_on_log_raises(self, tmp_path):
+        log = _write_log(
+            tmp_path / "log.csv",
+            [
+                (
+                    "c1",
+                    "Event_x",
+                    "2025-01-06T07:00:00",
+                    "2025-01-06T07:00:00",
+                    "2025-01-06T07:00:00",
+                    NO_RESOURCE,
+                ),
+                _row("c1", "2025-01-06T08:00:00", "2025-01-06T10:00:00"),
+            ],
+        )
+        with pytest.raises(ValueError, match="is_event_added_to_log"):
+            observed_log_stats(log)
+
+    def test_asdict_keys_cover_the_comparison_columns(self):
+        # fidelity_table reads the asdict record by COL_* key, and derives its
+        # cycle rows from the registry — so derive the expected set from the
+        # registry too: a new CYCLE_TIME indicator must fail HERE, naming
+        # ObservedStats as the file needing the field, not as an incidental
+        # KeyError inside a fixture.
+        keys = set(dataclasses.asdict(observed_log_stats(self.GOLDEN / "log.csv")))
+        comparison_columns = {
+            indicator.results_column
+            for indicator in MetricRegistry.CYCLE_TIME.indicators
+        } | {
+            COL_TOTAL_CYCLE_S,
+            MetricRegistry.REWORK_RATE.default_indicator.results_column,
+        }
+        assert comparison_columns <= keys
 
 
 # ── _rework_metrics ───────────────────────────────────────────────────────────
