@@ -21,6 +21,7 @@ from ui.run_manager import cancel_experiment, clear_as_discovered, clear_results
 from ui.discovery_manager import (
     DiscoveryPhase,
     DiscoveryResult,
+    cancel_discovery,
     clear_discovery,
     discovery_error,
     discovery_phase,
@@ -93,14 +94,16 @@ ss.setdefault("goal_indicator_selection", {})
 def _clear_process_state() -> None:
     """Clear everything derived from the currently loaded process.
 
-    Cancels any in-flight run (its commit would land in the wrong session),
-    abandons any in-flight discovery, drops its results, the baseline and the
-    as-discovered result (both log-scoped — clear_results deliberately keeps
-    them), the goal thresholds, and the indicator selection.
+    Cancels any in-flight run (its commit would land in the wrong session) and
+    any in-flight discovery (killing its Simod subprocess — without the cancel,
+    dropping the session would orphan it), drops its results, the baseline and
+    the as-discovered result (both log-scoped — clear_results deliberately
+    keeps them), the goal thresholds, and the indicator selection.
     Called when the log is reset or replaced — the two events after which this
     state would describe a different process.
     """
     cancel_experiment(ss)
+    cancel_discovery(ss)
     clear_discovery(ss)
     clear_results(ss)
     clear_as_discovered(ss)
@@ -197,8 +200,10 @@ with st.sidebar:
                 # The message IS the content; a traceback would bury it.
                 render_failure(f"Event log rejected.\n\n{error}")
             else:
+                # "Discovery failed", not "Simod failed": the worker also does
+                # the filesystem setup, so an OSError lands here too.
                 render_failure(
-                    "Simod discovery failed.",
+                    "Discovery failed.",
                     error,
                     expander_label="Simod output (log tail)",
                     show_traceback=True,
@@ -215,11 +220,22 @@ with st.sidebar:
     )
 
     if needs_discovery:
-        # Fingerprint now so a concurrent rerun sees already_discovered and
-        # short-circuits. Replacing the log without "Reset log" must not carry
-        # over state from the previous process; the remaining log-level keys are
-        # assigned fresh values below.
-        ss.log_fingerprint = upload_fp
+        # log_fingerprint is claimed at COMMIT, never here: its only writers
+        # are commit_discovery (success), _clear_log (reset), and the demo
+        # branch (null). The identity keys therefore always describe the last
+        # COMMITTED model, or nothing — during a first discovery the header
+        # honestly reads "No log loaded", and a failed or cancelled
+        # replacement leaves a previously committed model fully intact
+        # (Retry genuinely re-discovers the new upload; the committed model
+        # stays truthfully labeled until a replacement actually lands).
+        # Concurrent-rerun protection is ss.discovery itself, published
+        # moments below (the file write runs in the worker, so the multi-MB
+        # disk write no longer sits in the pre-publication window).
+        if not demo_mode and not preflight_ok:
+            # Before _clear_process_state: a hopeless upload (discovery cannot
+            # run) must not cost the previous process its results.
+            st.error("Fix the preflight items above first.")
+            st.stop()
         _clear_process_state()
         if demo_mode:
             # Pre-baked model, no subprocess — instant, so stay synchronous.
@@ -229,34 +245,36 @@ with st.sidebar:
             ss.bpmn_path, ss.json_path = demo.DEMO_BPMN, demo.DEMO_JSON
             ss.activities = list_activities(ss.bpmn_path)
             # Demo has no source log: the fidelity panel is caption-only, and
-            # a previous real log's CSV — and its discovery-mode provenance —
-            # must not linger behind the demo model.
+            # a previous real log's on-disk path, CSV, discovery-mode
+            # provenance, and fingerprint must not linger behind the demo
+            # model (a stale fingerprint would make re-uploading that log read
+            # as already-discovered off demo activities).
             ss.simod_csv_path = None
             ss.log_case_count = None
             ss.discovery_search_iterations = None
+            ss.log_fingerprint = None
+            ss.log_path = None
             st.rerun()
         else:
             # Non-demo discovery is only reached via needs_discovery's first
             # disjunct, which requires a truthy upload (demo_mode is False here).
             assert uploaded is not None and upload_fp is not None
-            if not preflight_ok:
-                ss.log_fingerprint = None
-                st.error("Fix the preflight items above first.")
-                st.stop()
-            run_dir = store.new_experiment(uploaded.name)
-            log_path = run_dir / uploaded.name
-            log_path.write_bytes(uploaded.getbuffer())
-            # Snapshot everything the worker needs into locals before the thread
-            # starts — it must not touch ss or st.* (§6 threading rules).
+            # Snapshot everything the worker needs into locals before the
+            # thread starts — it must not touch ss or st.* (§6 threading
+            # rules). The upload's bytes are copied out of the widget here;
+            # all filesystem work runs in the worker.
+            log_bytes = uploaded.getvalue()
             log_name = uploaded.name
-            proc_log = store.discovery_log(run_dir)
 
             def discover_fn(on_spawn) -> DiscoveryResult:
+                run_dir = store.new_experiment(log_name)
+                log_path = run_dir / log_name
+                log_path.write_bytes(log_bytes)
                 bpmn, params_path, simod_csv = runner.discover(
                     log_path,
                     run_dir,
                     java_home=java_home,
-                    proc_log=proc_log,
+                    proc_log=store.discovery_log(run_dir),
                     search_iterations=search_iterations,
                     on_spawn=on_spawn,
                 )
