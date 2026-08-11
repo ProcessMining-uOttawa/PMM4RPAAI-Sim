@@ -37,7 +37,7 @@ class DiscoveryPhase(Enum):
     relevant session: the upload is idle (never discovered) or already done."""
 
     RUNNING = auto()  # thread in flight, or succeeded and awaiting commit
-    FAILED = auto()  # Simod raised
+    FAILED = auto()  # the worker raised (pre-flight rejection, filesystem, or Simod)
     CANCELLED = auto()  # user abandoned the wait
 
 
@@ -75,8 +75,8 @@ class DiscoverySession:
     """One discovery, tied to the upload it is about.
 
     outcome is None while the thread runs; the worker sets it once. cancelled is
-    set by the UI. Kept in ss.discovery; superseded (overwritten) when discovery
-    starts for a different upload.
+    set by the UI. Kept in ss.discovery; cancelled and superseded (overwritten)
+    when discovery starts for a different upload.
     """
 
     fingerprint: Fingerprint
@@ -104,8 +104,11 @@ def start_discovery(
 
     fn receives a register callback to pass as runner.discover's on_spawn (the
     run_manager fn-receives-hooks shape) and returns the result. Overwrites any
-    prior session, so a new upload cleanly supersedes a stale one.
+    prior session, so a new upload cleanly supersedes a stale one — and
+    overwrite means cancel: a superseded in-flight discovery would otherwise
+    run (and its Simod burn) to completion unobserved.
     """
+    cancel_discovery(ss)  # kill any live predecessor before replacing it
     session = DiscoverySession(
         fingerprint=fingerprint, search_iterations=search_iterations
     )

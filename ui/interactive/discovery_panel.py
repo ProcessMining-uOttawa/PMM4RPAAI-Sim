@@ -6,7 +6,8 @@ fragment polls the DiscoverySession on a `run_every` timer: those auto-reruns ar
 fragment-scoped (only this panel re-renders — no full-page flicker, and no
 app-scoped st.rerun() storm to swallow the Cancel click). On success it commits
 the result and does one `st.rerun(scope="app")`; on Cancel it marks the session
-and reruns; a failed outcome likewise reruns so app.py's FAILED banner renders.
+(killing its Simod) and reruns; a failed outcome likewise reruns so app.py's
+FAILED banner renders.
 Consumes ui/discovery_manager (a ui/interactive -> ui/
 dependency). No pure surface, so it is exercised manually like app.py.
 """

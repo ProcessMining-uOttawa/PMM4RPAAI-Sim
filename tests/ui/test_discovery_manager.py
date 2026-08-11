@@ -1,5 +1,6 @@
-"""Tests for ui/discovery_manager — the commit_discovery session-key contract
-and the session's construction-time identity (fingerprint, search_iterations).
+"""Tests for ui/discovery_manager — the session lifecycle: commit_discovery's
+session-key contract, the session's construction-time identity, and the
+cancel/supersede kill semantics.
 
 The fidelity panel reads ss.simod_csv_path / ss.log_case_count by exact name
 (its toggle disables when either is None), so the producer side must be pinned
@@ -86,6 +87,47 @@ class TestStartDiscovery:
         ss.discovery.thread.join(timeout=5)  # reap the daemon; the field is
         # set at construction, before the thread starts — not worker-written.
 
+    def test_start_discovery_does_not_stamp_fingerprint(self):
+        # log_fingerprint means "the committed model came from this file" and
+        # is claimed at commit only — a failed/cancelled discovery must leave
+        # the previous log's identity intact so retry genuinely re-discovers.
+        # (Pins the manager seam only; app.py's routing half is not
+        # AppTest-reachable and is covered by the manual smoke.)
+        ss = _FakeSession()
+        start_discovery(
+            ss, ("log.csv", 10), lambda register: _result(), search_iterations=None
+        )
+        ss.discovery.thread.join(timeout=5)
+        assert "log_fingerprint" not in ss
+
+    def test_start_discovery_cancels_a_live_predecessor(self, monkeypatch):
+        # Overwrite means cancel: a superseded in-flight discovery must not
+        # run (and its Simod burn) to completion unobserved.
+        killed: list = []
+        monkeypatch.setattr(discovery_manager, "terminate_process", killed.append)
+        ss = _FakeSession()
+        first_process = object()
+        registered = threading.Event()
+        release = threading.Event()
+
+        def first_fn(register):
+            register(first_process)
+            registered.set()
+            assert release.wait(timeout=5)
+            return _result()
+
+        start_discovery(ss, ("a.csv", 1), first_fn, search_iterations=None)
+        first_session = ss.discovery
+        assert registered.wait(timeout=5)
+        start_discovery(
+            ss, ("b.csv", 2), lambda register: _result(), search_iterations=None
+        )
+        assert first_session.cancelled
+        assert killed == [first_process]
+        release.set()
+        first_session.thread.join(timeout=5)
+        ss.discovery.thread.join(timeout=5)
+
 
 class TestCancelDiscovery:
     """The cancel-kill handshake: cancel sets the flag then kills the stored
@@ -109,8 +151,8 @@ class TestCancelDiscovery:
         assert ss.discovery.cancelled
 
     def test_cancel_before_spawn_kills_on_register(self, monkeypatch):
-        # The pre-spawn window: cancel lands while the worker is still
-        # converting/validating (no process yet) — the registration itself
+        # The pre-spawn window: cancel lands while the worker is still writing
+        # the log / converting / validating (no process yet) — the registration itself
         # must kill, or the spawn would be orphaned.
         killed: list = []
         monkeypatch.setattr(discovery_manager, "terminate_process", killed.append)
