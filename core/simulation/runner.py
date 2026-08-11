@@ -337,8 +337,15 @@ def discover(
     java_home: str | None = None,
     proc_log: Path | None = None,
     search_iterations: int | None = None,
+    on_spawn: Callable[[subprocess.Popen], None] | None = None,
 ) -> tuple[Path, Path, Path]:
     """Run Simod discovery on `log_path`; return (bpmn, prosimos_json, simod_csv).
+
+    `on_spawn`, when given, receives the live Popen right after launch so the
+    caller can register it for cancellation (terminate_process kills the whole
+    tree — Simod spawns Java and Prosimos children); same contract as
+    simulate(), including the POSIX own-session spawn for kill-registered
+    processes.
 
     `search_iterations` selects the discovery mode: None runs `--one-shot`
     (a single pass with defaults — fast enough for an interactive UI); an int
@@ -381,7 +388,9 @@ def discover(
             "--output",
             str(out_dir.resolve()),
         ]
-    _run_logged(cmd, proc_log, cwd=str(run_dir), env=_subproc_env(java_home))
+    _run_logged(
+        cmd, proc_log, on_spawn=on_spawn, cwd=str(run_dir), env=_subproc_env(java_home)
+    )
     bpmn, params_json = _locate_simod_outputs(out_dir)
     return bpmn, params_json, log_for_simod
 

@@ -54,9 +54,9 @@ def render_discovery_progress(ss: Any) -> None:
                 "at 10 iterations, scales with the budget)…"
             )
         if st.button("Cancel discovery"):
-            # The Simod subprocess keeps running (discovery has no kill path,
-            # unlike a simulation cancel), but we stop waiting; app.py shows the
-            # cancelled banner and won't auto-re-discover this upload.
+            # Kills the Simod subprocess tree (cancel_discovery), so a
+            # calibrated search stops burning CPU; app.py shows the cancelled
+            # banner and won't auto-re-discover this upload.
             cancel_discovery(ss)
             st.rerun(scope="app")
         return

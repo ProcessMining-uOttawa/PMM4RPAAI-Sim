@@ -251,13 +251,14 @@ with st.sidebar:
             log_name = uploaded.name
             proc_log = store.discovery_log(run_dir)
 
-            def discover_fn() -> DiscoveryResult:
+            def discover_fn(on_spawn) -> DiscoveryResult:
                 bpmn, params_path, simod_csv = runner.discover(
                     log_path,
                     run_dir,
                     java_home=java_home,
                     proc_log=proc_log,
                     search_iterations=search_iterations,
+                    on_spawn=on_spawn,
                 )
                 return DiscoveryResult(
                     bpmn_path=bpmn,
