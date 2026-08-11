@@ -1,4 +1,5 @@
-"""Tests for ui/discovery_manager — the commit_discovery session-key contract.
+"""Tests for ui/discovery_manager — the commit_discovery session-key contract
+and the session's construction-time identity (fingerprint, search_iterations).
 
 The fidelity panel reads ss.simod_csv_path / ss.log_case_count by exact name
 (its toggle disables when either is None), so the producer side must be pinned
@@ -9,7 +10,7 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from ui.discovery_manager import DiscoveryResult, commit_discovery
+from ui.discovery_manager import DiscoveryResult, commit_discovery, start_discovery
 
 
 class _FakeSession(dict):
@@ -40,12 +41,38 @@ def _result() -> DiscoveryResult:
 class TestCommitDiscovery:
     def test_writes_the_fidelity_keys(self):
         ss = _FakeSession()
-        commit_discovery(ss, _result(), fingerprint=("log.csv", 10))
+        commit_discovery(
+            ss, _result(), fingerprint=("log.csv", 10), search_iterations=None
+        )
         assert ss.simod_csv_path == Path("log.csv")
         assert ss.log_case_count == 42
 
     def test_stamps_the_fingerprint(self):
         # log_fingerprint is what makes the upload read as already-discovered.
         ss = _FakeSession()
-        commit_discovery(ss, _result(), fingerprint=("log.csv", 10))
+        commit_discovery(
+            ss, _result(), fingerprint=("log.csv", 10), search_iterations=None
+        )
         assert ss.log_fingerprint == ("log.csv", 10)
+
+    def test_commit_writes_search_iterations(self):
+        # The discovery-mode provenance the sidebar's mismatch caption and
+        # Loaded caption read by exact key name. Passed from the session (the
+        # fingerprint shape), not carried on the result.
+        ss = _FakeSession()
+        commit_discovery(
+            ss, _result(), fingerprint=("log.csv", 10), search_iterations=10
+        )
+        assert ss.discovery_search_iterations == 10
+
+
+class TestStartDiscovery:
+    def test_start_discovery_stores_search_iterations(self):
+        # The progress fragment's duration caption and the commit read the
+        # session's value — the mode the run actually started with, never the
+        # live widget.
+        ss = _FakeSession()
+        start_discovery(ss, ("log.csv", 10), _result, search_iterations=7)
+        assert ss.discovery.search_iterations == 7
+        ss.discovery.thread.join(timeout=5)  # reap the daemon; the field is
+        # set at construction, before the thread starts — not worker-written.

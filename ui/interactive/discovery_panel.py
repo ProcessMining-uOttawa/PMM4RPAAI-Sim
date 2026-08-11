@@ -24,8 +24,9 @@ from ui.discovery_manager import (
     current_discovery,
 )
 
-# Poll cadence for the background discovery. Discovery takes ~2 min, so a
-# 1 s timer detects completion promptly while keeping auto-reruns sparse.
+# Poll cadence for the background discovery. Fast discovery takes ~2 min
+# (calibrated: several-fold longer), so a 1 s timer detects completion
+# promptly while keeping auto-reruns sparse.
 _POLL_SECONDS = 1.0
 
 
@@ -44,7 +45,14 @@ def render_discovery_progress(ss: Any) -> None:
     outcome = session.outcome
 
     if outcome is None:
-        st.info("⏳ Running Simod discovery (~2 min for 100k events)…")
+        if session.search_iterations is None:
+            st.info("⏳ Running Simod discovery (~2 min for 100k events)…")
+        else:
+            st.info(
+                f"⏳ Running calibrated Simod discovery "
+                f"({session.search_iterations} search iterations — ~4–8 min "
+                "at 10 iterations, scales with the budget)…"
+            )
         if st.button("Cancel discovery"):
             # The Simod subprocess keeps running (discovery has no kill path,
             # unlike a simulation cancel), but we stop waiting; app.py shows the
@@ -60,6 +68,6 @@ def render_discovery_progress(ss: Any) -> None:
 
     # No error → result is set (DiscoveryOutcome invariant).
     assert outcome.result is not None
-    commit_discovery(ss, outcome.result, session.fingerprint)
+    commit_discovery(ss, outcome.result, session.fingerprint, session.search_iterations)
     clear_discovery(ss)
     st.rerun(scope="app")

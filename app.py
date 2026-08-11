@@ -33,6 +33,7 @@ from ui.interactive.goal_config import (
     reset_goal_selection,
     reset_goal_thresholds,
 )
+from ui.interactive.discovery_config import render_discovery_config
 from ui.interactive.discovery_panel import render_discovery_progress
 from ui.interactive.error_surface import render_failure
 from ui.interactive.fidelity_panel import render_fidelity_panel
@@ -72,6 +73,10 @@ ss.setdefault("run_error", None)  # a hard run failure (owns the results slot wh
 # cleared by _clear_process_state, deliberately not by clear_results).
 ss.setdefault("simod_csv_path", None)
 ss.setdefault("log_case_count", None)
+# Discovery-mode provenance (log-identity): the search_iterations the committed
+# model was discovered with (None = fast) — drives the Loaded caption and the
+# discovery-config mismatch hint.
+ss.setdefault("discovery_search_iterations", None)
 ss.setdefault("as_discovered_result", None)
 ss.setdefault("as_discovered_error", None)
 # indicator-column -> {"target"/"worst"/"weight": edited value}, plus the
@@ -114,6 +119,7 @@ def _clear_log() -> None:
     ss.log_fingerprint = None
     ss.simod_csv_path = None
     ss.log_case_count = None
+    ss.discovery_search_iterations = None
 
 
 # --- header ------------------------------------------------------------------
@@ -157,6 +163,17 @@ with st.sidebar:
     upload_fp = (uploaded.name, uploaded.size) if uploaded else None
     already_discovered = ss.get("log_fingerprint") == upload_fp and ss.activities
     phase = discovery_phase(ss, upload_fp)
+
+    # Discovery config renders ABOVE the phase routing on purpose: it must stay
+    # visible (frozen) while a discovery is RUNNING, and stay editable in the
+    # FAILED/CANCELLED banner state so "Retry discovery" picks up the current
+    # values. Settings take effect at discovery time only — distinct from the
+    # Run config block below, whose values apply on every ▶ Run.
+    st.divider()
+    st.subheader("Discovery")
+    search_iterations = render_discovery_config(
+        ss, demo_mode, phase is DiscoveryPhase.RUNNING
+    )
 
     # RUNNING → poll via the fragment and hide the rest of the sidebar until it
     # finishes (the fragment triggers a full app rerun on completion). Because
@@ -211,10 +228,12 @@ with st.sidebar:
             ss.log_name = "LoanApp (demo)"
             ss.bpmn_path, ss.json_path = demo.DEMO_BPMN, demo.DEMO_JSON
             ss.activities = list_activities(ss.bpmn_path)
-            # Demo has no source log: the fidelity panel is caption-only, and a
-            # previous real log's CSV must not linger behind the demo model.
+            # Demo has no source log: the fidelity panel is caption-only, and
+            # a previous real log's CSV — and its discovery-mode provenance —
+            # must not linger behind the demo model.
             ss.simod_csv_path = None
             ss.log_case_count = None
+            ss.discovery_search_iterations = None
             st.rerun()
         else:
             # Non-demo discovery is only reached via needs_discovery's first
@@ -234,7 +253,11 @@ with st.sidebar:
 
             def discover_fn() -> DiscoveryResult:
                 bpmn, params_path, simod_csv = runner.discover(
-                    log_path, run_dir, java_home=java_home, proc_log=proc_log
+                    log_path,
+                    run_dir,
+                    java_home=java_home,
+                    proc_log=proc_log,
+                    search_iterations=search_iterations,
                 )
                 return DiscoveryResult(
                     bpmn_path=bpmn,
@@ -246,11 +269,28 @@ with st.sidebar:
                     log_case_count=runner.simod_csv_case_count(simod_csv),
                 )
 
-            start_discovery(ss, upload_fp, discover_fn)
+            start_discovery(
+                ss, upload_fp, discover_fn, search_iterations=search_iterations
+            )
             st.rerun()
 
     if ss.log_name:
-        st.caption(f"📄 Loaded: **{ss.log_name}** · {len(ss.activities)} activities")
+        # Provenance suffix in real mode only — a demo model is neither fast-
+        # nor calibrated-discovered, and None would misread as "fast".
+        _committed_iterations = ss.discovery_search_iterations
+        _provenance = (
+            ""
+            if demo_mode
+            else (
+                " · fast discovery"
+                if _committed_iterations is None
+                else f" · calibrated ({_committed_iterations} iterations)"
+            )
+        )
+        st.caption(
+            f"📄 Loaded: **{ss.log_name}** · {len(ss.activities)} activities"
+            f"{_provenance}"
+        )
         if st.button("Reset log", use_container_width=True):
             _clear_log()
             st.rerun()

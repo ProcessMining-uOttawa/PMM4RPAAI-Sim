@@ -297,16 +297,54 @@ def simod_csv_case_count(csv_path: Path) -> int:
         return len({row[case_column] for row in rows if row})
 
 
+def _calibrated_config(train_log: Path, search_iterations: int) -> str:
+    """The calibrated-discovery recipe as a Simod v5 configuration YAML.
+
+    Every non-searched field is a deliberate pin: clean_intermediate_files
+    upholds _locate_simod_outputs' exactly-one-BPMN invariant (the search
+    discovers candidate models that must not survive into the output tree);
+    final evaluation stays off because the app's model-fidelity check is the
+    evaluation; arrivals stay fitted — a parametric arrival distribution is
+    also what the what-if experiments scale, where an observed-arrival replay
+    would anchor scenarios to the historical pattern;
+    differentiated_by_resource matches the per-resource calendars one-shot
+    already emits (the resource selector and manual-pool centring depend on
+    that shape); and the empty extraneous_activity_delays mapping is the
+    on-switch for that whole discovery stage — Simod builds the stage only
+    when the key is present, so it is not removable no-op YAML. The
+    train_log_path is as_posix() inside a double-quoted scalar because a
+    backslash starts an escape sequence in double-quoted YAML — a Windows
+    str(path) would not survive parsing.
+    """
+    return f"""version: 5
+common:
+  train_log_path: "{train_log.resolve().as_posix()}"
+  perform_final_evaluation: false
+  use_observed_arrival_distribution: false
+  clean_intermediate_files: true
+control_flow:
+  num_iterations: {search_iterations}
+resource_model:
+  num_iterations: {search_iterations}
+  discovery_type: differentiated_by_resource
+extraneous_activity_delays: {{}}
+"""
+
+
 def discover(
     log_path: Path,
     run_dir: Path,
     java_home: str | None = None,
     proc_log: Path | None = None,
+    search_iterations: int | None = None,
 ) -> tuple[Path, Path, Path]:
-    """Run Simod one-shot on `log_path`; return (bpmn, prosimos_json, simod_csv).
+    """Run Simod discovery on `log_path`; return (bpmn, prosimos_json, simod_csv).
 
-    `--one-shot` skips Simod's hyperparameter optimization and runs a single
-    discovery pass with defaults — fast enough for an interactive UI.
+    `search_iterations` selects the discovery mode: None runs `--one-shot`
+    (a single pass with defaults — fast enough for an interactive UI); an int
+    runs the calibrated optimization recipe, searching that many candidate
+    models per stage against the log (the config YAML is written to
+    run_dir/simod_config.yaml as an inspectable artifact).
     Log columns required (CSV): SIMOD_LOG_COLUMNS — a direct CSV upload is
     pre-flighted by validate_simod_csv before the subprocess spawns.
     simod_csv is the Simod-ready log the subprocess actually read: the
@@ -322,19 +360,28 @@ def discover(
     else:
         validate_simod_csv(log_path)
         log_for_simod = log_path
-    _run_logged(
-        [
+    if search_iterations is None:
+        cmd = [
             str(SIMOD_EXE.resolve()),
             "--one-shot",
             "--event-log",
             str(log_for_simod.resolve()),
             "--output",
             str(out_dir.resolve()),
-        ],
-        proc_log,
-        cwd=str(run_dir),
-        env=_subproc_env(java_home),
-    )
+        ]
+    else:
+        config_path = run_dir / "simod_config.yaml"
+        config_path.write_text(
+            _calibrated_config(log_for_simod, search_iterations), encoding="utf-8"
+        )
+        cmd = [
+            str(SIMOD_EXE.resolve()),
+            "--configuration",
+            str(config_path.resolve()),
+            "--output",
+            str(out_dir.resolve()),
+        ]
+    _run_logged(cmd, proc_log, cwd=str(run_dir), env=_subproc_env(java_home))
     bpmn, params_json = _locate_simod_outputs(out_dir)
     return bpmn, params_json, log_for_simod
 

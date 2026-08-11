@@ -21,6 +21,15 @@ def _capture_run_logged(monkeypatch) -> dict:
     return captured
 
 
+def _stub_simod_outputs(tmp_path, monkeypatch) -> None:
+    """Stub the output locator — discover() tests spawn no Simod, so no tree exists."""
+    monkeypatch.setattr(
+        runner,
+        "_locate_simod_outputs",
+        lambda out_dir: (tmp_path / "m.bpmn", tmp_path / "p.json"),
+    )
+
+
 class TestSimulateCommand:
     def test_omits_event_log_flag(self, tmp_path, monkeypatch):
         # Absence is the ONLY safe encoding: Prosimos parses the flag's value
@@ -74,6 +83,9 @@ class TestRunLogged:
 
 _VALID_HEADER = "case_id,activity,start_time,end_time,resource"
 _DATA_ROW = "c1,Fix Bug,2025-01-01T08:00:00,2025-01-01T09:00:00,R1"
+# The Apromore export convention (capitalised headers) — the canonical
+# rejected-upload fixture.
+_BAD_HEADER_CSV = "Case_ID,Activity,Start_Time,End_Time,Resource\nc1,A,t0,t1,R\n"
 
 
 def _csv_file(tmp_path, text: str, encoding: str = "utf-8"):
@@ -178,9 +190,7 @@ class TestValidateSimodCsv:
 class TestDiscoverValidatesCsv:
     def test_bad_csv_rejected_before_spawn(self, tmp_path, monkeypatch):
         captured = _capture_run_logged(monkeypatch)
-        bad = _csv_file(
-            tmp_path, "Case_ID,Activity,Start_Time,End_Time,Resource\nc1,A,t0,t1,R\n"
-        )
+        bad = _csv_file(tmp_path, _BAD_HEADER_CSV)
         with pytest.raises(ValueError):
             runner.discover(bad, tmp_path / "run")
         assert captured == {}  # rejected before any subprocess was spawned
@@ -260,16 +270,9 @@ class TestDiscoverReturnsSimodCsv:
     """The triple's third element is the Simod-ready CSV — the file the model
     fidelity check computes its observed statistics from."""
 
-    def _stub_outputs(self, tmp_path, monkeypatch):
-        monkeypatch.setattr(
-            runner,
-            "_locate_simod_outputs",
-            lambda out_dir: (tmp_path / "m.bpmn", tmp_path / "p.json"),
-        )
-
     def test_csv_branch_returns_the_upload_itself(self, tmp_path, monkeypatch):
         _capture_run_logged(monkeypatch)
-        self._stub_outputs(tmp_path, monkeypatch)
+        _stub_simod_outputs(tmp_path, monkeypatch)
         good = _csv_file(tmp_path, f"{_VALID_HEADER}\n{_DATA_ROW}\n")
         # Full triple asserted: (bpmn, params, simod_csv) — the first two come
         # from the stub, so this pins the return ORDER app.py unpacks by.
@@ -281,13 +284,79 @@ class TestDiscoverReturnsSimodCsv:
 
     def test_xes_branch_returns_the_converted_csv(self, tmp_path, monkeypatch):
         _capture_run_logged(monkeypatch)
-        self._stub_outputs(tmp_path, monkeypatch)
+        _stub_simod_outputs(tmp_path, monkeypatch)
         xes = tmp_path / "log.xes"
         xes.write_text(_XES_TWO_EVENTS)
         run_dir = tmp_path / "run"
         _, _, simod_csv = runner.discover(xes, run_dir)
         assert simod_csv == run_dir / "log.csv"
         runner.validate_simod_csv(simod_csv)  # written to disk, Simod-schema
+
+
+class TestDiscoverCommand:
+    """The discovery-mode branch: search_iterations=None is one-shot,
+    an int is the calibrated recipe via a generated config YAML."""
+
+    def test_default_is_one_shot(self, tmp_path, monkeypatch):
+        captured = _capture_run_logged(monkeypatch)
+        _stub_simod_outputs(tmp_path, monkeypatch)
+        good = _csv_file(tmp_path, f"{_VALID_HEADER}\n{_DATA_ROW}\n")
+        runner.discover(good, tmp_path / "run")
+        assert "--one-shot" in captured["cmd"]
+        assert "--configuration" not in captured["cmd"]
+
+    def test_calibrated_cmd_uses_config(self, tmp_path, monkeypatch):
+        captured = _capture_run_logged(monkeypatch)
+        _stub_simod_outputs(tmp_path, monkeypatch)
+        good = _csv_file(tmp_path, f"{_VALID_HEADER}\n{_DATA_ROW}\n")
+        run_dir = tmp_path / "run"
+        runner.discover(good, run_dir, search_iterations=10)
+        config_path = run_dir / "simod_config.yaml"
+        assert config_path.exists()
+        assert captured["cmd"][1:] == [
+            "--configuration",
+            str(config_path.resolve()),
+            "--output",
+            str((run_dir / "outputs").resolve()),
+        ]
+
+    def test_calibrated_config_content(self, tmp_path, monkeypatch):
+        _capture_run_logged(monkeypatch)
+        _stub_simod_outputs(tmp_path, monkeypatch)
+        good = _csv_file(tmp_path, f"{_VALID_HEADER}\n{_DATA_ROW}\n")
+        run_dir = tmp_path / "run"
+        runner.discover(good, run_dir, search_iterations=10)
+        config = (run_dir / "simod_config.yaml").read_text(encoding="utf-8")
+        # Both searched stages get the budget; every pinned field is present.
+        assert config.count("num_iterations: 10") == 2
+        assert "discovery_type: differentiated_by_resource" in config
+        assert "use_observed_arrival_distribution: false" in config
+        assert "clean_intermediate_files: true" in config
+        assert "perform_final_evaluation: false" in config
+        assert "extraneous_activity_delays:" in config
+        assert good.resolve().as_posix() in config
+
+    def test_calibrated_xes_config_points_at_converted_csv(self, tmp_path, monkeypatch):
+        _capture_run_logged(monkeypatch)
+        _stub_simod_outputs(tmp_path, monkeypatch)
+        xes = tmp_path / "log.xes"
+        xes.write_text(_XES_TWO_EVENTS)
+        run_dir = tmp_path / "run"
+        runner.discover(xes, run_dir, search_iterations=5)
+        config = (run_dir / "simod_config.yaml").read_text(encoding="utf-8")
+        assert (run_dir / "log.csv").resolve().as_posix() in config
+        assert "log.xes" not in config
+
+    def test_calibrated_bad_csv_rejected_before_spawn(self, tmp_path, monkeypatch):
+        # Validation ordering holds in calibrated mode too: no subprocess, and
+        # no config YAML left on disk for a rejected upload.
+        captured = _capture_run_logged(monkeypatch)
+        bad = _csv_file(tmp_path, _BAD_HEADER_CSV)
+        run_dir = tmp_path / "run"
+        with pytest.raises(ValueError):
+            runner.discover(bad, run_dir, search_iterations=10)
+        assert captured == {}
+        assert not (run_dir / "simod_config.yaml").exists()
 
 
 @pytest.fixture
