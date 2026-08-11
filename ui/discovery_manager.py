@@ -14,16 +14,20 @@ relevant to the file currently in the uploader?" is one always-correct check
 (`session.fingerprint == upload_fp`), so a cancelled/failed session for file A is
 automatically irrelevant the moment file B is uploaded — no separate fingerprint
 flag to drift out of sync (the bug that motivated this). The worker thread never
-touches st.* — it writes only `session.outcome` (a single GIL-safe assignment).
+touches st.* — it writes only `session.outcome` and `session.process` (single
+GIL-safe assignments each).
 """
 
 from __future__ import annotations
 
+import subprocess
 import threading
 from dataclasses import dataclass
 from enum import Enum, auto
 from pathlib import Path
 from typing import Any, Callable
+
+from core.simulation.runner import terminate_process
 
 Fingerprint = tuple[str, int]  # (upload name, size) — identity of an uploaded log
 
@@ -85,26 +89,40 @@ class DiscoverySession:
     outcome: DiscoveryOutcome | None = None
     cancelled: bool = False
     thread: threading.Thread | None = None
+    # The live Simod Popen, worker-written via the register hook (a single
+    # GIL-safe assignment, like outcome) — cancel_discovery's kill handle.
+    process: subprocess.Popen | None = None
 
 
 def start_discovery(
     ss: Any,
     fingerprint: Fingerprint,
-    fn: Callable[[], DiscoveryResult],
+    fn: Callable[[Callable[[subprocess.Popen], None]], DiscoveryResult],
     search_iterations: int | None,
 ) -> None:
-    """Launch discovery for `fingerprint` in a daemon thread; fn returns a result.
+    """Launch discovery for `fingerprint` in a daemon thread.
 
-    Overwrites any prior session, so a new upload cleanly supersedes a stale one.
+    fn receives a register callback to pass as runner.discover's on_spawn (the
+    run_manager fn-receives-hooks shape) and returns the result. Overwrites any
+    prior session, so a new upload cleanly supersedes a stale one.
     """
     session = DiscoverySession(
         fingerprint=fingerprint, search_iterations=search_iterations
     )
     ss.discovery = session
 
+    def register(process: subprocess.Popen) -> None:
+        # Store first, then check cancelled — cancel_discovery does the
+        # mirror (set cancelled, then read the stored process), so whichever
+        # order the two interleave in, at least one side performs the kill;
+        # a cancel clicked before the spawn cannot orphan the subprocess.
+        session.process = process
+        if session.cancelled:
+            terminate_process(process)
+
     def worker() -> None:
         try:
-            session.outcome = DiscoveryOutcome(result=fn())
+            session.outcome = DiscoveryOutcome(result=fn(register))
         except Exception as exc:  # surfaced to the user via the outcome
             session.outcome = DiscoveryOutcome(error=exc)
 
@@ -169,10 +187,19 @@ def commit_discovery(
 
 
 def cancel_discovery(ss: Any) -> None:
-    """Mark the in-flight discovery cancelled (the Simod subprocess keeps running)."""
+    """Mark the in-flight discovery cancelled and kill its Simod subprocess.
+
+    Set cancelled first, then kill: the worker's register hook does the mirror
+    (store the process, then check cancelled), so a spawn racing this call is
+    killed by one side or the other. A killed Simod exits nonzero → the worker
+    records an error outcome, which the cancelled flag outranks in
+    discovery_phase — the user sees CANCELLED, not FAILED.
+    """
     session = current_discovery(ss)
     if session is not None:
         session.cancelled = True
+        if session.process is not None:
+            terminate_process(session.process)
 
 
 def clear_discovery(ss: Any) -> None:

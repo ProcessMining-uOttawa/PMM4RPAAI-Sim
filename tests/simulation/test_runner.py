@@ -347,6 +347,26 @@ class TestDiscoverCommand:
         assert (run_dir / "log.csv").resolve().as_posix() in config
         assert "log.xes" not in config
 
+    def test_discover_forwards_on_spawn(self, tmp_path, monkeypatch):
+        # The kill-registration hook must reach _run_logged — it is what lets
+        # cancel_discovery terminate a live Simod.
+        forwarded = {}
+        monkeypatch.setattr(
+            runner,
+            "_run_logged",
+            lambda cmd, proc_log, on_spawn=None, **k: forwarded.setdefault(
+                "on_spawn", on_spawn
+            ),
+        )
+        _stub_simod_outputs(tmp_path, monkeypatch)
+        good = _csv_file(tmp_path, f"{_VALID_HEADER}\n{_DATA_ROW}\n")
+
+        def registration_hook(process):
+            pass
+
+        runner.discover(good, tmp_path / "run", on_spawn=registration_hook)
+        assert forwarded["on_spawn"] is registration_hook
+
     def test_calibrated_bad_csv_rejected_before_spawn(self, tmp_path, monkeypatch):
         # Validation ordering holds in calibrated mode too: no subprocess, and
         # no config YAML left on disk for a rejected upload.

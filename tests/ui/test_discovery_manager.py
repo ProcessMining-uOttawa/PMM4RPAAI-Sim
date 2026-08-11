@@ -8,9 +8,16 @@ The fidelity panel reads ss.simod_csv_path / ss.log_case_count by exact name
 
 from __future__ import annotations
 
+import threading
 from pathlib import Path
 
-from ui.discovery_manager import DiscoveryResult, commit_discovery, start_discovery
+from ui import discovery_manager
+from ui.discovery_manager import (
+    DiscoveryResult,
+    cancel_discovery,
+    commit_discovery,
+    start_discovery,
+)
 
 
 class _FakeSession(dict):
@@ -72,7 +79,64 @@ class TestStartDiscovery:
         # session's value — the mode the run actually started with, never the
         # live widget.
         ss = _FakeSession()
-        start_discovery(ss, ("log.csv", 10), _result, search_iterations=7)
+        start_discovery(
+            ss, ("log.csv", 10), lambda register: _result(), search_iterations=7
+        )
         assert ss.discovery.search_iterations == 7
         ss.discovery.thread.join(timeout=5)  # reap the daemon; the field is
         # set at construction, before the thread starts — not worker-written.
+
+
+class TestCancelDiscovery:
+    """The cancel-kill handshake: cancel sets the flag then kills the stored
+    process; the worker's register hook stores then checks the flag — the two
+    mirrored orders mean a spawn racing a cancel is killed by one side."""
+
+    def test_cancel_kills_the_registered_process(self, monkeypatch):
+        killed: list = []
+        monkeypatch.setattr(discovery_manager, "terminate_process", killed.append)
+        ss = _FakeSession()
+        process = object()
+
+        def fn(register):
+            register(process)
+            return _result()
+
+        start_discovery(ss, ("log.csv", 10), fn, search_iterations=None)
+        ss.discovery.thread.join(timeout=5)
+        cancel_discovery(ss)
+        assert killed == [process]
+        assert ss.discovery.cancelled
+
+    def test_cancel_before_spawn_kills_on_register(self, monkeypatch):
+        # The pre-spawn window: cancel lands while the worker is still
+        # converting/validating (no process yet) — the registration itself
+        # must kill, or the spawn would be orphaned.
+        killed: list = []
+        monkeypatch.setattr(discovery_manager, "terminate_process", killed.append)
+        ss = _FakeSession()
+        process = object()
+        cancelled_first = threading.Event()
+
+        def fn(register):
+            assert cancelled_first.wait(timeout=5)
+            register(process)
+            return _result()
+
+        start_discovery(ss, ("log.csv", 10), fn, search_iterations=None)
+        cancel_discovery(ss)  # session.process is still None here
+        cancelled_first.set()
+        ss.discovery.thread.join(timeout=5)
+        assert killed == [process]
+
+    def test_cancel_with_no_process_is_safe(self, monkeypatch):
+        killed: list = []
+        monkeypatch.setattr(discovery_manager, "terminate_process", killed.append)
+        ss = _FakeSession()
+        start_discovery(
+            ss, ("log.csv", 10), lambda register: _result(), search_iterations=None
+        )
+        ss.discovery.thread.join(timeout=5)
+        cancel_discovery(ss)  # fn never registered a process
+        assert killed == []
+        assert ss.discovery.cancelled
