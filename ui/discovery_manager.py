@@ -39,8 +39,10 @@ class DiscoveryPhase(Enum):
 
 @dataclass
 class DiscoveryResult:
-    """Everything a successful discovery contributes to session state.
+    """What the discovery worker computes for session state.
 
+    The run's construction-time identity (fingerprint, search mode) is
+    committed from the session, not from here — see commit_discovery.
     simod_csv_path / log_case_count feed the model fidelity check: the
     Simod-ready CSV the discovery actually ran on (the observed side's source
     file) and its distinct-case count (the pinned cases-per-replication).
@@ -74,19 +76,30 @@ class DiscoverySession:
     """
 
     fingerprint: Fingerprint
+    # The discovery mode this session started with (None = fast) —
+    # construction-time identity like fingerprint, not lifecycle state. The
+    # progress fragment's duration caption and the commit read it here, never
+    # the live widget: the session is the run's own record, whatever the UI
+    # currently renders.
+    search_iterations: int | None
     outcome: DiscoveryOutcome | None = None
     cancelled: bool = False
     thread: threading.Thread | None = None
 
 
 def start_discovery(
-    ss: Any, fingerprint: Fingerprint, fn: Callable[[], DiscoveryResult]
+    ss: Any,
+    fingerprint: Fingerprint,
+    fn: Callable[[], DiscoveryResult],
+    search_iterations: int | None,
 ) -> None:
     """Launch discovery for `fingerprint` in a daemon thread; fn returns a result.
 
     Overwrites any prior session, so a new upload cleanly supersedes a stale one.
     """
-    session = DiscoverySession(fingerprint=fingerprint)
+    session = DiscoverySession(
+        fingerprint=fingerprint, search_iterations=search_iterations
+    )
     ss.discovery = session
 
     def worker() -> None:
@@ -131,13 +144,18 @@ def discovery_error(ss: Any) -> Exception | None:
 
 
 def commit_discovery(
-    ss: Any, result: DiscoveryResult, fingerprint: Fingerprint
+    ss: Any,
+    result: DiscoveryResult,
+    fingerprint: Fingerprint,
+    search_iterations: int | None,
 ) -> None:
     """Write a successful discovery's result into session state.
 
     The positive counterpart to clear_discovery(), mirroring run_manager's
     commit_result(); stamps log_fingerprint so the upload reads as
-    already-discovered.
+    already-discovered. fingerprint and search_iterations come from the
+    session, not the result — they are the run's construction-time identity,
+    which the worker's output never carries.
     """
     ss.bpmn_path = result.bpmn_path
     ss.json_path = result.json_path
@@ -146,6 +164,7 @@ def commit_discovery(
     ss.log_path = result.log_path
     ss.simod_csv_path = result.simod_csv_path
     ss.log_case_count = result.log_case_count
+    ss.discovery_search_iterations = search_iterations
     ss.log_fingerprint = fingerprint
 
 
