@@ -71,8 +71,8 @@ def _render_run_progress(ss: Any, n_reps: int) -> None:
         # Persist to a durable key (main thread — the worker must never touch ss);
         # app.py renders it in the results slot. A toast would vanish before the
         # user could read a multi-line failure. clear_run below does NOT clear
-        # run_error — clear_results (next run start) does.
-        ss.run_error = run_state.outcome.error
+        # experiment_error — clear_results (next run start) does.
+        ss.experiment_error = run_state.outcome.error
     else:
         # Not cancelled and no error → result is set (RunOutcome invariant), and
         # the kind guard above makes it this panel's species.

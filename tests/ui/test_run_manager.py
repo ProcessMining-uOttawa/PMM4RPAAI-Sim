@@ -88,11 +88,11 @@ class TestCommitClearResult:
         # flight. Only _clear_process_state clears it (log reset/replacement).
         ss = _FakeSession()
         ss.experiment_result = object()
-        ss.run_error = RuntimeError("boom")
+        ss.experiment_error = RuntimeError("boom")
         ss.baseline_agg = {"mean_cycle_h": 1.0}
         clear_results(ss)
         assert ss.experiment_result is None
-        assert ss.run_error is None
+        assert ss.experiment_error is None
         assert ss.baseline_agg == {"mean_cycle_h": 1.0}
 
 

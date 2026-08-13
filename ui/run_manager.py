@@ -129,11 +129,12 @@ def clear_results(ss: Any) -> None:
     stays a correct reference while a re-run is in flight; nulling it at run
     start would collapse Panel 3's goal-threshold rows to metric pickers on
     any mid-run rerun; app._clear_process_state() clears it where the process
-    actually changes). run_error is cleared here but never committed — it is
-    run-scoped display state occupying the results slot, not a result field.
+    actually changes). experiment_error is cleared here but never committed —
+    it is run-scoped display state occupying the results slot, not a result
+    field.
     """
     ss.experiment_result = None
-    ss.run_error = None
+    ss.experiment_error = None
 
 
 def commit_result(ss: Any, result: ExperimentResult) -> None:

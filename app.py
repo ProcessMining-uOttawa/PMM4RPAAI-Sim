@@ -61,10 +61,12 @@ ss.setdefault("experiment_result", None)
 # The two run-adjacent keys that deliberately stay OUTSIDE experiment_result,
 # because their lifecycles differ from its: baseline_agg is log-scoped (written
 # by commit_result but cleared only by _clear_process_state — it keeps seeding
-# Panel 3's thresholds while a re-run is in flight), and run_error is run-scoped
-# display state (owns the results slot when set; never a result field).
+# Panel 3's thresholds while a re-run is in flight), and experiment_error is
+# run-scoped display state (owns the results slot when set; never a result
+# field). The two outcome slots are named symmetrically per species:
+# experiment_result/experiment_error and as_discovered_result/as_discovered_error.
 ss.setdefault("baseline_agg", None)
-ss.setdefault("run_error", None)
+ss.setdefault("experiment_error", None)
 # The as-discovered run's committed result / failure — log-scoped artifacts:
 # cleared by _clear_process_state, deliberately not by clear_results.
 ss.setdefault("as_discovered_result", None)
@@ -608,17 +610,18 @@ with experiment_tab:
 
     # --- Run-failure surface -----------------------------------------------------
     # Owns the results slot when a hard run failure left no results. Mutually
-    # exclusive with the results panel above: clear_results() nulls run_error at run
-    # start, and a finished run either commits results or sets run_error, never both.
+    # exclusive with the results panel above: clear_results() nulls experiment_error
+    # at run start, and a finished run either commits results or sets
+    # experiment_error, never both.
     # The str() carries the useful message for a setup error (ValueError /
     # NotImplementedError); the expander shows the captured log tail when the error
     # carries one (SimulationError / TransformValidationError).
-    if ss.run_error is not None:
-        _run_error = ss.run_error
+    if ss.experiment_error is not None:
+        _experiment_error = ss.experiment_error
         st.markdown("##### 5 · Results")
         render_failure(
-            f"Run failed.\n\n{_run_error}",
-            _run_error,
+            f"Run failed.\n\n{_experiment_error}",
+            _experiment_error,
             expander_label="Run output (log tail)",
             icon="❌",
         )
