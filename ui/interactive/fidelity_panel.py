@@ -93,8 +93,8 @@ def _render_controls(ss: Any, n_reps: int, max_workers: int) -> None:
         n_cases = int(ss.log_case_count)
         st.caption(
             f"Cases per replication: **{n_cases}** — pinned to the log's case "
-            "count. Min/max cycle statistics are sample-size-dependent, so the "
-            "comparison is only valid at equal case counts."
+            "count. Sampling noise scales with the case count, so model and "
+            "log are only comparable at equal case counts."
         )
     else:
         n_cases = int(

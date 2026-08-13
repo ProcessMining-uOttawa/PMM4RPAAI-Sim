@@ -6,8 +6,15 @@ from __future__ import annotations
 
 import pandas as pd
 
+from core.constants import COL_MAX_CYCLE_H, COL_MIN_CYCLE_H
 from core.metrics import IndicatorSpec, Metric, MetricRegistry
 from core.parameters import Parameter
+
+# Extreme order statistics are per-replication noise, not model information —
+# the same reasoning that keeps them out of the fidelity comparison (see
+# analysis.fidelity_table). They stay registered (goal indicators in the
+# experiment flow); only this display culls them.
+_EXCLUDED_REPLICATION_COLS = frozenset({COL_MIN_CYCLE_H, COL_MAX_CYCLE_H})
 
 
 def prepare_ranked_display(
@@ -60,14 +67,17 @@ def prepare_replication_display(results: pd.DataFrame) -> pd.DataFrame:
     """Display-named per-replication table for the fidelity panel.
 
     One row per as-discovered replication, one column per registered indicator
-    (registry-driven, so a new indicator appears with no edit here). Run totals
-    are deliberately absent — at a fixed case count per replication they are the
-    per-case means rescaled — and bot failures have no indicator, which rightly
-    excludes them from a patternless run.
+    minus the min/max cycle extremes (exclusion-based, so a new indicator still
+    appears with no edit here). Run totals are deliberately absent — at a fixed
+    case count per replication they are the per-case means rescaled — and bot
+    failures have no indicator, which rightly excludes them from a patternless
+    run.
     """
     out = pd.DataFrame({"Replication": results["replication"]})
     for metric in MetricRegistry.all():
         for indicator in metric.indicators:
+            if indicator.results_column in _EXCLUDED_REPLICATION_COLS:
+                continue
             spec = indicator.mean
             out[spec.display_name] = (
                 results[indicator.results_column]

@@ -209,15 +209,21 @@ replications' statistics against the same statistics computed from the log.
 
 Both sides of the comparison use the one first-task-start → last-task-end
 clock above, at the same case count — the run's cases-per-replication is
-pinned to the log's case count because min/max are sample-size-dependent
-statistics, so unequal n corrupts exactly the extreme-value rows the check
-exists to compare. Compared rows: the four per-case cycle indicators
-(mean/median/min/max), the total cycle time, and the rework rate. Deliberately
-excluded: **cost** (an uploaded log carries no resource calendars or hourly
-rates, so no observed ground truth exists) and anything **arrival-anchored**
-(left truncation — see above). The per-replication spread (std) is shown
-beside the model mean because the log is a single realization: the spread is
-the yardstick for whether a Δ is systematic misfit or run-to-run noise.
+pinned to the log's case count because every compared statistic's sampling
+noise scales with n, so the per-replication spread only measures the log's
+one-realization noise at equal n. Compared rows: **mean cycle time** (the
+tail-weighted average), **median cycle time** (the typical case), and the
+**rework rate** (the loop structure) — three distinct facets of model
+validity. Deliberately excluded: **cost** (an uploaded log carries no resource
+calendars or hourly rates, so no observed ground truth exists); anything
+**arrival-anchored** (left truncation — see above); **min/max cycle time**
+(extreme order statistics — a parametric simulation cannot reproduce empirical
+extremes even when the model fits well, so their Δ would read as misfit under
+a good model); and the **total cycle time** (at a pinned case count its Δ%
+equals the mean row's by construction, so the row duplicates rather than
+informs). The per-replication spread (std) is shown beside the model mean
+because the log is a single realization: the spread is the yardstick for
+whether a Δ is systematic misfit or run-to-run noise.
 
 One caveat for XES uploads: they reach the pipeline with no start timestamps
 (the converter reads only each event's completion `time:timestamp`), so it

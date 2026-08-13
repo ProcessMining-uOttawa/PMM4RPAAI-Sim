@@ -662,8 +662,8 @@ class TestFidelityTable:
     }
 
     def _sim(self, reps: int = 3) -> pd.DataFrame:
-        # Includes a column outside the inclusion list (mean_cost) — it must
-        # not appear as a row.
+        # Includes columns outside the inclusion list (mean_cost, min/max
+        # cycle, cycle total) — none may appear as a row.
         base = {
             COL_MEAN_CYCLE_H: [25.0, 26.0, 27.0],
             COL_MEDIAN_CYCLE_H: [21.0, 22.0, 23.0],
@@ -681,13 +681,13 @@ class TestFidelityTable:
 
     def test_row_set_is_the_inclusion_list(self):
         table = fidelity_table(self._OBSERVED, self._sim())
-        # Cost is absent by design: the log carries no cost ground truth.
+        # Exact equality pins the exclusions too: cost (no observed ground
+        # truth), min/max cycle (extreme order statistics), and the cycle
+        # total (duplicates the mean row's Δ% under pinned n) are all present
+        # in the inputs but must not surface as rows.
         assert table["Metric"].tolist() == [
             "Cycle Time (h/case)",
             "Median Cycle Time (h/case)",
-            "Min Cycle Time (h/case)",
-            "Max Cycle Time (h/case)",
-            "Total Cycle Time (h)",
             "Rework Rate (%)",
         ]
 
@@ -698,21 +698,6 @@ class TestFidelityTable:
         assert row["Model (mean)"] == pytest.approx(26.0)
         assert row["Δ"] == pytest.approx(2.0)
         assert row["Δ %"] == pytest.approx(8.3)  # round(2 / 24 * 100, 1)
-
-    def test_total_row_displayed_in_hours(self):
-        table = fidelity_table(self._OBSERVED, self._sim()).set_index("Metric")
-        row = table.loc["Total Cycle Time (h)"]
-        assert row["Log (observed)"] == pytest.approx(2400.0)
-        assert row["Model (mean)"] == pytest.approx(2600.0)
-
-    def test_total_pct_equals_mean_pct_under_pinned_n(self):
-        # total = mean × n × 3600 on both sides ⇒ the total row's Δ% agrees
-        # with the mean row's by construction, never independently.
-        table = fidelity_table(self._OBSERVED, self._sim()).set_index("Metric")
-        assert (
-            table.loc["Total Cycle Time (h)"]["Δ %"]
-            == table.loc["Cycle Time (h/case)"]["Δ %"]
-        )
 
     def test_std_across_reps(self):
         table = fidelity_table(self._OBSERVED, self._sim()).set_index("Metric")
