@@ -147,10 +147,12 @@ def run_as_discovered(
     """Run the discovered model, untransformed, for n_reps replications.
 
     ``log_csv`` switches fidelity mode on: the uploaded log's statistics are
-    computed first, and n_cases must equal its case count — extreme-value
-    statistics (min/max) are sample-size-dependent, so the comparison is only
-    valid at equal n. The check lives here, before any file is written: the
-    UI's pinned widget is courtesy, this is the guarantee.
+    computed first, and n_cases must equal its case count — every compared
+    statistic's sampling noise scales with n, so the per-replication spread
+    (the comparison's yardstick for systematic-misfit vs noise) only measures
+    the log's one-realization noise at equal n. The check lives here, before
+    any file is written: the UI's pinned widget is courtesy, this is the
+    guarantee.
 
     experiment_dir must be a fresh run dir (store.new_experiment): stale
     rep_* files from a prior run would survive the copy-in and contaminate

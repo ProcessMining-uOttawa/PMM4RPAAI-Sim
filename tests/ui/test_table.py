@@ -6,9 +6,11 @@ from __future__ import annotations
 import pandas as pd
 
 from core.constants import (
+    COL_MAX_CYCLE_H,
     COL_MEAN_COST_MEAN,
     COL_MEAN_CYCLE_H_MEAN,
     COL_MEDIAN_CYCLE_H_MEAN,
+    COL_MIN_CYCLE_H,
 )
 from core.metrics import MetricRegistry
 from core.parameters import Parameter
@@ -179,6 +181,13 @@ class TestPrepareRankedDisplay:
 _ALL_INDICATORS = [
     indicator for metric in MetricRegistry.all() for indicator in metric.indicators
 ]
+# The display culls the min/max cycle extremes (see ui/table.py); the input
+# frame still carries them so the exclusion is exercised, not vacuous.
+_DISPLAYED_INDICATORS = [
+    indicator
+    for indicator in _ALL_INDICATORS
+    if indicator.results_column not in (COL_MIN_CYCLE_H, COL_MAX_CYCLE_H)
+]
 
 
 def _replication_results() -> pd.DataFrame:
@@ -194,16 +203,21 @@ def _replication_results() -> pd.DataFrame:
 
 
 class TestPrepareReplicationDisplay:
-    def test_one_display_column_per_registered_indicator(self):
+    def test_display_columns_exclude_the_cycle_extremes(self):
+        # Exact equality pins both halves: every non-extreme registered
+        # indicator appears, and the min/max cycle columns present in the
+        # input do not.
         result = prepare_replication_display(_replication_results())
         expected = ["Replication"] + [
-            indicator.mean.display_name for indicator in _ALL_INDICATORS
+            indicator.mean.display_name for indicator in _DISPLAYED_INDICATORS
         ]
         assert list(result.columns) == expected
 
     def test_values_rounded_to_spec_decimals(self):
         result = prepare_replication_display(_replication_results())
         for offset, indicator in enumerate(_ALL_INDICATORS):
+            if indicator not in _DISPLAYED_INDICATORS:
+                continue
             spec = indicator.mean
             expected = [
                 round(spec.display_fn(raw + offset), spec.decimal_places)
@@ -216,7 +230,7 @@ def _fidelity_frame() -> pd.DataFrame:
     """A two-row analysis.fidelity_table() output: one std, one NaN (single rep)."""
     return pd.DataFrame(
         {
-            "Metric": ["Cycle Time (h/case)", "Total Cycle Time (h)"],
+            "Metric": ["Cycle Time (h/case)", "Rework Rate (%)"],
             "Log (observed)": [24.0, 2400.0],
             "Model (mean)": [26.0, 2600.0],
             "Model (std)": [1.0, float("nan")],
@@ -247,7 +261,7 @@ class TestPrepareFidelityDisplay:
         result = prepare_fidelity_display(_fidelity_frame(), n_reps=3)
         assert result["Metric"].tolist() == [
             "Cycle Time (h/case)",
-            "Total Cycle Time (h)",
+            "Rework Rate (%)",
         ]
         assert result["Log (observed)"].tolist() == [24.0, 2400.0]
         assert result["Δ"].tolist() == [2.0, 200.0]

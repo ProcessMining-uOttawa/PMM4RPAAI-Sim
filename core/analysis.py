@@ -6,6 +6,8 @@ import math
 import pandas as pd
 
 from .constants import (
+    COL_MEAN_CYCLE_H,
+    COL_MEDIAN_CYCLE_H,
     COL_TOTAL_CYCLE_S,
     COL_TOTAL_COST,
     COL_TOTAL_CYCLE_S_MEAN,
@@ -122,20 +124,25 @@ def fidelity_table(
     replications (std is NaN at one replication — the caller renders that).
     Columns are numeric; formatting is the panel's job.
 
-    The row set is an explicit inclusion list — the four cycle indicators, the
-    cycle total, and the rework rate. Cost has no observed ground truth and
-    arrival-anchored spans are absent from logs entirely (left truncation), so
-    neither can appear. Under the fidelity check's pinned case count the total
-    row's Δ% equals the mean row's by construction (total = mean × n × 3600 on
-    both sides); it is kept for familiarity, not independent signal.
+    The row set is an explicit inclusion list — mean cycle, median cycle, and
+    the rework rate: the tail-weighted average, the typical case, and the loop
+    structure, each a distinct facet of model validity. Excluded: cost (a log
+    carries no calendars/rates, so no observed ground truth); arrival-anchored
+    spans (absent from logs entirely — left truncation); min/max cycle (extreme
+    order statistics: a parametric model cannot reproduce empirical extremes
+    even when it fits, so their Δ reads as misfit under a good model, and they
+    carry the highest replication variance in the frame); the cycle total
+    (under the pinned case count its Δ% equals the mean row's by construction —
+    total = mean × n × 3600 on both sides — so it duplicates, never informs).
     """
     cycle = MetricRegistry.CYCLE_TIME
-    assert cycle.aggregate is not None  # CYCLE_TIME always defines its total spec
     rework = MetricRegistry.REWORK_RATE.default_indicator
-    specs = [(ind.results_column, ind.mean) for ind in cycle.indicators] + [
-        (COL_TOTAL_CYCLE_S, cycle.aggregate),
-        (rework.results_column, rework.mean),
+    included = [
+        ind
+        for ind in cycle.indicators
+        if ind.results_column in (COL_MEAN_CYCLE_H, COL_MEDIAN_CYCLE_H)
     ]
+    specs = [(ind.results_column, ind.mean) for ind in [*included, rework]]
     rows: list[dict] = []
     for column, spec in specs:
         observed_value = spec.display_fn(observed[column])
