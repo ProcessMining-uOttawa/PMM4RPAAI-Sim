@@ -1,10 +1,10 @@
 """Tests for ui/discovery_manager — the session lifecycle: commit_discovery's
-session-key contract, the session's construction-time identity, and the
+LogIdentity contract, the session's construction-time identity, and the
 cancel/supersede kill semantics.
 
-The fidelity panel reads ss.simod_csv_path / ss.log_case_count by exact name
-(its toggle disables when either is None), so the producer side must be pinned
-— the commit_as_discovered precedent in test_run_manager.py.
+The fidelity panel reads ss.log's simod_csv_path / log_case_count fields (its
+toggle disables when either is None), so the producer side must be pinned —
+the commit_as_discovered precedent in test_run_manager.py.
 """
 
 from __future__ import annotations
@@ -47,31 +47,33 @@ def _result() -> DiscoveryResult:
 
 
 class TestCommitDiscovery:
-    def test_writes_the_fidelity_keys(self):
+    def test_writes_the_fidelity_fields(self):
         ss = _FakeSession()
         commit_discovery(
             ss, _result(), fingerprint=("log.csv", 10), search_iterations=None
         )
-        assert ss.simod_csv_path == Path("log.csv")
-        assert ss.log_case_count == 42
+        assert ss.log.simod_csv_path == Path("log.csv")
+        assert ss.log.log_case_count == 42
 
     def test_stamps_the_fingerprint(self):
-        # log_fingerprint is what makes the upload read as already-discovered.
+        # The fingerprint is what makes the upload read as already-discovered —
+        # carried on the committed LogIdentity, so it cannot exist without the
+        # model it identifies.
         ss = _FakeSession()
         commit_discovery(
             ss, _result(), fingerprint=("log.csv", 10), search_iterations=None
         )
-        assert ss.log_fingerprint == ("log.csv", 10)
+        assert ss.log.fingerprint == ("log.csv", 10)
 
     def test_commit_writes_search_iterations(self):
         # The discovery-mode provenance the sidebar's mismatch caption and
-        # Loaded caption read by exact key name. Passed from the session (the
+        # Loaded caption read off ss.log. Passed from the session (the
         # fingerprint shape), not carried on the result.
         ss = _FakeSession()
         commit_discovery(
             ss, _result(), fingerprint=("log.csv", 10), search_iterations=10
         )
-        assert ss.discovery_search_iterations == 10
+        assert ss.log.search_iterations == 10
 
 
 class TestStartDiscovery:
@@ -87,18 +89,18 @@ class TestStartDiscovery:
         ss.discovery.thread.join(timeout=5)  # reap the daemon; the field is
         # set at construction, before the thread starts — not worker-written.
 
-    def test_start_discovery_does_not_stamp_fingerprint(self):
-        # log_fingerprint means "the committed model came from this file" and
-        # is claimed at commit only — a failed/cancelled discovery must leave
-        # the previous log's identity intact so retry genuinely re-discovers.
-        # (Pins the manager seam only; app.py's routing half is not
-        # AppTest-reachable and is covered by the manual smoke.)
+    def test_start_discovery_does_not_write_the_log_identity(self):
+        # ss.log means "the committed model" and is claimed at commit only — a
+        # failed/cancelled discovery must leave the previous log's identity
+        # intact so retry genuinely re-discovers. (Pins the manager seam only;
+        # app.py's routing half is not AppTest-reachable and is covered by the
+        # manual smoke.)
         ss = _FakeSession()
         start_discovery(
             ss, ("log.csv", 10), lambda register: _result(), search_iterations=None
         )
         ss.discovery.thread.join(timeout=5)
-        assert "log_fingerprint" not in ss
+        assert "log" not in ss
 
     def test_start_discovery_cancels_a_live_predecessor(self, monkeypatch):
         # Overwrite means cancel: a superseded in-flight discovery must not

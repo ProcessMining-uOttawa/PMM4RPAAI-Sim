@@ -66,10 +66,11 @@ def render_discovery_config(
     # Settings only apply at discovery time: when a discovered model exists and
     # was produced with different settings, say so rather than let the change
     # look ignored.
+    committed_log = ss.get("log")
     if (
         not disabled
-        and ss.activities
-        and ss.discovery_search_iterations != search_iterations
+        and committed_log is not None
+        and committed_log.search_iterations != search_iterations
     ):
         st.caption(
             "⚙ New settings apply on the next discovery — click **Reset log** "

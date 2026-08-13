@@ -79,18 +79,27 @@ def _render_fidelity_progress(ss: Any) -> None:
 
 def _render_controls(ss: Any, n_reps: int, max_workers: int) -> None:
     """The fidelity toggle, the (pinned or free) case count, and run/cancel."""
-    fidelity_available = ss.log_case_count is not None and ss.simod_csv_path is not None
+    log = ss.log  # non-None past app.py's gate; fields may be demo Nones
+    case_count = log.log_case_count if log is not None else None
+    fidelity_available = (
+        log is not None
+        and log.log_case_count is not None
+        and log.simod_csv_path is not None
+    )
     fidelity_on = st.toggle(
         "Fidelity check — compare against the uploaded log",
         value=fidelity_available,
         disabled=not fidelity_available,
-        key=f"ad_fidelity_on_{ss.log_case_count}",
+        key=f"ad_fidelity_on_{case_count}",
         help="Compares the simulated statistics against the same statistics "
         "computed from the uploaded log (one clock: first task start → last "
         "task end). Off: free exploration at any case count, no comparison.",
     )
     if fidelity_on:
-        n_cases = int(ss.log_case_count)
+        # The toggle only renders enabled when fidelity_available, which
+        # requires a non-None case count (mypy can't see the widget invariant).
+        assert case_count is not None
+        n_cases = int(case_count)
         st.caption(
             f"Cases per replication: **{n_cases}** — pinned to the log's case "
             "count. Sampling noise scales with the case count, so model and "
@@ -101,9 +110,9 @@ def _render_controls(ss: Any, n_reps: int, max_workers: int) -> None:
             st.number_input(
                 "Cases per replication",
                 min_value=1,
-                value=int(ss.log_case_count or 1000),
+                value=int(case_count or 1000),
                 step=100,
-                key=f"ad_n_cases_{ss.log_case_count}",
+                key=f"ad_n_cases_{case_count}",
             )
         )
 
@@ -129,13 +138,13 @@ def _render_controls(ss: Any, n_reps: int, max_workers: int) -> None:
         )
         if st.button("▶ Run as-discovered simulation", type="primary"):
             # Snapshot ss-derived values into locals before the thread starts
-            # (§6 threading rules).
-            bpmn_path = ss.bpmn_path
-            json_path = ss.json_path
-            log_csv = ss.simod_csv_path if fidelity_on else None
-            experiment_dir = store.new_experiment(
-                f"{ss.log_name or 'run'}-as-discovered"
-            )
+            # (§6 threading rules). log is non-None here: the button renders
+            # past app.py's gate.
+            assert log is not None
+            bpmn_path = log.bpmn_path
+            json_path = log.json_path
+            log_csv = log.simod_csv_path if fidelity_on else None
+            experiment_dir = store.new_experiment(f"{log.log_name}-as-discovered")
 
             def fidelity_fn(progress_cb, stop_ev):
                 return orchestrator.run_as_discovered(
@@ -184,7 +193,7 @@ def _render_results(ss: Any, result: AsDiscoveredResult) -> None:
             use_container_width=True,
             hide_index=True,
         )
-        log_path = ss.log_path
+        log_path = ss.log.log_path if ss.log is not None else None
         if log_path is not None and log_path.suffix.lower() == ".xes":
             st.caption(
                 "⚠️ XES uploads reach the pipeline with no start timestamps — "

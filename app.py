@@ -21,6 +21,7 @@ from ui.run_manager import cancel_experiment, clear_as_discovered, clear_results
 from ui.discovery_manager import (
     DiscoveryPhase,
     DiscoveryResult,
+    LogIdentity,
     cancel_discovery,
     clear_discovery,
     discovery_error,
@@ -50,34 +51,24 @@ st.set_page_config(
 
 # --- session state defaults --------------------------------------------------
 ss = st.session_state
-ss.setdefault("log_name", None)
-ss.setdefault("log_path", None)  # Path to uploaded log
-ss.setdefault("activities", [])
-ss.setdefault("bpmn_path", None)
-ss.setdefault("json_path", None)
-ss.setdefault("results", None)  # tidy per-replication DataFrame
-ss.setdefault(
-    "experiment_bpmn_path", None
-)  # single transformed BPMN, shared across scenarios
-ss.setdefault("scenario_json_paths", {})  # sid -> Path, one params.json per scenario
-ss.setdefault("scenario_log_paths", {})  # sid -> list[Path], one log per replication
-ss.setdefault("baseline_log_paths", [])  # one log per baseline replication
-ss.setdefault("run_n_cases", None)  # cases/rep the committed run executed at
-ss.setdefault("array_name", None)
-ss.setdefault("scenarios", [])
+# The committed log + discovered model, as one LogIdentity (or None = no log).
+# Written whole by commit_discovery / the demo branch, cleared whole by
+# _clear_log — a half-set identity is unrepresentable.
+ss.setdefault("log", None)
+# The committed experiment run, as one ExperimentResult (or None = no results).
+# Written by commit_result, cleared by clear_results at every run start.
+ss.setdefault("experiment_result", None)
+# The two run-adjacent keys that deliberately stay OUTSIDE experiment_result,
+# because their lifecycles differ from its: baseline_agg is log-scoped (written
+# by commit_result but cleared only by _clear_process_state — it keeps seeding
+# Panel 3's thresholds while a re-run is in flight), and experiment_error is
+# run-scoped display state (owns the results slot when set; never a result
+# field). The two outcome slots are named symmetrically per species:
+# experiment_result/experiment_error and as_discovered_result/as_discovered_error.
 ss.setdefault("baseline_agg", None)
-ss.setdefault("failed_replications", [])
-ss.setdefault("run_error", None)  # a hard run failure (owns the results slot when set)
-# Model fidelity: the Simod-ready CSV the discovery ran on + its distinct-case
-# count (log-identity keys — the observed side's source and the pinned n), and
-# the as-discovered run's committed result / failure (log-scoped artifacts:
-# cleared by _clear_process_state, deliberately not by clear_results).
-ss.setdefault("simod_csv_path", None)
-ss.setdefault("log_case_count", None)
-# Discovery-mode provenance (log-identity): the search_iterations the committed
-# model was discovered with (None = fast) — drives the Loaded caption and the
-# discovery-config mismatch hint.
-ss.setdefault("discovery_search_iterations", None)
+ss.setdefault("experiment_error", None)
+# The as-discovered run's committed result / failure — log-scoped artifacts:
+# cleared by _clear_process_state, deliberately not by clear_results.
 ss.setdefault("as_discovered_result", None)
 ss.setdefault("as_discovered_error", None)
 # indicator-column -> {"target"/"worst"/"weight": edited value}, plus the
@@ -114,23 +105,15 @@ def _clear_process_state() -> None:
 
 def _clear_log() -> None:
     _clear_process_state()
-    ss.log_name = None
-    ss.log_path = None
-    ss.activities = []
-    ss.bpmn_path = None
-    ss.json_path = None
-    ss.log_fingerprint = None
-    ss.simod_csv_path = None
-    ss.log_case_count = None
-    ss.discovery_search_iterations = None
+    ss.log = None
 
 
 # --- header ------------------------------------------------------------------
 st.markdown(
     "<h2 style='margin-bottom:0'>⚙ Automation What-If Simulator</h2>"
     f"<div style='color:#6b7280;font-size:13px;margin-bottom:14px'>"
-    f"{ss.log_name or 'No log loaded'} · "
-    f"{len(ss.activities)} activities discovered</div>",
+    f"{ss.log.log_name if ss.log else 'No log loaded'} · "
+    f"{len(ss.log.activities) if ss.log else 0} activities discovered</div>",
     unsafe_allow_html=True,
 )
 
@@ -164,7 +147,7 @@ with st.sidebar:
     # the interrupt corollary — so a mid-discovery rerun can't abort it; the
     # sidebar routes on discovery_phase() for the file currently in the uploader.
     upload_fp = (uploaded.name, uploaded.size) if uploaded else None
-    already_discovered = ss.get("log_fingerprint") == upload_fp and ss.activities
+    already_discovered = ss.log is not None and ss.log.fingerprint == upload_fp
     phase = discovery_phase(ss, upload_fp)
 
     # Discovery config renders ABOVE the phase routing on purpose: it must stay
@@ -216,21 +199,21 @@ with st.sidebar:
         st.stop()
 
     needs_discovery = (uploaded and not already_discovered) or (
-        use_sample and demo_mode and not ss.activities
+        use_sample and demo_mode and ss.log is None
     )
 
     if needs_discovery:
-        # log_fingerprint is claimed at COMMIT, never here: its only writers
-        # are commit_discovery (success), _clear_log (reset), and the demo
-        # branch (null). The identity keys therefore always describe the last
-        # COMMITTED model, or nothing — during a first discovery the header
-        # honestly reads "No log loaded", and a failed or cancelled
-        # replacement leaves a previously committed model fully intact
-        # (Retry genuinely re-discovers the new upload; the committed model
-        # stays truthfully labeled until a replacement actually lands).
-        # Concurrent-rerun protection is ss.discovery itself, published
-        # moments below (the file write runs in the worker, so the multi-MB
-        # disk write no longer sits in the pre-publication window).
+        # ss.log is claimed at COMMIT, never here: its only writers are
+        # commit_discovery (success), the demo branch, and _clear_log (reset).
+        # The identity therefore always describes the last COMMITTED model, or
+        # nothing — during a first discovery the header honestly reads "No log
+        # loaded", and a failed or cancelled replacement leaves a previously
+        # committed model fully intact (Retry genuinely re-discovers the new
+        # upload; the committed model stays truthfully labeled until a
+        # replacement actually lands). Concurrent-rerun protection is
+        # ss.discovery itself, published moments below (the file write runs in
+        # the worker, so the multi-MB disk write no longer sits in the
+        # pre-publication window).
         if not demo_mode and not preflight_ok:
             # Before _clear_process_state: a hopeless upload (discovery cannot
             # run) must not cost the previous process its results.
@@ -240,20 +223,21 @@ with st.sidebar:
         if demo_mode:
             # Pre-baked model, no subprocess — instant, so stay synchronous.
             # The real activity-list + factor-prepopulation path still runs
-            # (only the simulation is synthetic).
-            ss.log_name = "LoanApp (demo)"
-            ss.bpmn_path, ss.json_path = demo.DEMO_BPMN, demo.DEMO_JSON
-            ss.activities = list_activities(ss.bpmn_path)
-            # Demo has no source log: the fidelity panel is caption-only, and
-            # a previous real log's on-disk path, CSV, discovery-mode
-            # provenance, and fingerprint must not linger behind the demo
-            # model (a stale fingerprint would make re-uploading that log read
-            # as already-discovered off demo activities).
-            ss.simod_csv_path = None
-            ss.log_case_count = None
-            ss.discovery_search_iterations = None
-            ss.log_fingerprint = None
-            ss.log_path = None
+            # (only the simulation is synthetic). One whole-object write: a
+            # previous real log's path, CSV, provenance, and fingerprint
+            # cannot linger behind the demo model, because there are no
+            # per-key leftovers to forget.
+            ss.log = LogIdentity(
+                log_name="LoanApp (demo)",
+                activities=list_activities(demo.DEMO_BPMN),
+                bpmn_path=demo.DEMO_BPMN,
+                json_path=demo.DEMO_JSON,
+                fingerprint=None,
+                log_path=None,
+                simod_csv_path=None,
+                log_case_count=None,
+                search_iterations=None,
+            )
             st.rerun()
         else:
             # Non-demo discovery is only reached via needs_discovery's first
@@ -293,10 +277,10 @@ with st.sidebar:
             )
             st.rerun()
 
-    if ss.log_name:
+    if ss.log is not None:
         # Provenance suffix in real mode only — a demo model is neither fast-
         # nor calibrated-discovered, and None would misread as "fast".
-        _committed_iterations = ss.discovery_search_iterations
+        _committed_iterations = ss.log.search_iterations
         _provenance = (
             ""
             if demo_mode
@@ -307,7 +291,7 @@ with st.sidebar:
             )
         )
         st.caption(
-            f"📄 Loaded: **{ss.log_name}** · {len(ss.activities)} activities"
+            f"📄 Loaded: **{ss.log.log_name}** · {len(ss.log.activities)} activities"
             f"{_provenance}"
         )
         if st.button("Reset log", use_container_width=True):
@@ -338,9 +322,11 @@ with st.sidebar:
     )
 
 # --- gate: need a log first --------------------------------------------------
-if not ss.activities:
+if ss.log is None or not ss.log.activities:
     st.info("Upload a log or click **Use sample log** in the sidebar to begin.")
     st.stop()
+# Narrowed once for everything below the gate: a committed identity exists.
+log_identity: LogIdentity = ss.log
 
 # Resolved per-case baseline for goal thresholds and scoring. Real baseline when
 # one exists; demo constants in demo mode (demo runs commit baseline_agg=None);
@@ -375,25 +361,26 @@ with experiment_tab:
             # Default to the 2nd activity (skip the typical start step), clamped so a
             # single-activity log doesn't raise an out-of-range StreamlitAPIException.
             target = st.selectbox(
-                "Target activity", ss.activities, index=min(1, len(ss.activities) - 1)
+                "Target activity",
+                log_identity.activities,
+                index=min(1, len(log_identity.activities) - 1),
             )
 
             # Load model info — results shared with col2 (duration prepopulation).
+            # Runs in demo mode too: the demo LogIdentity points at the demo model.
             _task_id: str | None = None
             prosimos_data: dict | None = None
             _resource_cfg = None
-            # Runs in demo mode too — demo points bpmn_path/json_path at the demo model.
-            if ss.bpmn_path and ss.json_path:
-                try:
-                    _tree = ET.parse(str(ss.bpmn_path))
-                    _target_el = find_task_by_name(_tree, target)
-                    if _target_el is not None:
-                        _task_id = _target_el.get("id")
-                        prosimos_data = json.loads(Path(ss.json_path).read_text())
-                except (ET.ParseError, json.JSONDecodeError, OSError):
-                    pass
-                if _task_id is not None and prosimos_data is not None:
-                    _resource_cfg = resource_selector_config(prosimos_data, _task_id)
+            try:
+                _tree = ET.parse(str(log_identity.bpmn_path))
+                _target_el = find_task_by_name(_tree, target)
+                if _target_el is not None:
+                    _task_id = _target_el.get("id")
+                    prosimos_data = json.loads(Path(log_identity.json_path).read_text())
+            except (ET.ParseError, json.JSONDecodeError, OSError):
+                pass
+            if _task_id is not None and prosimos_data is not None:
+                _resource_cfg = resource_selector_config(prosimos_data, _task_id)
 
             # Resource selector — runs in demo mode too (demo points bpmn/json at the
             # pre-baked model). The interactive component renders a picker only when
@@ -441,7 +428,6 @@ with experiment_tab:
 
     # --- Design + execution panel ------------------------------------------------
     array_name, scenarios = build_scenarios(parameters, transformation.id, target)
-    ss.array_name, ss.scenarios = array_name, scenarios
 
     render_execution_panel(
         ss,
@@ -459,11 +445,13 @@ with experiment_tab:
     )
 
     # --- Results panel -----------------------------------------------------------
-    if ss.results is not None:
-        agg = analysis.aggregate(ss.results)
+    _result = ss.experiment_result
+    if _result is not None:
+        agg = analysis.aggregate(_result.results)
         # Read here (before st.tabs) to decide whether the Baseline tab exists: real
         # mode always shows it (comparison table, or a warning if all baseline reps
-        # failed); demo has no baseline, so the tab is omitted.
+        # failed); demo has no baseline, so the tab is omitted. From ss, not
+        # _result: the log-scoped key survives run start (see clear_results).
         baseline_agg = ss.get("baseline_agg")
 
         with st.container(border=True):
@@ -476,14 +464,14 @@ with experiment_tab:
                     "are mocked.",
                     icon="🧪",
                 )
-            if ss.failed_replications:
+            if _result.failed_replications:
                 st.warning(
-                    f"{len(ss.failed_replications)} replication(s) failed and were excluded from results. "
+                    f"{len(_result.failed_replications)} replication(s) failed and were excluded from results. "
                     "Results are based on the remaining successful replications. "
                     "Check the run logs for details.",
                     icon="⚠️",
                 )
-            if ss.results[COL_MEAN_COST].isna().any():
+            if _result.results[COL_MEAN_COST].isna().any():
                 st.warning(
                     "Cost data is unavailable for one or more runs — Prosimos did not "
                     "produce a stats CSV with a parseable 'Individual Task Statistics' section. "
@@ -517,14 +505,15 @@ with experiment_tab:
                     parameters,
                 )
             with result_tabs[1]:
-                render_main_effects(ss.results, parameters)
+                render_main_effects(_result.results, parameters)
             if show_baseline:
                 with result_tabs[-1]:
                     if baseline_agg is not None:
-                        # ss.run_n_cases, not the widget value: the caption describes the
-                        # committed run, which the widget may have moved past since.
+                        # The committed run's own n_cases, not the widget value: the
+                        # caption describes the run, which the widget may have moved
+                        # past since.
                         st.caption(
-                            f"Total metrics averaged across replications, at {ss.run_n_cases} "
+                            f"Total metrics averaged across replications, at {_result.n_cases} "
                             "cases per replication. Δ values are relative to the 0%-automation "
                             "baseline — the pattern with every case on the human path, at "
                             "Simod-discovered durations and staffing. Bot failures are "
@@ -546,7 +535,7 @@ with experiment_tab:
             # Export row — below the tabs (still inside the results panel) because the
             # Statistics CSV needs `ranked` from the Ranking tab body above. Acts on
             # the whole result set, so it stays visible regardless of the active tab.
-            _raw_bpmn_path = ss.get("experiment_bpmn_path")
+            _raw_bpmn_path = _result.experiment_bpmn_path
             bpmn_file: Path | None = (
                 Path(_raw_bpmn_path)
                 if _raw_bpmn_path and Path(_raw_bpmn_path).exists()
@@ -554,13 +543,13 @@ with experiment_tab:
             )
             json_paths = {
                 sid: Path(p)
-                for sid, p in ss.get("scenario_json_paths", {}).items()
+                for sid, p in _result.scenario_json_paths.items()
                 if Path(p).exists()
             }
 
             st.markdown("###### Export")
             stats_csv = ranked.to_csv(index=False)
-            sn_csv = analysis.sn_export_table(ss.results, parameters).to_csv(
+            sn_csv = analysis.sn_export_table(_result.results, parameters).to_csv(
                 index=False
             )
             # Downloaded files escape the illustrative-results banner, so in demo mode
@@ -597,8 +586,8 @@ with experiment_tab:
                 use_container_width=True,
                 disabled=bpmn_file is None,
             )
-            _slp = ss.scenario_log_paths
-            _blp = ss.baseline_log_paths
+            _slp = _result.scenario_log_paths
+            _blp = _result.baseline_log_paths
             _has_logs = not demo_mode and bool(_slp or _blp)
             col_logs.download_button(
                 "⬇ Event logs (ZIP)",
@@ -621,17 +610,18 @@ with experiment_tab:
 
     # --- Run-failure surface -----------------------------------------------------
     # Owns the results slot when a hard run failure left no results. Mutually
-    # exclusive with the results panel above: clear_results() nulls run_error at run
-    # start, and a finished run either commits results or sets run_error, never both.
+    # exclusive with the results panel above: clear_results() nulls experiment_error
+    # at run start, and a finished run either commits results or sets
+    # experiment_error, never both.
     # The str() carries the useful message for a setup error (ValueError /
     # NotImplementedError); the expander shows the captured log tail when the error
     # carries one (SimulationError / TransformValidationError).
-    if ss.run_error is not None:
-        _run_error = ss.run_error
+    if ss.experiment_error is not None:
+        _experiment_error = ss.experiment_error
         st.markdown("##### 5 · Results")
         render_failure(
-            f"Run failed.\n\n{_run_error}",
-            _run_error,
+            f"Run failed.\n\n{_experiment_error}",
+            _experiment_error,
             expander_label="Run output (log tail)",
             icon="❌",
         )
