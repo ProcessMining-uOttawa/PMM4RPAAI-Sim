@@ -48,6 +48,9 @@ def main_effects_chart(
         facet_col="factor",
         facet_col_wrap=_FACETS_PER_ROW,
         facet_row_spacing=0.2,
+        # Wide enough for each facet's own y tick labels — the default 0.02 gap
+        # would let inner-facet labels overlap the neighbouring plot area.
+        facet_col_spacing=0.06,
         markers=True,
         labels={"mean": metric_label, "level": "Level"},
     )
@@ -70,5 +73,8 @@ def main_effects_chart(
         # 3 Taguchi levels sit at category indices 0/1/2; pad ±0.5 for symmetry.
         range=[-0.5, 2.5],
     )
-    fig.update_yaxes(matches=None)
+    # matches=None makes every facet's scale independent, so each must show its
+    # own tick labels — px hides them on non-left facets, and an unlabelled
+    # private scale reads as shared (equal line heights imply equal values).
+    fig.update_yaxes(matches=None, showticklabels=True)
     return fig
