@@ -117,6 +117,14 @@ class TestMainEffectsChart:
     def test_yaxes_independent(self):
         assert _fig().layout.yaxis.matches is None
 
+    def test_all_facet_yaxes_show_ticklabels(self):
+        # Independent y scales (matches=None) are misleading without their own
+        # tick labels: px hides them on non-left facets, and equal line heights
+        # would falsely imply equal values. Every facet must show its scale.
+        axes = list(_fig().select_yaxes())
+        assert len(axes) > 1
+        assert all(ax.showticklabels is True for ax in axes)
+
     def test_xaxes_independent(self):
         assert _fig().layout.xaxis.matches is None
 
