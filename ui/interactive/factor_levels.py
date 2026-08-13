@@ -43,7 +43,6 @@ def _level_input(
 
 def configure_factor_levels(
     transformation: Transformation,
-    target: str,
     prosimos_data: dict | None,
     task_id: str | None,
     selected_pool_size: int | None,
@@ -52,12 +51,14 @@ def configure_factor_levels(
     """Render the Low/Mid/High factor grid; return parameters with the user's edits.
 
     Prepopulates Non-Auto-Time from the Simod-discovered duration when available.
+    The target activity itself is absent on purpose: factor declaration depends
+    on the target only through the discovered context resolved by the caller
+    (task_id -> duration, pool sizes), never on the activity's name.
     """
     current_duration_s = None
     if task_id is not None and prosimos_data is not None:
         current_duration_s = task_mean_duration_s(prosimos_data, task_id)
     parameters = transformation.parameters(
-        target,
         current_duration_s=current_duration_s,
         selected_pool_size=selected_pool_size,
         frozen_pool_size=frozen_pool_size,

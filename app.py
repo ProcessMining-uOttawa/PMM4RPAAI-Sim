@@ -17,8 +17,12 @@ from core.goals import baseline_per_case
 from core.simulation import runner, store
 from core.transformations import REGISTRY
 
-from ui.run_manager import cancel_experiment, clear_as_discovered, clear_results
-from ui.discovery_manager import (
+from ui.services.run_manager import (
+    cancel_experiment,
+    clear_as_discovered,
+    clear_results,
+)
+from ui.services.discovery_manager import (
     DiscoveryPhase,
     DiscoveryResult,
     LogIdentity,
@@ -143,7 +147,7 @@ with st.sidebar:
         uploaded = None
 
     # Discovery is an explicit state machine keyed by the upload fingerprint
-    # (ui/discovery_manager). Real discovery runs in a background thread — see §6,
+    # (ui/services/discovery_manager). Real discovery runs in a background thread — see §6,
     # the interrupt corollary — so a mid-discovery rerun can't abort it; the
     # sidebar routes on discovery_phase() for the file currently in the uploader.
     upload_fp = (uploaded.name, uploaded.size) if uploaded else None
@@ -409,7 +413,6 @@ with experiment_tab:
             st.markdown("##### 2 · Factor levels")
             parameters = configure_factor_levels(
                 transformation,
-                target,
                 prosimos_data,
                 _task_id,
                 selected_pool_size,

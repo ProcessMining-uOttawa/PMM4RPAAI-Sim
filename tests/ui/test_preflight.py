@@ -1,4 +1,4 @@
-"""Tests for ui/preflight.py — the Check builder and the OS-detection pipeline.
+"""Tests for ui/services/preflight.py — the Check builder and the OS-detection pipeline.
 
 The detection helpers are unit-tested by monkeypatching only their OS
 collaborators (shutil.which, subprocess.run, the root-path constants, and
@@ -12,8 +12,8 @@ from pathlib import Path
 
 import pytest
 
-from ui import preflight
-from ui.preflight import (
+from ui.services import preflight
+from ui.services.preflight import (
     Check,
     _detect_corretto8,
     _detect_macos_jdk8,

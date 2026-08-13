@@ -8,7 +8,7 @@ app-scoped st.rerun() storm to swallow the Cancel click). On success it commits
 the result and does one `st.rerun(scope="app")`; on Cancel it marks the session
 (killing its Simod) and reruns; a failed outcome likewise reruns so app.py's
 FAILED banner renders.
-Consumes ui/discovery_manager (a ui/interactive -> ui/
+Consumes ui/services/discovery_manager (a ui/interactive -> ui/services
 dependency). No pure surface, so it is exercised manually like app.py.
 """
 
@@ -18,16 +18,16 @@ from typing import Any
 
 import streamlit as st
 
-from ui.discovery_manager import (
+from ui.services.discovery_manager import (
     cancel_discovery,
     clear_discovery,
     commit_discovery,
     current_discovery,
 )
 
-# Poll cadence for the background discovery. Fast discovery takes ~2 min
-# (calibrated: several-fold longer), so a 1 s timer detects completion
-# promptly while keeping auto-reruns sparse.
+# Poll cadence for the background discovery. Fast discovery takes minutes
+# (~10 min on a 100k-event log; calibrated: several-fold longer), so a 1 s
+# timer detects completion promptly while keeping auto-reruns sparse.
 _POLL_SECONDS = 1.0
 
 
@@ -47,12 +47,15 @@ def render_discovery_progress(ss: Any) -> None:
 
     if outcome is None:
         if session.search_iterations is None:
-            st.info("⏳ Running Simod discovery (~2 min for 100k events)…")
+            st.info(
+                "⏳ Running Simod discovery — takes minutes, scaling with log "
+                "size (~10 min for a 100k-event log)…"
+            )
         else:
             st.info(
                 f"⏳ Running calibrated Simod discovery "
-                f"({session.search_iterations} search iterations — ~4–8 min "
-                "at 10 iterations, scales with the budget)…"
+                f"({session.search_iterations} search iterations — several "
+                "times a Fast discovery, scaling with the budget and log size)…"
             )
         if st.button("Cancel discovery"):
             # Kills the Simod subprocess tree (cancel_discovery), so a

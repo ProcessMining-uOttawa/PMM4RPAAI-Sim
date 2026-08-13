@@ -2,6 +2,10 @@
 CSV (calendar-aware, via the params JSON), and provides strict stats-CSV
 accessors for the simulation trust checker (core/simulation/validate.py).
 
+Computation only: what these metrics are called, their units, directions, and
+ranking config are declared in core/metrics.py — the two are tied by the
+COL_* column names in core/constants.py.
+
 Every product metric is computed from the event log: cycle time and rework from
 the log directly, cost from the log intersected with the resource calendars in
 the params JSON (see calendars.py). The stats CSV is not a product source —

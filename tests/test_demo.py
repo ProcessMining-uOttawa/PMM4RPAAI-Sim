@@ -36,7 +36,7 @@ from core.transformations import XORSplitAutomation
 
 def _scenarios():
     transformation = XORSplitAutomation()
-    params = transformation.parameters("Test Task", current_duration_s=3600.0)
+    params = transformation.parameters(current_duration_s=3600.0)
     _, scenarios = build_scenarios(params, transformation.id, "Test Task")
     return scenarios
 

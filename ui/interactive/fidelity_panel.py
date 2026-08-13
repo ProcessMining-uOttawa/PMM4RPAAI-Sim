@@ -2,7 +2,7 @@
 comparison against the uploaded log.
 
 Part of ui/interactive/, so this module renders st.* widgets directly. It is
-the second consumer of the shared run lifecycle in ui/run_manager (kind
+the second consumer of the shared run lifecycle in ui/services/run_manager (kind
 "as_discovered"; the execution panel owns "experiment") and mirrors
 execution_panel's shape: a module-level polling fragment, the §6 threading
 discipline (session-state snapshots into locals before the thread starts), and
@@ -26,7 +26,7 @@ import streamlit as st
 from core import analysis, orchestrator
 from core.orchestrator import AsDiscoveredResult
 from core.simulation import store
-from ui.run_manager import (
+from ui.services.run_manager import (
     cancel_experiment,
     clear_as_discovered,
     clear_run,

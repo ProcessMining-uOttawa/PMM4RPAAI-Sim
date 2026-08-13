@@ -183,41 +183,41 @@ class TestParameters:
         return next(p for p in params if p.id == factor_id)
 
     def test_manual_pool_centered_on_selected_size(self, pattern):
-        params = pattern.parameters("T", selected_pool_size=5)
+        params = pattern.parameters(selected_pool_size=5)
         assert self._levels(params, F_NUM_MANUAL_RESOURCES) == [4, 5, 6]
 
     def test_manual_pool_floor_at_one(self, pattern):
         # discovered pool of 1 â†’ shift up to [1, 2, 3], never [0, 1, 2]
-        params = pattern.parameters("T", selected_pool_size=1)
+        params = pattern.parameters(selected_pool_size=1)
         assert self._levels(params, F_NUM_MANUAL_RESOURCES) == [1, 2, 3]
 
     def test_manual_pool_default_when_size_unknown(self, pattern):
         # no pool info (e.g. demo) â†’ default size 1 hits the floor â†’ [1, 2, 3]
-        params = pattern.parameters("T")
+        params = pattern.parameters()
         assert self._levels(params, F_NUM_MANUAL_RESOURCES) == [1, 2, 3]
 
     def test_manual_pool_not_frozen_by_default(self, pattern):
-        params = pattern.parameters("T", selected_pool_size=5)
+        params = pattern.parameters(selected_pool_size=5)
         assert self._param(params, F_NUM_MANUAL_RESOURCES).frozen is False
 
     def test_frozen_pool_pins_all_three_levels(self, pattern):
-        params = pattern.parameters("T", frozen_pool_size=4)
+        params = pattern.parameters(frozen_pool_size=4)
         manual = self._param(params, F_NUM_MANUAL_RESOURCES)
         assert manual.levels == [4, 4, 4]
         assert manual.frozen is True
 
     def test_frozen_takes_precedence_over_selected(self, pattern):
-        params = pattern.parameters("T", selected_pool_size=8, frozen_pool_size=3)
+        params = pattern.parameters(selected_pool_size=8, frozen_pool_size=3)
         assert self._levels(params, F_NUM_MANUAL_RESOURCES) == [3, 3, 3]
 
     def test_bot_pool_levels_unchanged(self, pattern):
         # num_bots is a NEW pool â€” stays 1/2/3 regardless of the discovered human pool
-        params = pattern.parameters("T", selected_pool_size=8)
+        params = pattern.parameters(selected_pool_size=8)
         assert self._levels(params, F_NUM_BOTS) == [1, 2, 3]
 
     def test_auto_and_manual_time_prepopulated_from_discovered_mean(self, pattern):
         # t_auto = 5/10/20 % of the discovered mean; t_manual = 80/100/120 %.
-        params = pattern.parameters("T", current_duration_s=3600.0)
+        params = pattern.parameters(current_duration_s=3600.0)
         assert self._levels(params, F_T_AUTO) == [180.0, 360.0, 720.0]
         assert self._levels(params, F_T_MANUAL) == [2880.0, 3600.0, 4320.0]
 
@@ -225,7 +225,7 @@ class TestParameters:
     def test_auto_and_manual_time_fall_back_to_default_duration(self, pattern, dur):
         # A zero or None discovered duration falls back to DEFAULT_MANUAL_DURATION_S
         # (1800 s) as the base for both factors (both are falsy in `if current_duration_s`).
-        params = pattern.parameters("T", current_duration_s=dur)
+        params = pattern.parameters(current_duration_s=dur)
         assert self._levels(params, F_T_AUTO) == [90.0, 180.0, 360.0]
         assert self._levels(params, F_T_MANUAL) == [1440.0, 1800.0, 2160.0]
 

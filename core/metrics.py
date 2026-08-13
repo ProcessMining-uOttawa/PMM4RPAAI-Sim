@@ -1,5 +1,9 @@
 """Metric definitions — single source of truth for display names, units, and ranking config.
 
+Definitions only, no computation: the numbers themselves are derived in
+core/simulation/prosimos/replication_metrics.py (per replication) and
+aggregated across replications in core/analysis.py.
+
 What each metric *means* — its clock, what it includes and excludes, and how far
 it is validated against Prosimos — is documented in docs/metrics.md.
 """
