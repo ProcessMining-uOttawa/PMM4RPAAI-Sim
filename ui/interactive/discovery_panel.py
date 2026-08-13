@@ -8,7 +8,7 @@ app-scoped st.rerun() storm to swallow the Cancel click). On success it commits
 the result and does one `st.rerun(scope="app")`; on Cancel it marks the session
 (killing its Simod) and reruns; a failed outcome likewise reruns so app.py's
 FAILED banner renders.
-Consumes ui/discovery_manager (a ui/interactive -> ui/
+Consumes ui/services/discovery_manager (a ui/interactive -> ui/services
 dependency). No pure surface, so it is exercised manually like app.py.
 """
 
@@ -18,7 +18,7 @@ from typing import Any
 
 import streamlit as st
 
-from ui.discovery_manager import (
+from ui.services.discovery_manager import (
     cancel_discovery,
     clear_discovery,
     commit_discovery,

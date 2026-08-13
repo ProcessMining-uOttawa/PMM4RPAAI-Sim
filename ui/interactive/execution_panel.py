@@ -6,7 +6,7 @@ polling lives in the module-level _render_run_progress fragment, driven by a
 re-renders — no full-page flicker, mirroring discovery_panel); render_execution_panel
 is a plain renderer that delegates to it only while a run is in flight, so the
 timer never ticks when idle. Consumes
-ui/run_manager (a ui/interactive -> ui/ presentation-primitive dependency) for the
+ui/services/run_manager (a ui/interactive -> ui/services dependency) for the
 background-thread lifecycle, and calls core.demo.run_experiment /
 core.orchestrator.run_experiment directly to launch a run — a "smart" component,
 like resource_selector and factor_levels before it. Has no pure surface, so it is
@@ -17,7 +17,7 @@ rules) applies here more than in any other component: session-state-derived
 values (bpmn/json paths, log name) are snapshotted into locals before the
 background thread starts, and the thread itself never touches st.session_state
 or calls st.* — it communicates solely through the RunState object in
-ui/run_manager.
+ui/services/run_manager.
 """
 
 from __future__ import annotations
@@ -31,7 +31,7 @@ from core.orchestrator import ExperimentResult
 from core.parameters import Scenario
 from core.simulation import store
 from core.transformations import Transformation
-from ui.run_manager import (
+from ui.services.run_manager import (
     cancel_experiment,
     clear_results,
     clear_run,

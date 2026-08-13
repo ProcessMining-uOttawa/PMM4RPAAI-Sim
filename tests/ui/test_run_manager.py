@@ -1,4 +1,4 @@
-"""Tests for ui/run_manager — the run-kind discriminant and the as-discovered
+"""Tests for ui/services/run_manager — the run-kind discriminant and the as-discovered
 commit/clear pair, including the clear_results asymmetry (the as-discovered
 artifact is log-scoped, so the run-level reset must leave it alone)."""
 
@@ -9,7 +9,7 @@ from pathlib import Path
 import pandas as pd
 
 from core.orchestrator import AsDiscoveredResult, ExperimentResult
-from ui.run_manager import (
+from ui.services.run_manager import (
     RunState,
     clear_as_discovered,
     clear_results,

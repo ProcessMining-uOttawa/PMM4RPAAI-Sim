@@ -1,4 +1,4 @@
-"""Tests for ui/discovery_manager — the session lifecycle: commit_discovery's
+"""Tests for ui/services/discovery_manager — the session lifecycle: commit_discovery's
 LogIdentity contract, the session's construction-time identity, and the
 cancel/supersede kill semantics.
 
@@ -12,8 +12,8 @@ from __future__ import annotations
 import threading
 from pathlib import Path
 
-from ui import discovery_manager
-from ui.discovery_manager import (
+from ui.services import discovery_manager
+from ui.services.discovery_manager import (
     DiscoveryResult,
     cancel_discovery,
     commit_discovery,

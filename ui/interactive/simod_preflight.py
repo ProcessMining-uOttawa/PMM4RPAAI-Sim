@@ -3,16 +3,16 @@
 Part of ui/interactive/, so this module renders st.* widgets directly. Renders the
 Simod preflight expander (Python/Java/venv checks + JAVA_HOME override) in
 non-demo mode; demo mode never invokes Simod or Prosimos subprocesses, so there is
-nothing to check. Consumes the pure ui/preflight helpers (run_checks, all_ok) — a
-ui/interactive -> ui/ (presentation primitives) dependency. Has no pure surface, so
-it is exercised manually like app.py rather than unit-tested.
+nothing to check. Consumes the ui/services/preflight helpers (run_checks, all_ok)
+— a ui/interactive -> ui/services dependency. Has no pure surface, so it is
+exercised manually like app.py rather than unit-tested.
 """
 
 from __future__ import annotations
 
 import streamlit as st
 
-from ui import preflight
+from ui.services import preflight
 
 
 def render_simod_preflight(demo_mode: bool) -> tuple[bool, str | None]:
