@@ -235,7 +235,6 @@ class Transformation(ABC):
     @abstractmethod
     def parameters(
         self,
-        target_activity: str,
         current_duration_s: float | None = None,
         selected_pool_size: int | None = None,
         frozen_pool_size: int | None = None,
@@ -411,7 +410,6 @@ class XORSplitAutomation(Transformation):
     # --- parameters ----------------------------------------------------------
     def parameters(
         self,
-        _target_activity: str,
         current_duration_s: float | None = None,
         selected_pool_size: int | None = None,
         frozen_pool_size: int | None = None,

@@ -409,7 +409,6 @@ with experiment_tab:
             st.markdown("##### 2 · Factor levels")
             parameters = configure_factor_levels(
                 transformation,
-                target,
                 prosimos_data,
                 _task_id,
                 selected_pool_size,
