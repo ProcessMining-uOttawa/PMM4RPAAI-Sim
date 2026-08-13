@@ -32,6 +32,29 @@ from core.simulation.runner import terminate_process
 Fingerprint = tuple[str, int]  # (upload name, size) — identity of an uploaded log
 
 
+@dataclass(frozen=True)
+class LogIdentity:
+    """The committed log + discovered model — everything ``ss.log`` carries.
+
+    Written whole (commit_discovery, or app.py's demo branch) and cleared
+    whole (``ss.log = None``), so a half-set identity is unrepresentable:
+    the model paths, activities, fingerprint, and provenance always describe
+    the same committed discovery, or nothing. Frozen — a new discovery is a
+    new object, never a field edit. The Optional fields are demo's Nones:
+    demo has no upload, no Simod-ready CSV, and no discovery mode.
+    """
+
+    log_name: str
+    activities: list[str]
+    bpmn_path: Path
+    json_path: Path
+    fingerprint: Fingerprint | None  # None in demo (no upload to identify)
+    log_path: Path | None  # the upload preserved on disk; None in demo
+    simod_csv_path: Path | None  # the fidelity check's observed-side source
+    log_case_count: int | None  # pins fidelity cases-per-replication
+    search_iterations: int | None  # discovery mode (None = fast; also demo)
+
+
 class DiscoveryPhase(Enum):
     """The phase of the current upload's discovery. None (no member) = no
     relevant session: the upload is idle (never discovered) or already done."""
@@ -50,7 +73,8 @@ class DiscoveryResult:
     simod_csv_path / log_case_count feed the model fidelity check: the
     Simod-ready CSV the discovery actually ran on (the observed side's source
     file) and its distinct-case count (the pinned cases-per-replication).
-    Demo mode bypasses this module entirely — app.py owns its session keys.
+    Demo mode bypasses this module's lifecycle — app.py constructs the demo
+    LogIdentity itself.
     """
 
     bpmn_path: Path
@@ -170,23 +194,26 @@ def commit_discovery(
     fingerprint: Fingerprint,
     search_iterations: int | None,
 ) -> None:
-    """Write a successful discovery's result into session state.
+    """Write a successful discovery into session state as one LogIdentity.
 
     The positive counterpart to clear_discovery(), mirroring run_manager's
-    commit_result(); stamps log_fingerprint so the upload reads as
-    already-discovered. fingerprint and search_iterations come from the
-    session, not the result — they are the run's construction-time identity,
-    which the worker's output never carries.
+    commit_result(). One atomic assignment: the fingerprint (which makes the
+    upload read as already-discovered) cannot land without the model it
+    identifies. fingerprint and search_iterations come from the session, not
+    the result — they are the run's construction-time identity, which the
+    worker's output never carries.
     """
-    ss.bpmn_path = result.bpmn_path
-    ss.json_path = result.json_path
-    ss.activities = result.activities
-    ss.log_name = result.log_name
-    ss.log_path = result.log_path
-    ss.simod_csv_path = result.simod_csv_path
-    ss.log_case_count = result.log_case_count
-    ss.discovery_search_iterations = search_iterations
-    ss.log_fingerprint = fingerprint
+    ss.log = LogIdentity(
+        log_name=result.log_name,
+        activities=result.activities,
+        bpmn_path=result.bpmn_path,
+        json_path=result.json_path,
+        fingerprint=fingerprint,
+        log_path=result.log_path,
+        simod_csv_path=result.simod_csv_path,
+        log_case_count=result.log_case_count,
+        search_iterations=search_iterations,
+    )
 
 
 def cancel_discovery(ss: Any) -> None:

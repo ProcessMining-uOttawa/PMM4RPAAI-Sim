@@ -117,49 +117,36 @@ def is_cancelling(ss: Any) -> bool:
 
 
 def clear_results(ss: Any) -> None:
-    """Reset all run-level session state keys.
+    """Reset the run-level session state.
 
-    The negative counterpart to commit_result(): keep this field list in sync
-    with ExperimentResult and commit_result() when adding a result field. Called
-    both to blank Panel 5 at the start of a new run and, via
-    app._clear_process_state(), when the loaded log is reset or replaced.
+    The negative counterpart to commit_result(). Called both to blank Panel 5
+    at the start of a new run and, via app._clear_process_state(), when the
+    loaded log is reset or replaced.
 
-    Deliberately asymmetric on one field: baseline_agg is written by
-    commit_result() but NOT cleared here. Its validity is log-scoped, not
-    run-scoped — the same discovered model means the previous run's baseline
-    stays a correct reference while a re-run is in flight, and nulling it at
-    run start would collapse Panel 3's goal-threshold rows to metric pickers on
-    any mid-run rerun. app._clear_process_state() clears it where the process
-    actually changes (log reset or replacement).
+    Two deliberate asymmetries against commit_result(): baseline_agg is
+    written there but NOT cleared here — its validity is log-scoped, not
+    run-scoped (the same discovered model means the previous run's baseline
+    stays a correct reference while a re-run is in flight; nulling it at run
+    start would collapse Panel 3's goal-threshold rows to metric pickers on
+    any mid-run rerun; app._clear_process_state() clears it where the process
+    actually changes). run_error is cleared here but never committed — it is
+    run-scoped display state occupying the results slot, not a result field.
     """
-    ss.results = None
-    ss.run_n_cases = None
-    ss.experiment_bpmn_path = None
-    ss.scenario_json_paths = {}
-    ss.scenario_log_paths = {}
-    ss.baseline_log_paths = []
-    ss.failed_replications = []
-    # Not an ExperimentResult field, but run-scoped display state occupying the
-    # results slot: a prior hard failure clears when the next run starts.
+    ss.experiment_result = None
     ss.run_error = None
 
 
 def commit_result(ss: Any, result: ExperimentResult) -> None:
-    """Write an ExperimentResult's fields into session state.
+    """Commit a finished experiment run into session state.
 
-    The positive counterpart to clear_results(): keep this field list in sync
-    with ExperimentResult and clear_results() when adding a result field.
-    One rename in the mapping: result.n_cases lands as ss.run_n_cases — a bare
-    ss.n_cases would read as the live run-config widget.
+    The dataclass is committed whole (ss.experiment_result), mirroring
+    commit_as_discovered — a new ExperimentResult field reaches consumers with
+    no edit here. baseline_agg is additionally copied out beside it because
+    its lifecycle differs from its carrier's: log-scoped, surviving the
+    clear_results at the next run start (see clear_results).
     """
-    ss.results = result.results
-    ss.run_n_cases = result.n_cases
-    ss.experiment_bpmn_path = result.experiment_bpmn_path
-    ss.scenario_json_paths = result.scenario_json_paths
+    ss.experiment_result = result
     ss.baseline_agg = result.baseline_agg
-    ss.scenario_log_paths = result.scenario_log_paths
-    ss.baseline_log_paths = result.baseline_log_paths
-    ss.failed_replications = result.failed_replications
 
 
 def commit_as_discovered(ss: Any, result: AsDiscoveredResult) -> None:

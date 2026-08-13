@@ -150,7 +150,7 @@ def render_execution_panel(
             if right.button(
                 "▶ Run all scenarios", type="primary", use_container_width=True
             ):
-                if not demo_mode and (not ss.bpmn_path or not ss.json_path):
+                if not demo_mode and ss.log is None:
                     st.error("No discovered model — upload a log first.")
                     st.stop()
 
@@ -169,9 +169,9 @@ def render_execution_panel(
                     # Snapshot ss-derived values into locals before the thread
                     # starts (§6 threading rules). Function parameters need no
                     # snapshot — they are already call-time-frozen locals.
-                    experiment_dir = store.new_experiment(ss.log_name or "run")
-                    bpmn_path = ss.bpmn_path
-                    json_path = ss.json_path
+                    experiment_dir = store.new_experiment(ss.log.log_name)
+                    bpmn_path = ss.log.bpmn_path
+                    json_path = ss.log.json_path
 
                     def experiment_fn(progress_cb, stop_ev):
                         return orchestrator.run_experiment(
