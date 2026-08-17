@@ -1,6 +1,7 @@
 # PMM4RPAAI-Sim — project memory for Claude
 
-> Process Mining + Modeling for RPA/AI Simulation.
+> App name: **Goal-oriented Process Automation via Simulation**
+> (repo name: Process Mining + Modeling for RPA/AI Simulation).
 > Determine, via simulation, whether automating an activity in a discovered
 > business process will meet stakeholder goals (cycle time, cost, …) under
 > a Taguchi design-of-experiments.

@@ -1,6 +1,7 @@
 # PMM4RPAAI-Sim
 
-**Process Mining + Modeling for RPA/AI Simulation.**
+**Goal-oriented Process Automation via Simulation** (repo name: Process
+Mining + Modeling for RPA/AI Simulation).
 A local web tool that uses an event log to decide — via simulation — whether
 automating a chosen activity in a business process would meet stakeholder
 goals (cycle time, cost, …).
