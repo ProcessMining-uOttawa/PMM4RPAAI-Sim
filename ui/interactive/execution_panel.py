@@ -97,12 +97,15 @@ def render_execution_panel(
     max_workers: int,
     *,
     title: str,
+    design_note: str | None = None,
 ) -> None:
     """Render the execution panel: run summary, run/cancel controls, and progress polling.
 
     title is the caller-supplied section heading (e.g. "4 · Execution") — this
     component has no opinion on its position in the page layout, only on how the
-    heading row is laid out alongside the run/cancel button.
+    heading row is laid out alongside the run/cancel button. design_note
+    renders as a caption under the badge — app.py's explanation for a
+    scenario count below the array size.
     """
     total_runs = len(scenarios) * n_reps
     # The real pipeline also runs the 0%-automation baseline once per rep.
@@ -117,6 +120,8 @@ def render_execution_panel(
             f"{baseline_note} · {n_cases} cases/rep</span>",
             unsafe_allow_html=True,
         )
+        if design_note is not None:
+            st.caption(design_note)
         if demo_mode:
             st.caption(
                 "🧪 Demo run — results are illustrative (synthetic), not a real simulation."
