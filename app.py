@@ -436,10 +436,7 @@ with experiment_tab:
     _removed = ARRAY_SIZES[array_name] - len(scenarios)
     _notes = []
     if _pinned:
-        _notes.append(
-            f"{_pinned} factor{'s' if _pinned != 1 else ''} held constant "
-            "(identical levels)"
-        )
+        _notes.append(f"{_pinned} factor{'s' if _pinned != 1 else ''} held constant")
     if _removed:
         _notes.append(
             f"{_removed} duplicate scenario{'s' if _removed != 1 else ''} removed"
