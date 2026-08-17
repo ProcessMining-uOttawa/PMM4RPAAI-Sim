@@ -49,7 +49,9 @@ from ui.interactive.simod_preflight import render_simod_preflight
 from ui.interactive.execution_panel import render_execution_panel
 
 st.set_page_config(
-    page_title="Automation What-If Simulator", page_icon="⚙", layout="wide"
+    page_title="Goal-oriented Process Automation via Simulation",
+    page_icon="⚙",
+    layout="wide",
 )
 
 
@@ -114,7 +116,7 @@ def _clear_log() -> None:
 
 # --- header ------------------------------------------------------------------
 st.markdown(
-    "<h2 style='margin-bottom:0'>⚙ Automation What-If Simulator</h2>"
+    "<h2 style='margin-bottom:0'>⚙ Goal-oriented Process Automation via Simulation</h2>"
     f"<div style='color:#6b7280;font-size:13px;margin-bottom:14px'>"
     f"{ss.log.log_name if ss.log else 'No log loaded'} · "
     f"{len(ss.log.activities) if ss.log else 0} activities discovered</div>",
@@ -436,10 +438,7 @@ with experiment_tab:
     _removed = ARRAY_SIZES[array_name] - len(scenarios)
     _notes = []
     if _pinned:
-        _notes.append(
-            f"{_pinned} factor{'s' if _pinned != 1 else ''} held constant "
-            "(identical levels)"
-        )
+        _notes.append(f"{_pinned} factor{'s' if _pinned != 1 else ''} held constant")
     if _removed:
         _notes.append(
             f"{_removed} duplicate scenario{'s' if _removed != 1 else ''} removed"
