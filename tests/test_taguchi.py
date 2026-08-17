@@ -166,6 +166,48 @@ class TestBuildScenarios:
         assert scenarios[6].values == {"p0": 30, "p1": 10}
 
 
+# ── Design constants + duplicate removal ──────────────────────────────────────
+
+
+class TestDesignReduction:
+    """Auto-freeze (all-equal levels → design constant) + duplicate-row removal."""
+
+    def _params(self, n_varying: int, n_pinned: int) -> list[Parameter]:
+        varying = [Parameter(f"v{i}", f"V{i}", [10, 20, 30]) for i in range(n_varying)]
+        pinned = [Parameter(f"k{i}", f"K{i}", [7, 7, 7]) for i in range(n_pinned)]
+        return varying + pinned
+
+    def test_pinned_factors_shrink_the_array(self):
+        # 2 pinned → 4 varying → the L9 cut. Dedup alone could not reach 9:
+        # L18 rows differ in ≥4 of 6 columns, so all 18 stay distinct.
+        name, scenarios = build_scenarios(self._params(4, 2), "t", "A")
+        assert name == "L9" and len(scenarios) == 9
+
+    def test_pinned_value_injected_into_every_scenario(self):
+        _, scenarios = build_scenarios(self._params(4, 2), "t", "A")
+        assert all(s.values["k0"] == 7 and s.values["k1"] == 7 for s in scenarios)
+
+    def test_dummy_level_factor_stays_in_design(self):
+        # Two-of-three equal is NOT a constant: the column stays, weighted 2:1.
+        params = self._params(5, 0) + [Parameter("d", "D", [10, 10, 30])]
+        name, scenarios = build_scenarios(params, "t", "A")
+        assert name == "L18" and len(scenarios) == 18
+        assert Counter(s.values["d"] for s in scenarios) == {10: 12, 30: 6}
+
+    def test_duplicate_rows_removed_first_wins_with_row_provenance(self):
+        # One varying factor over L9 (column 0 = 0,0,0,1,1,1,2,2,2): nine rows
+        # collapse to three, ids naming each configuration's first OA row.
+        name, scenarios = build_scenarios(self._params(1, 5), "t", "A")
+        assert name == "L9"
+        assert [s.id for s in scenarios] == ["S01", "S04", "S07"]
+        assert [s.values["v0"] for s in scenarios] == [10, 20, 30]
+
+    def test_all_pinned_gives_single_scenario(self):
+        name, scenarios = build_scenarios(self._params(0, 6), "t", "A")
+        assert name == "L1" and len(scenarios) == 1
+        assert scenarios[0].values == {f"k{i}": 7 for i in range(6)}
+
+
 # ── Orthogonality properties ────────────────────────────────────────────────────
 
 

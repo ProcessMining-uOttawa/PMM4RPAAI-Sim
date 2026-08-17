@@ -51,20 +51,43 @@ def pick_array(n_factors: int):
     raise ValueError(f"Need an OA for {n_factors} 3-level factors (max supported: 7).")
 
 
+# Rows per array, for callers reporting how far a design was reduced.
+ARRAY_SIZES = {"L1": 1, "L9": len(L9), "L18": len(L18)}
+
+
+def is_design_constant(parameter: Parameter) -> bool:
+    """True when the factor contributes no variation: frozen, or user-pinned
+    (all three levels equal). Two-of-three equal — the Taguchi dummy-level
+    technique, a 2:1 exposure weighting — keeps the factor in the design."""
+    return parameter.frozen or len(set(parameter.levels)) == 1
+
+
 def build_scenarios(
     parameters: list[Parameter],
     transformation_id: str,
     target_activity: str,
 ) -> tuple[str, list[Scenario]]:
-    active = [p for p in parameters if not p.frozen]
-    frozen = [p for p in parameters if p.frozen]
+    """One Scenario per OA row over the varying factors, duplicates removed.
+
+    Design constants are excluded from the array (shrinking it via pick_array)
+    and injected into every scenario at their single value. Rows made
+    identical by heavy pinning are dropped first-occurrence-wins; ids keep
+    their OA row numbers, so gaps mark removed duplicates.
+    """
+    active = [p for p in parameters if not is_design_constant(p)]
+    constant = [p for p in parameters if is_design_constant(p)]
 
     name, array, _ = pick_array(len(active))
     scenarios = []
+    seen: set[tuple] = set()
     for i, row in enumerate(array):
         vals = {p.id: p.levels[row[j]] for j, p in enumerate(active)}
-        for p in frozen:
+        for p in constant:
             vals[p.id] = p.levels[0]
+        key = tuple(sorted(vals.items()))
+        if key in seen:
+            continue
+        seen.add(key)
         scenarios.append(
             Scenario(
                 id=f"S{i + 1:02d}",

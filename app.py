@@ -12,7 +12,7 @@ from core import analysis, demo
 from core.bpmn.query import find_task_by_name, list_activities
 from core.simulation.prosimos.query import resource_selector_config
 from core.constants import COL_MEAN_COST
-from core.taguchi import build_scenarios
+from core.taguchi import ARRAY_SIZES, build_scenarios, is_design_constant
 from core.goals import baseline_per_case
 from core.simulation import runner, store
 from core.transformations import REGISTRY
@@ -431,6 +431,20 @@ with experiment_tab:
 
     # --- Design + execution panel ------------------------------------------------
     array_name, scenarios = build_scenarios(parameters, transformation.id, target)
+    # Explain a scenario count below the array size (pinned factors, dedup).
+    _pinned = sum(1 for p in parameters if not p.frozen and is_design_constant(p))
+    _removed = ARRAY_SIZES[array_name] - len(scenarios)
+    _notes = []
+    if _pinned:
+        _notes.append(
+            f"{_pinned} factor{'s' if _pinned != 1 else ''} held constant "
+            "(identical levels)"
+        )
+    if _removed:
+        _notes.append(
+            f"{_removed} duplicate scenario{'s' if _removed != 1 else ''} removed"
+        )
+    design_note = " · ".join(_notes) if _notes else None
 
     render_execution_panel(
         ss,
@@ -445,6 +459,7 @@ with experiment_tab:
         bot_cost_per_hour,
         max_workers,
         title="4 · Execution",
+        design_note=design_note,
     )
 
     # --- Results panel -----------------------------------------------------------
