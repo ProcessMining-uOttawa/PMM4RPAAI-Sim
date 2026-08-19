@@ -159,6 +159,20 @@ class TestNormalizeSimodCsvHeaders:
         with pytest.raises(ValueError, match="case_id"):
             runner.validate_simod_csv(path)
 
+    def test_mixed_header_fixes_what_it_can(self, tmp_path):
+        # An ambiguous pair beside an ordinary variant: renaming is per-cell,
+        # not all-or-nothing — the unambiguous cell is fixed even though the
+        # file will still reject, so the validator's found-columns line shows
+        # the header exactly as Simod would see it, residue only.
+        header = "Case ID,Case_ID,Activity,start_time,end_time,resource"
+        path = _csv_file(tmp_path, f"{header}\nc1,c1,A,t0,t1,R\n")
+        runner.normalize_simod_csv_headers(path)
+        assert self._header(path) == (
+            "Case ID,Case_ID,activity,start_time,end_time,resource"
+        )
+        with pytest.raises(ValueError, match="case_id"):
+            runner.validate_simod_csv(path)
+
     def test_exact_column_beats_variant(self, tmp_path):
         # An exact `case_id` plus a `Case ID` extra: the exact cell already
         # satisfies Simod, the variant is ambiguous to rename — so nothing is
