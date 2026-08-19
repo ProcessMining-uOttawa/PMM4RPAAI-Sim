@@ -43,7 +43,7 @@ def render_discovery_config(
         ["Fast", "Calibrated"],
         horizontal=True,
         disabled=disabled,
-        help="Fast: one discovery pass with defaults (a few minutes; ~10 min "
+        help="Fast: one discovery pass with defaults (a few minutes; 10-15 min "
         "on a 100k-event log). Calibrated: an optimization search that fits "
         "the model to the log (several times the Fast duration, scaling with "
         "iterations and log size) — use it when the Model fidelity tab shows "

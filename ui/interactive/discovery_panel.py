@@ -26,7 +26,7 @@ from ui.services.discovery_manager import (
 )
 
 # Poll cadence for the background discovery. Fast discovery takes minutes
-# (~10 min on a 100k-event log; calibrated: several-fold longer), so a 1 s
+# (10-15 min on a 100k-event log; calibrated: several-fold longer), so a 1 s
 # timer detects completion promptly while keeping auto-reruns sparse.
 _POLL_SECONDS = 1.0
 
@@ -49,7 +49,7 @@ def render_discovery_progress(ss: Any) -> None:
         if session.search_iterations is None:
             st.info(
                 "⏳ Running Simod discovery — takes minutes, scaling with log "
-                "size (~10 min for a 100k-event log)…"
+                "size (10–15 min for a 100k-event log)…"
             )
         else:
             st.info(
