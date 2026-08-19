@@ -90,9 +90,10 @@ real pre-baked discovery, and fakes only the simulation:
 
 Other sample logs: [`LoanApp_simplified_train.csv`](samples/LoanApp_simplified_train.csv)
 (the demo model's log family) and
-[`Claims Management.csv`](samples/Claims%20Management.csv) (deliberately kept
-with capitalised headers — uploading it as-is demonstrates the CSV
-validation; lowercase the five Simod columns to run it).
+[`Claims Management.csv`](samples/Claims%20Management.csv) (kept with its
+original capitalised headers — uploading it as-is demonstrates the automatic
+header normalization: `Case_ID`, `Start_Time`, … are rewritten to the
+lowercase names Simod requires).
 
 ## Project documentation
 
