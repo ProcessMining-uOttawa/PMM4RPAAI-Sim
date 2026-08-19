@@ -79,19 +79,134 @@ class TestRunLogged:
         assert isinstance(spawned[0], subprocess.Popen)
 
 
-# ── CSV pre-flight (validate_simod_csv) ───────────────────────────────────────
+# ── CSV input contract (normalize_simod_csv_headers + validate_simod_csv) ─────
 
 _VALID_HEADER = "case_id,activity,start_time,end_time,resource"
 _DATA_ROW = "c1,Fix Bug,2025-01-01T08:00:00,2025-01-01T09:00:00,R1"
 # The Apromore export convention (capitalised headers) — the canonical
-# rejected-upload fixture.
-_BAD_HEADER_CSV = "Case_ID,Activity,Start_Time,End_Time,Resource\nc1,A,t0,t1,R\n"
+# normalizable upload: every cell is a pure formatting variant.
+_APROMORE_HEADER_CSV = "Case_ID,Activity,Start_Time,End_Time,Resource\nc1,A,t0,t1,R\n"
+# A column missing outright — no rename can fix it, so it must reject.
+_UNFIXABLE_HEADER_CSV = "case_id,activity,start_time,end_time\nc1,A,t0,t1\n"
 
 
 def _csv_file(tmp_path, text: str, encoding: str = "utf-8"):
     path = tmp_path / "log.csv"
     path.write_text(text, encoding=encoding)
     return path
+
+
+class TestNormalizeSimodCsvHeaders:
+    """Formatting variants of Simod's column names are rewritten to the
+    canonical form; anything that would require a guess — vocabulary,
+    ambiguous duplicates — is left as uploaded for the validator to reject."""
+
+    def _header(self, path) -> str:
+        return path.read_text(encoding="utf-8").splitlines()[0]
+
+    def test_apromore_convention_normalized(self, tmp_path):
+        path = _csv_file(tmp_path, _APROMORE_HEADER_CSV)
+        runner.normalize_simod_csv_headers(path)
+        assert self._header(path) == _VALID_HEADER
+        runner.validate_simod_csv(path)  # now canonical — must not raise
+
+    def test_space_and_hyphen_separators_fold(self, tmp_path):
+        header = " Case ID ,Activity,Start - Time,END__TIME,resource"
+        path = _csv_file(tmp_path, f"{header}\n{_DATA_ROW}\n")
+        runner.normalize_simod_csv_headers(path)
+        assert self._header(path) == _VALID_HEADER
+
+    def test_canonical_file_untouched(self, tmp_path):
+        path = _csv_file(tmp_path, f"{_VALID_HEADER}\n{_DATA_ROW}\n")
+        before = path.read_bytes()
+        runner.normalize_simod_csv_headers(path)
+        assert path.read_bytes() == before  # no rewrite, not even a re-encode
+
+    def test_non_target_columns_untouched(self, tmp_path):
+        # `Stage` normalises to `stage` — not a Simod column, so it keeps its
+        # uploaded spelling; only cells resolving onto the schema are renamed.
+        header = "Case_ID,Activity,Start_Time,End_Time,Resource,Stage,ResourceCost"
+        path = _csv_file(tmp_path, f"{header}\n{_DATA_ROW},Assessment,20.7\n")
+        runner.normalize_simod_csv_headers(path)
+        assert self._header(path) == f"{_VALID_HEADER},Stage,ResourceCost"
+
+    def test_enabled_time_variant_normalized(self, tmp_path):
+        # enabled_time is optional but read by Simod when present, so its
+        # variants normalise too.
+        path = _csv_file(tmp_path, f"{_VALID_HEADER},Enabled_Time\n{_DATA_ROW},t2\n")
+        runner.normalize_simod_csv_headers(path)
+        assert self._header(path) == f"{_VALID_HEADER},enabled_time"
+
+    def test_concatenated_words_not_guessed(self, tmp_path):
+        # `CaseID` → `caseid`: inserting the underscore would guess a word
+        # boundary — vocabulary, not formatting — so it stays and rejects.
+        header = "CaseID,activity,start_time,end_time,resource"
+        path = _csv_file(tmp_path, f"{header}\n{_DATA_ROW}\n")
+        before = path.read_bytes()
+        runner.normalize_simod_csv_headers(path)
+        assert path.read_bytes() == before
+        with pytest.raises(ValueError, match="case_id"):
+            runner.validate_simod_csv(path)
+
+    def test_ambiguous_duplicates_left_for_rejection(self, tmp_path):
+        # Two variants of case_id and no exact cell: renaming either is a
+        # guess, so both stay and the validator rejects with its hint.
+        header = "Case ID,Case_ID,activity,start_time,end_time,resource"
+        path = _csv_file(tmp_path, f"{header}\nc1,c1,A,t0,t1,R\n")
+        before = path.read_bytes()
+        runner.normalize_simod_csv_headers(path)
+        assert path.read_bytes() == before
+        with pytest.raises(ValueError, match="case_id"):
+            runner.validate_simod_csv(path)
+
+    def test_exact_column_beats_variant(self, tmp_path):
+        # An exact `case_id` plus a `Case ID` extra: the exact cell already
+        # satisfies Simod, the variant is ambiguous to rename — so nothing is
+        # rewritten and the file validates with the variant as a plain extra.
+        header = "case_id,Case ID,activity,start_time,end_time,resource"
+        path = _csv_file(tmp_path, f"{header}\nc1,c1,A,t0,t1,R\n")
+        before = path.read_bytes()
+        runner.normalize_simod_csv_headers(path)
+        assert path.read_bytes() == before
+        runner.validate_simod_csv(path)  # must not raise
+
+    def test_data_rows_copied_verbatim(self, tmp_path):
+        # Only the header line is rewritten — quoted cells, embedded commas,
+        # and the rows' own line endings survive byte-for-byte.
+        rows = 'c1,"Fix, Bug",t0,t1,R1\nc2,B,t0,t1,R2\n'
+        path = _csv_file(
+            tmp_path, f"Case_ID,Activity,Start_Time,End_Time,Resource\n{rows}"
+        )
+        before_rows = path.read_bytes().split(b"\n", 1)[1]
+        runner.normalize_simod_csv_headers(path)
+        assert path.read_bytes().split(b"\n", 1)[1] == before_rows
+
+    def test_bom_dropped_on_rewrite(self, tmp_path):
+        path = _csv_file(tmp_path, _APROMORE_HEADER_CSV, encoding="utf-8-sig")
+        runner.normalize_simod_csv_headers(path)
+        assert not path.read_bytes().startswith(b"\xef\xbb\xbf")
+        assert self._header(path) == _VALID_HEADER
+
+    def test_leading_blank_lines_dropped_with_header(self, tmp_path):
+        path = _csv_file(tmp_path, f"\n\n{_APROMORE_HEADER_CSV}")
+        runner.normalize_simod_csv_headers(path)
+        assert self._header(path) == _VALID_HEADER
+        runner.validate_simod_csv(path)
+
+    def test_empty_file_noop(self, tmp_path):
+        # Empty and undecodable files are the validator's rejections — the
+        # normaliser must pass them through untouched, not crash first.
+        path = _csv_file(tmp_path, "")
+        runner.normalize_simod_csv_headers(path)
+        assert path.read_bytes() == b""
+
+    def test_non_utf8_left_for_validator(self, tmp_path):
+        path = _csv_file(tmp_path, f"{_VALID_HEADER}\n{_DATA_ROW}\n", encoding="utf-16")
+        before = path.read_bytes()
+        runner.normalize_simod_csv_headers(path)
+        assert path.read_bytes() == before
+        with pytest.raises(ValueError, match="UTF-8"):
+            runner.validate_simod_csv(path)
 
 
 class TestValidateSimodCsv:
@@ -190,7 +305,7 @@ class TestValidateSimodCsv:
 class TestDiscoverValidatesCsv:
     def test_bad_csv_rejected_before_spawn(self, tmp_path, monkeypatch):
         captured = _capture_run_logged(monkeypatch)
-        bad = _csv_file(tmp_path, _BAD_HEADER_CSV)
+        bad = _csv_file(tmp_path, _UNFIXABLE_HEADER_CSV)
         with pytest.raises(ValueError):
             runner.discover(bad, tmp_path / "run")
         assert captured == {}  # rejected before any subprocess was spawned
@@ -204,6 +319,18 @@ class TestDiscoverValidatesCsv:
         with pytest.raises(RuntimeError, match="Expected exactly 1 BPMN"):
             runner.discover(good, tmp_path / "run")
         assert "cmd" in captured
+
+    def test_normalizable_csv_rewritten_then_spawns(self, tmp_path, monkeypatch):
+        # The Apromore-convention upload passes end-to-end: discover() rewrites
+        # the header in place before validating, so the file on disk — the same
+        # file the subprocess and the fidelity check read — is canonical.
+        captured = _capture_run_logged(monkeypatch)
+        _stub_simod_outputs(tmp_path, monkeypatch)
+        log = _csv_file(tmp_path, _APROMORE_HEADER_CSV)
+        runner.discover(log, tmp_path / "run")
+        assert "cmd" in captured
+        header = log.read_text(encoding="utf-8").splitlines()[0]
+        assert header == ",".join(runner.SIMOD_LOG_COLUMNS)
 
 
 _XES_TWO_EVENTS = """<?xml version="1.0" encoding="UTF-8"?>
@@ -371,7 +498,7 @@ class TestDiscoverCommand:
         # Validation ordering holds in calibrated mode too: no subprocess, and
         # no config YAML left on disk for a rejected upload.
         captured = _capture_run_logged(monkeypatch)
-        bad = _csv_file(tmp_path, _BAD_HEADER_CSV)
+        bad = _csv_file(tmp_path, _UNFIXABLE_HEADER_CSV)
         run_dir = tmp_path / "run"
         with pytest.raises(ValueError):
             runner.discover(bad, run_dir, search_iterations=10)

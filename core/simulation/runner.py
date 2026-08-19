@@ -4,6 +4,8 @@ contract (CSV schema pre-flight, XES conversion)."""
 from __future__ import annotations
 import csv
 import os
+import re
+import shutil
 import signal
 import subprocess
 import sys
@@ -184,6 +186,81 @@ def xes_to_simod_csv(xes_path: Path, csv_path: Path) -> Path:
 # --- Simod -------------------------------------------------------------------
 
 
+# Columns a header cell may be normalised onto: the required schema plus
+# enabled_time, which Simod's reader is happy to pick up when present (the
+# log's own enablement times then replace Simod's enablement estimation).
+_NORMALIZE_TARGETS = frozenset(SIMOD_LOG_COLUMNS) | {"enabled_time"}
+
+_SEPARATOR_RUN = re.compile(r"[ \-_]+")
+
+
+def _normal_form(cell: str) -> str:
+    """A header cell's formatting-normal form: trimmed, lowercased, each run
+    of separator characters (spaces/hyphens/underscores) collapsed to one
+    underscore. Canonical names are fixed points."""
+    return _SEPARATOR_RUN.sub("_", cell.strip().lower())
+
+
+def _renamed_header(header: list[str]) -> list[str]:
+    """Return the header with each unambiguous formatting variant of a Simod
+    column name replaced by the canonical name. A rename fires only when
+    exactly one cell normalises onto that name — two candidates (e.g. `Case ID`
+    beside `case_id`) mean any rename is a guess, so both stay as uploaded.
+    Cells that normalise onto nothing in _NORMALIZE_TARGETS are never touched.
+    """
+    candidates: dict[str, list[int]] = {}
+    for i, cell in enumerate(header):
+        normal = _normal_form(cell)
+        if normal in _NORMALIZE_TARGETS:
+            candidates.setdefault(normal, []).append(i)
+    renamed = list(header)
+    for target, indices in candidates.items():
+        if len(indices) == 1:
+            renamed[indices[0]] = target
+    return renamed
+
+
+def normalize_simod_csv_headers(csv_path: Path) -> None:
+    """Rewrite unambiguous formatting variants of Simod's column names to the
+    canonical form — e.g. the Apromore export convention's `Case_ID`/`Activity`/
+    `Start_Time` become `case_id`/`activity`/`start_time`.
+
+    Formatting only, never vocabulary: a cell is renamed when its normal form
+    (`_normal_form`) equals a Simod column name, so case, surrounding
+    whitespace, and space/hyphen separators are fixed, while synonyms and
+    concatenations (`CaseID`) are not guessed at and ambiguous duplicates are
+    left whole (`_renamed_header`) — both fall through to validate_simod_csv's
+    rejection. When nothing changes the file is untouched; otherwise only the
+    header row is rewritten (as BOM-less UTF-8, dropping any blank lines above
+    it) and the event rows are stream-copied verbatim. Undecodable or empty
+    files are also left untouched: those rejections are validate_simod_csv's.
+    """
+    try:
+        with open(csv_path, encoding="utf-8-sig", newline="") as f:
+            reader = csv.reader(f)
+            header = next((row for row in reader if row), None)
+            header_line_count = reader.line_num
+    except (UnicodeDecodeError, csv.Error):
+        return
+    if header is None:
+        return
+
+    renamed = _renamed_header(header)
+    if renamed == header:
+        return
+
+    tmp_path = csv_path.with_name(csv_path.name + ".tmp")
+    with (
+        open(csv_path, encoding="utf-8-sig", newline="") as src,
+        open(tmp_path, "w", encoding="utf-8", newline="") as dst,
+    ):
+        for _ in range(header_line_count):
+            next(src)
+        csv.writer(dst, lineterminator="\n").writerow(renamed)
+        shutil.copyfileobj(src, dst)
+    os.replace(tmp_path, csv_path)
+
+
 def validate_simod_csv(csv_path: Path) -> None:
     """Pre-flight-check a CSV log against the column schema Simod's reader
     requires, so a malformed upload fails with an actionable message here
@@ -194,8 +271,11 @@ def validate_simod_csv(csv_path: Path) -> None:
     (order, duplicates, and extra columns are all fine) but cell-exactly, with
     no case or whitespace normalisation, because Simod's reader does none
     either; and at least one event row follows the header. Raises ValueError
-    describing the problem; hints are informational only — columns are never
-    renamed or remapped.
+    describing the problem. This function never rewrites the file — the
+    pipeline fixes unambiguous formatting variants upstream
+    (normalize_simod_csv_headers), so a variant that still reaches this
+    rejection is one no rename could safely fix; the hints are informational
+    only.
     """
     try:
         with open(csv_path, encoding="utf-8-sig", newline="") as f:
@@ -352,8 +432,10 @@ def discover(
     runs the calibrated optimization recipe, searching that many candidate
     models per stage against the log (the config YAML is written to
     run_dir/simod_config.yaml as an inspectable artifact).
-    Log columns required (CSV): SIMOD_LOG_COLUMNS — a direct CSV upload is
-    pre-flighted by validate_simod_csv before the subprocess spawns.
+    Log columns required (CSV): SIMOD_LOG_COLUMNS — a direct CSV upload first
+    has unambiguous formatting variants of those names rewritten in place
+    (normalize_simod_csv_headers), then is pre-flighted by validate_simod_csv
+    before the subprocess spawns.
     simod_csv is the Simod-ready log the subprocess actually read: the
     converted CSV for an XES upload, the upload itself for CSV — the file the
     model fidelity check computes its observed statistics from.
@@ -365,6 +447,7 @@ def discover(
         xes_to_simod_csv(log_path, csv_path)
         log_for_simod = csv_path
     else:
+        normalize_simod_csv_headers(log_path)
         validate_simod_csv(log_path)
         log_for_simod = log_path
     if search_iterations is None:
