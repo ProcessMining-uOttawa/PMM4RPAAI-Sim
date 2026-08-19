@@ -27,6 +27,12 @@ def render_main_effects(results: pd.DataFrame, parameters: list[Parameter]) -> N
     for tab, metric, label in zip(tabs, metrics, labels):
         with tab:
             effects = main_effects(results, metric)
+            if effects.empty:
+                st.caption(
+                    "Every factor was held constant in this run — "
+                    "no main effects to plot."
+                )
+                continue
             st.plotly_chart(
                 main_effects_chart(effects, label_map, label),
                 use_container_width=True,
