@@ -12,8 +12,8 @@ above three things it does **not** duplicate:
 
 So this doc states *definitions* (the durable facts), not formulas or column
 names. Where it names a display label it is illustrative — the authoritative
-label lives in `core/metrics.py`. It is inside `/doc-rot`'s audit scope, so it
-gets checked against the code for drift.
+label lives in `core/metrics.py`. It is periodically audited against the code
+for drift.
 
 ---
 
@@ -29,8 +29,10 @@ Apromore's case duration runs from the log's first to last timestamp).
   tool **ranks scenarios on** (and feeds the Taguchi signal-to-noise analysis).
 - **Total Cycle Time** = the same spans **summed across cases**, so
   `Total Cycle Time = Cycle Time (mean) × number of cases` holds by
-  construction, in both real and demo mode. It is a **display / comparison**
-  number (Baseline tab) — it does **not** rank scenarios.
+  construction — exactly in real mode; in demo mode up to the mean's
+  two-decimal display rounding (the total is computed from the unrounded
+  mean). It is a **display / comparison** number (Baseline tab) — it does
+  **not** rank scenarios.
 
 **What this tool deliberately does not measure: door-to-door lead time**
 (case *arrival* → case completion — the queueing-theory "time in system").
@@ -152,8 +154,9 @@ reaches the bot).
 |---|---|---|
 | Cycle Time (per case, first-start) | **Yes** | mean ranked; median/min/max selectable |
 | Cost (per case, mean) | **Yes** | |
-| Rework Rate | **Yes** | |
+| Rework Rate | **Yes** | rework count/case selectable |
 | Total Cycle Time (mean × cases) | No | Baseline comparison only |
+| Total Cost (mean × cases) | No | Baseline comparison only |
 | Rework Count | No | Baseline comparison / export |
 | Bot Failures | No | count only; config-echo, so not a goal |
 
@@ -226,10 +229,10 @@ because the log is a single realization: the spread is the yardstick for
 whether a Δ is systematic misfit or run-to-run noise.
 
 One caveat for XES uploads: they reach the pipeline with no start timestamps
-(the converter reads only each event's completion `time:timestamp`), so it
-synthesizes each case's first start (= its first end). The observed clock runs
-slightly short, and a small systematic positive Δ on the cycle rows is
-expected.
+(the converter reads only each event's completion `time:timestamp`), so every
+start is synthesized from the previous event's end — each case's first start
+= its first end. The observed clock runs slightly short, and a small
+systematic positive Δ on the cycle rows is expected.
 
 > **Implementation & trust.** Both sides of the comparison are computed by the
 > **same per-case cycle kernel** in
