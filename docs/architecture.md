@@ -25,7 +25,7 @@ diamonds are decisions; edge labels name what actually flows.
 ```mermaid
 flowchart TD
     subgraph discovery ["discovery — once per uploaded log"]
-        convert["convert / validate the upload<br/>(XES → CSV; normalize headers; schema preflight)"]
+        convert["convert / validate the upload<br/>(XES: convert to CSV · direct CSV: normalize headers + schema preflight)"]
         simod["Simod discovery<br/>(SplitMiner; Python 3.9 + Java 8 subprocess)"]
         convert -- "Simod-ready CSV" --> simod
     end
@@ -303,9 +303,10 @@ worst class of bug (see CLAUDE.md §6 for the full history):
 
 - **Bad uploads fail fast.** Formatting variants of the required CSV column
   names (capitalization, space/hyphen separators) are normalized
-  automatically; anything that cannot be fixed unambiguously is rejected
-  before Simod launches, with a message naming the missing columns.
-  Malformed XES fails in the converter with a specific error.
+  automatically; a CSV that still fails the preflight — a column no rename
+  can fix, a bad encoding, an empty or event-less file — is rejected before
+  Simod launches, with a message naming the specific problem. Malformed XES
+  fails in the converter with a specific error.
 - **Discovery failures surface with evidence.** A failed discovery shows the
   Simod log tail in an expander; a cancelled discovery kills the entire
   subprocess tree (Simod spawns Java and Prosimos children) and shows a
