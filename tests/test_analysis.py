@@ -372,6 +372,19 @@ class TestMainEffects:
         high_sn = me[me["level"] == "high"]["sn"].iloc[0]
         assert high_sn == pytest.approx(-16.998, abs=1e-3)
 
+    def test_constant_factor_dropped(self):
+        # A pinned/frozen factor lands in results as a single-value column.
+        results = _results_df().assign(f_pinned=2)
+        me = main_effects(results, MetricRegistry.CYCLE_TIME)
+        assert set(me["factor"].unique()) == {"f_a"}
+
+    def test_all_factors_constant_returns_empty_with_schema(self):
+        # The schema must survive empty — sn_ranking groupbys these columns.
+        results = _results_df().drop(columns=["f_a"]).assign(f_pinned=2)
+        me = main_effects(results, MetricRegistry.CYCLE_TIME)
+        assert me.empty
+        assert list(me.columns) == ["factor", "level", "mean", "sn"]
+
 
 # ── sn_ranking ────────────────────────────────────────────────────────────────
 
@@ -427,6 +440,12 @@ class TestSnRanking:
         ranked = sn_ranking(effects)
         assert ranked[ranked["factor"] == "f_nan"]["rank"].iloc[0] == 2
 
+    def test_empty_effects_frame_tolerated(self):
+        # The shape main_effects() returns when every factor is constant.
+        empty = pd.DataFrame(columns=["factor", "level", "mean", "sn"])
+        ranked = sn_ranking(empty)
+        assert ranked.empty
+
 
 # ── sn_export_table ───────────────────────────────────────────────────────────
 
@@ -453,6 +472,12 @@ class TestSnExportTable:
     def test_unlabelled_factor_id_passes_through(self):
         table = sn_export_table(_results_df(), [])
         assert set(table["Factor"]) == {"f_a"}
+
+    def test_pinned_factor_absent(self):
+        results = _results_df().assign(f_pinned=2)
+        params = [*self._params(), Parameter("f_pinned", "Pinned Factor", [2, 2, 2])]
+        table = sn_export_table(results, params)
+        assert set(table["Factor"]) == {"Factor A"}
 
     def test_rank_one_first_within_each_metric(self):
         # A LOCAL two-factor frame: f_a separates every metric strongly, f_b not

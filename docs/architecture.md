@@ -134,8 +134,9 @@ large" is not measurable in this design.
   a cost saver — it essentially never removes scenarios.
 - **Replications and noise.** Each scenario runs N stochastic replications;
   analysis aggregates per-scenario means and computes signal-to-noise ratios
-  per factor level. A pinned factor has a single level, so its main effect is
-  undefined and it ranks last automatically.
+  per factor level. A pinned factor has a single level, so it has no main
+  effect to report — it is dropped from the main-effects charts and the S/N
+  response table.
 - **Goal scoring.** Each selected indicator scores 0–100 on a piecewise-linear
   scale (target = 100, measured baseline = 50, worst = 0, user-editable
   breakpoints); a metric's score is the weight-normalised mean of its

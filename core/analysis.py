@@ -179,9 +179,16 @@ def signal_to_noise(
 
 
 def main_effects(results: pd.DataFrame, metric: Metric) -> pd.DataFrame:
-    """For each factor × level: mean metric and S/N ratio.
+    """For each varying factor × level: mean metric and S/N ratio.
 
     Scored on the metric's default indicator — the ranked, S/N-analysed one.
+    A single-level factor column (a pinned or frozen design constant, injected
+    into every scenario) is skipped: its level contrast — the quantity the
+    charts facet on and the S/N ranking ranks on — is structurally zero.
+    Constancy is read off the results frame, not the live Parameter list, so
+    the output stays true to the run that produced the frame even after the
+    user re-pins factors in the UI. With every factor constant the frame is
+    empty but keeps its column schema, so downstream groupbys don't KeyError.
     """
     if not metric.indicators:
         raise ValueError(
@@ -193,6 +200,8 @@ def main_effects(results: pd.DataFrame, metric: Metric) -> pd.DataFrame:
     floor = metric.sn_floor
     rows = []
     for factor in _factor_cols(results):
+        if results[factor].nunique() <= 1:
+            continue
         for level, level_rows in results.groupby(factor):
             rows.append(
                 {
@@ -202,7 +211,7 @@ def main_effects(results: pd.DataFrame, metric: Metric) -> pd.DataFrame:
                     "sn": signal_to_noise(level_rows[col].tolist(), direction, floor),
                 }
             )
-    return pd.DataFrame(rows)
+    return pd.DataFrame(rows, columns=["factor", "level", "mean", "sn"])
 
 
 def sn_ranking(effects: pd.DataFrame) -> pd.DataFrame:
